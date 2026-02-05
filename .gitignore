@@ -1,0 +1,27 @@
+# =============================================================================
+# Veralux Receptionist - Git Ignore
+# =============================================================================
+
+# Environment file (contains secrets)
+.env
+
+# Build artifacts
+build/
+dist/
+
+# Docker image archives (offline bundles)
+images.tar.zst
+*.tar.zst
+
+# Editor/IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+
+# Logs
+*.log

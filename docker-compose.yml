@@ -1,0 +1,171 @@
+# Veralux Receptionist - Docker Compose Configuration
+# See .env.example for required environment variables
+
+services:
+  # =============================================================================
+  # Core Services
+  # =============================================================================
+
+  control:
+    image: ${REGISTRY:-ghcr.io/nick-veraluxai}/veralux-control-plane:${VERSION:-latest}
+    container_name: veralux-control
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+      - BASE_URL=${BASE_URL:-http://localhost:4000}
+    ports:
+      - "${CONTROL_PORT:-4000}:4000"
+    networks:
+      - veralux-network
+
+  runtime:
+    image: ${REGISTRY:-ghcr.io/nick-veraluxai}/veralux-voice-runtime:${VERSION:-latest}
+    container_name: veralux-runtime
+    restart: unless-stopped
+    depends_on:
+      - redis
+      - control
+    environment:
+      - PORT=4001
+      - REDIS_URL=redis://redis:6379
+      - CONTROL_URL=http://control:4000
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      # Telnyx Configuration
+      - TELNYX_API_KEY=${TELNYX_API_KEY}
+      - TELNYX_PUBLIC_KEY=${TELNYX_PUBLIC_KEY}
+      # URLs
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
+      - AUDIO_PUBLIC_BASE_URL=${AUDIO_PUBLIC_BASE_URL}
+      # Media/Audio
+      - MEDIA_STREAM_TOKEN=${MEDIA_STREAM_TOKEN}
+      - AUDIO_STORAGE_DIR=${AUDIO_STORAGE_DIR:-/app/audio}
+      - WHISPER_URL=http://whisper:9000
+      # Speech-to-Text Settings
+      - STT_CHUNK_MS=${STT_CHUNK_MS:-100}
+      - STT_SILENCE_MS=${STT_SILENCE_MS:-700}
+      - DEAD_AIR_MS=${DEAD_AIR_MS:-10000}
+      # Rate Limiting
+      - GLOBAL_CONCURRENCY_CAP=${GLOBAL_CONCURRENCY_CAP:-100}
+      - TENANT_CONCURRENCY_CAP_DEFAULT=${TENANT_CONCURRENCY_CAP_DEFAULT:-10}
+      - TENANT_CALLS_PER_MIN_CAP_DEFAULT=${TENANT_CALLS_PER_MIN_CAP_DEFAULT:-60}
+      - CAPACITY_TTL_SECONDS=${CAPACITY_TTL_SECONDS:-3600}
+    volumes:
+      - audio-storage:/app/audio
+    ports:
+      - "${RUNTIME_PORT:-4001}:4001"
+    networks:
+      - veralux-network
+
+  # =============================================================================
+  # Infrastructure Services
+  # =============================================================================
+
+  redis:
+    image: redis:7-alpine
+    container_name: veralux-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    networks:
+      - veralux-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: veralux-postgres
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    # ports:
+    #   - "${POSTGRES_PORT:-5432}:5432"  # Uncomment to expose for debugging
+    networks:
+      - veralux-network
+
+  # =============================================================================
+  # GPU Services (Optional - enable with: docker compose --profile gpu up)
+  # =============================================================================
+
+  whisper:
+    image: ${REGISTRY:-ghcr.io/nick-veraluxai}/whisper:${VERSION:-latest}
+    container_name: veralux-whisper
+    restart: unless-stopped
+    profiles:
+      - gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - MODEL_SIZE=${WHISPER_MODEL_SIZE:-base}
+    ports:
+      - "${WHISPER_PORT:-9000}:9000"
+    networks:
+      - veralux-network
+
+  kokoro:
+    image: ${REGISTRY:-ghcr.io/nick-veraluxai}/kokoro:${VERSION:-latest}
+    container_name: veralux-kokoro
+    restart: unless-stopped
+    profiles:
+      - gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - VOICE_ID=${KOKORO_VOICE_ID:-default}
+    ports:
+      - "${KOKORO_PORT:-7001}:7001"
+    networks:
+      - veralux-network
+
+  xtts:
+    image: ${REGISTRY:-ghcr.io/nick-veraluxai}/xtts:${VERSION:-latest}
+    container_name: veralux-xtts
+    restart: unless-stopped
+    profiles:
+      - gpu
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - LANGUAGE=${XTTS_LANGUAGE:-en}
+    ports:
+      - "${XTTS_PORT:-7002}:7002"
+    networks:
+      - veralux-network
+
+# =============================================================================
+# Volumes & Networks
+# =============================================================================
+
+volumes:
+  postgres-data:
+    name: veralux-postgres-data
+  redis-data:
+    name: veralux-redis-data
+  audio-storage:
+    name: veralux-audio-storage
+
+networks:
+  veralux-network:
+    name: veralux-network
+    driver: bridge
