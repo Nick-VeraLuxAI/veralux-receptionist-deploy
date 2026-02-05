@@ -76,6 +76,7 @@ main() {
     cp docker-compose.yml "$BUILD_DIR/"
     cp .env.example "$BUILD_DIR/"
     cp deploy.sh "$BUILD_DIR/"
+    cp install.sh "$BUILD_DIR/"
     cp README.md "$BUILD_DIR/"
     
     # Optional: nginx directory
@@ -86,6 +87,7 @@ main() {
     
     # Ensure scripts are executable
     chmod +x "$BUILD_DIR/deploy.sh"
+    chmod +x "$BUILD_DIR/install.sh"
     
     # Create ZIP
     info "Creating ZIP archive..."

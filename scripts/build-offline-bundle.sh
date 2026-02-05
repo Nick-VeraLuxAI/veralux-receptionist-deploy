@@ -190,6 +190,7 @@ main() {
     cp docker-compose.yml "$BUILD_DIR/"
     cp .env.example "$BUILD_DIR/"
     cp deploy.sh "$BUILD_DIR/"
+    cp install.sh "$BUILD_DIR/"
     cp load-images.sh "$BUILD_DIR/"
     cp README.md "$BUILD_DIR/"
     
@@ -201,6 +202,7 @@ main() {
     
     # Ensure scripts are executable
     chmod +x "$BUILD_DIR/deploy.sh"
+    chmod +x "$BUILD_DIR/install.sh"
     chmod +x "$BUILD_DIR/load-images.sh"
     
     # Create ZIP

@@ -6,10 +6,16 @@ This package contains everything needed to deploy Veralux Receptionist using Doc
 
 - **Docker Engine** 20.10+ with Docker Compose V2
 - **Operating System**: Linux (Ubuntu 20.04+) or macOS
-- **Ports**: 3000, 5432, 8081-8085 (configurable in `.env`)
+- **Ports**: 4000, 4001 (configurable)
 - **Disk Space**:
   - Online install: ~2 GB (images pulled from registry)
   - Offline install: ~5 GB+ (includes pre-packaged images)
+
+### Before You Start
+
+Have these ready:
+- **Telnyx API Key** and **Public Key** (from portal.telnyx.com)
+- **Your domain name** (e.g., receptionist.yourcompany.com)
 
 ### GPU Services (Optional)
 
@@ -19,43 +25,38 @@ For GPU-accelerated services (Whisper, Kokoro, XTTS):
 
 ---
 
-## Quick Start (Online)
+## Quick Start (Easy - Recommended)
 
-Use this method if you have internet access and can pull images from the container registry.
+Works for both online and offline bundles:
 
 ```bash
 # 1. Unzip the bundle
-unzip veralux-receptionist-*-online.zip
+unzip veralux-receptionist-*.zip
 cd veralux-receptionist-*/
 
-# 2. Create and configure environment
-cp .env.example .env
-
-# 3. Edit .env with your settings (REQUIRED)
-#    - Set POSTGRES_PASSWORD to a strong password
-#    - Set JWT_SECRET (generate with: openssl rand -base64 32)
-#    - Set REGISTRY to your container registry
-nano .env  # or use your preferred editor
-
-# 4. Start the application
-./deploy.sh up
-
-# 5. Verify it's running
-./deploy.sh status
+# 2. Run the installer (walks you through everything)
+./install.sh
 ```
+
+That's it! The installer will:
+- Check Docker is running
+- Load images (if offline bundle)
+- Ask for your Telnyx keys and domain
+- Generate secure passwords automatically
+- Start everything
 
 ---
 
-## Quick Start (Offline / Airgapped)
+## Quick Start (Manual)
 
-Use this method for environments without internet access.
+If you prefer to configure manually:
 
 ```bash
 # 1. Unzip the bundle
-unzip veralux-receptionist-*-offline.zip
+unzip veralux-receptionist-*.zip
 cd veralux-receptionist-*/
 
-# 2. Load Docker images from archive
+# 2. For offline bundles only - load images first
 ./load-images.sh
 
 # 3. Create and configure environment
