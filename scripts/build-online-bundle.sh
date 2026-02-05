@@ -102,7 +102,7 @@ main() {
     echo "  Size: $(du -h "$OUTPUT_FILE" | cut -f1)"
     echo ""
     echo "  Contents:"
-    unzip -l "$OUTPUT_FILE" | tail -n +4 | head -n -2 | sed 's/^/    /'
+    unzip -l "$OUTPUT_FILE" | tail -n +4 | grep -v "^-" | grep -v "files$" | sed 's/^/    /'
     echo ""
 }
 
