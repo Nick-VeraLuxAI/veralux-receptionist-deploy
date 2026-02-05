@@ -9,6 +9,9 @@
 build/
 dist/
 
+# Installer binary cache
+.bin/
+
 # Docker image archives (offline bundles)
 images.tar.zst
 *.tar.zst

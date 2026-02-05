@@ -191,7 +191,6 @@ main() {
     cp .env.example "$BUILD_DIR/"
     cp deploy.sh "$BUILD_DIR/"
     cp install.sh "$BUILD_DIR/"
-    cp setup-wizard.py "$BUILD_DIR/"
     cp load-images.sh "$BUILD_DIR/"
     cp README.md "$BUILD_DIR/"
     
