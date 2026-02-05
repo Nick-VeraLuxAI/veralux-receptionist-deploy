@@ -17,6 +17,9 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
+      - API_KEY=${API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - TELNYX_PHONE_NUMBER=${TELNYX_PHONE_NUMBER}
       - BASE_URL=${BASE_URL:-http://localhost:4000}
     ports:
       - "${CONTROL_PORT:-4000}:4000"
@@ -35,9 +38,12 @@ services:
       - REDIS_URL=redis://redis:6379
       - CONTROL_URL=http://control:4000
       - LOG_LEVEL=${LOG_LEVEL:-info}
+      # OpenAI
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
       # Telnyx Configuration
       - TELNYX_API_KEY=${TELNYX_API_KEY}
       - TELNYX_PUBLIC_KEY=${TELNYX_PUBLIC_KEY}
+      - TELNYX_PHONE_NUMBER=${TELNYX_PHONE_NUMBER}
       # URLs
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
       - AUDIO_PUBLIC_BASE_URL=${AUDIO_PUBLIC_BASE_URL}

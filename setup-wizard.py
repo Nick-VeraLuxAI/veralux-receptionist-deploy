@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 Veralux Receptionist - Web-based Setup Wizard
-Runs a local web server for easy configuration.
 """
 
 import http.server
@@ -13,11 +12,13 @@ import subprocess
 import sys
 import threading
 import webbrowser
-from urllib.parse import parse_qs
 import base64
 
 PORT = 8080
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# TODO: Update this to your actual API endpoint
+API_BASE_URL = "https://api.veralux.ai"
 
 HTML_PAGE = '''<!DOCTYPE html>
 <html lang="en">
@@ -46,7 +47,7 @@ HTML_PAGE = '''<!DOCTYPE html>
             background: white;
             border-radius: 16px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            max-width: 500px;
+            max-width: 480px;
             width: 100%;
             overflow: hidden;
         }
@@ -72,45 +73,43 @@ HTML_PAGE = '''<!DOCTYPE html>
             padding: 30px;
         }
         
-        .step {
+        .tabs {
+            display: flex;
             margin-bottom: 25px;
+            border-bottom: 2px solid #eee;
         }
         
-        .step-header {
-            display: flex;
-            align-items: center;
-            margin-bottom: 12px;
+        .tab {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            cursor: pointer;
+            font-weight: 500;
+            color: #888;
+            border-bottom: 2px solid transparent;
+            margin-bottom: -2px;
+            transition: all 0.2s;
         }
         
-        .step-number {
-            background: #667eea;
-            color: white;
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            font-weight: 600;
-            margin-right: 12px;
+        .tab:hover {
+            color: #667eea;
         }
         
-        .step-title {
-            font-weight: 600;
-            color: #333;
+        .tab.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
         }
         
-        .step-description {
-            font-size: 13px;
-            color: #666;
-            margin-left: 40px;
-            margin-bottom: 12px;
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
         }
         
         .input-group {
-            margin-left: 40px;
-            margin-bottom: 12px;
+            margin-bottom: 20px;
         }
         
         label {
@@ -122,7 +121,9 @@ HTML_PAGE = '''<!DOCTYPE html>
         }
         
         input[type="text"],
-        input[type="password"] {
+        input[type="email"],
+        input[type="password"],
+        textarea {
             width: 100%;
             padding: 12px 14px;
             border: 2px solid #e1e1e1;
@@ -131,33 +132,20 @@ HTML_PAGE = '''<!DOCTYPE html>
             transition: border-color 0.2s, box-shadow 0.2s;
         }
         
-        input:focus {
+        textarea {
+            min-height: 120px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        
+        input:focus, textarea:focus {
             outline: none;
             border-color: #667eea;
             box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
         
-        input::placeholder {
+        input::placeholder, textarea::placeholder {
             color: #aaa;
-        }
-        
-        .help-link {
-            font-size: 12px;
-            color: #667eea;
-            text-decoration: none;
-            margin-left: 40px;
-            display: inline-block;
-            margin-top: 4px;
-        }
-        
-        .help-link:hover {
-            text-decoration: underline;
-        }
-        
-        .divider {
-            height: 1px;
-            background: #eee;
-            margin: 25px 0;
         }
         
         .button {
@@ -230,6 +218,36 @@ HTML_PAGE = '''<!DOCTYPE html>
             to { transform: rotate(360deg); }
         }
         
+        .help-text {
+            font-size: 13px;
+            color: #888;
+            margin-top: 8px;
+        }
+        
+        .divider {
+            display: flex;
+            align-items: center;
+            margin: 20px 0;
+            color: #888;
+            font-size: 13px;
+        }
+        
+        .divider::before,
+        .divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #e1e1e1;
+        }
+        
+        .divider span {
+            padding: 0 15px;
+        }
+        
+        .success-content {
+            text-align: center;
+        }
+        
         .success-content h3 {
             margin-bottom: 15px;
             color: #2e7d32;
@@ -237,20 +255,25 @@ HTML_PAGE = '''<!DOCTYPE html>
         
         .success-content p {
             margin-bottom: 10px;
+            color: #555;
         }
         
-        .success-content a {
-            color: #667eea;
-            font-weight: 600;
+        .success-content .checkmark {
+            font-size: 48px;
+            margin-bottom: 15px;
         }
         
-        .success-content .url-box {
+        .info-box {
             background: #f5f5f5;
-            padding: 12px;
-            border-radius: 6px;
-            margin: 15px 0;
-            font-family: monospace;
-            word-break: break-all;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 14px;
+            color: #555;
+        }
+        
+        .info-box strong {
+            color: #333;
         }
     </style>
 </head>
@@ -261,59 +284,109 @@ HTML_PAGE = '''<!DOCTYPE html>
             <p>Setup Wizard</p>
         </div>
         
-        <div class="form-container">
-            <form id="setupForm">
-                <div class="step">
-                    <div class="step-header">
-                        <div class="step-number">1</div>
-                        <div class="step-title">Telnyx Credentials</div>
-                    </div>
-                    <p class="step-description">Enter your API keys from the Telnyx portal</p>
-                    <div class="input-group">
-                        <label for="telnyx_api_key">API Key</label>
-                        <input type="password" id="telnyx_api_key" name="telnyx_api_key" 
-                               placeholder="KEY..." required>
-                    </div>
-                    <div class="input-group">
-                        <label for="telnyx_public_key">Public Key</label>
-                        <input type="text" id="telnyx_public_key" name="telnyx_public_key" 
-                               placeholder="..." required>
-                    </div>
-                    <a href="https://portal.telnyx.com" target="_blank" class="help-link">
-                        Get your keys at portal.telnyx.com &rarr;
-                    </a>
+        <div class="form-container" id="formContainer">
+            <div class="tabs">
+                <div class="tab active" data-tab="online">Online Setup</div>
+                <div class="tab" data-tab="offline">Offline Setup</div>
+            </div>
+            
+            <!-- Online Setup Tab -->
+            <div class="tab-content active" id="online-tab">
+                <div class="info-box">
+                    Log in with the email and password you created during signup.
                 </div>
                 
-                <div class="divider"></div>
-                
-                <div class="step">
-                    <div class="step-header">
-                        <div class="step-number">2</div>
-                        <div class="step-title">Your Domain</div>
-                    </div>
-                    <p class="step-description">The domain where this will be accessible</p>
+                <form id="onlineForm">
                     <div class="input-group">
-                        <label for="domain">Domain</label>
-                        <input type="text" id="domain" name="domain" 
-                               placeholder="receptionist.yourcompany.com" required>
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" name="email" 
+                               placeholder="you@company.com" required>
                     </div>
+                    
+                    <div class="input-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" 
+                               placeholder="Your account password" required>
+                    </div>
+                    
+                    <button type="submit" class="button" id="onlineBtn">
+                        Log In & Configure
+                    </button>
+                </form>
+                
+                <p class="help-text" style="text-align: center; margin-top: 15px;">
+                    Don't have an account? <a href="https://veralux.ai/signup" target="_blank">Sign up here</a>
+                </p>
+            </div>
+            
+            <!-- Offline Setup Tab -->
+            <div class="tab-content" id="offline-tab">
+                <div class="info-box">
+                    Enter the configuration details from the email you received after signup.
                 </div>
                 
-                <div class="divider"></div>
+                <form id="offlineForm">
+                    <div class="input-group">
+                        <label for="setup_code">Setup Code</label>
+                        <textarea id="setup_code" name="setup_code" 
+                                  placeholder="Paste your setup code from the email..."></textarea>
+                        <p class="help-text">This is the encoded configuration block from your welcome email.</p>
+                    </div>
+                    
+                    <button type="submit" class="button" id="offlineBtn">
+                        Configure System
+                    </button>
+                </form>
                 
-                <button type="submit" class="button" id="submitBtn">
-                    Install & Start
-                </button>
-            </form>
+                <div class="divider"><span>or enter manually</span></div>
+                
+                <form id="manualForm">
+                    <div class="input-group">
+                        <label for="api_key">API Key</label>
+                        <input type="text" id="api_key" name="api_key" placeholder="vx_...">
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="telnyx_number">Telnyx Phone Number</label>
+                        <input type="text" id="telnyx_number" name="telnyx_number" placeholder="+1...">
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="telnyx_api_key">Telnyx API Key</label>
+                        <input type="password" id="telnyx_api_key" name="telnyx_api_key" placeholder="KEY...">
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="telnyx_public_key">Telnyx Public Key</label>
+                        <input type="text" id="telnyx_public_key" name="telnyx_public_key" placeholder="...">
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="openai_api_key">OpenAI API Key</label>
+                        <input type="password" id="openai_api_key" name="openai_api_key" placeholder="sk-...">
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="jwt_secret">Your Password (JWT Secret)</label>
+                        <input type="password" id="jwt_secret" name="jwt_secret" placeholder="The password you created">
+                    </div>
+                    
+                    <button type="submit" class="button">
+                        Configure System
+                    </button>
+                </form>
+            </div>
             
             <div class="status" id="status"></div>
-            
-            <div class="success-content" id="successContent" style="display: none;">
-                <h3>Installation Complete!</h3>
+        </div>
+        
+        <div class="form-container" id="successContainer" style="display: none;">
+            <div class="success-content">
+                <div class="checkmark">✓</div>
+                <h3>Setup Complete!</h3>
                 <p>Your Veralux Receptionist is now running.</p>
-                <div class="url-box" id="appUrl"></div>
-                <p>You can close this window.</p>
                 <p style="margin-top: 20px; font-size: 13px; color: #666;">
+                    You can close this window.<br><br>
                     Manage with: <code>./deploy.sh status</code>
                 </p>
             </div>
@@ -321,21 +394,37 @@ HTML_PAGE = '''<!DOCTYPE html>
     </div>
     
     <script>
-        const form = document.getElementById('setupForm');
-        const status = document.getElementById('status');
-        const submitBtn = document.getElementById('submitBtn');
-        const successContent = document.getElementById('successContent');
-        const appUrl = document.getElementById('appUrl');
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.tab + '-tab').classList.add('active');
+            });
+        });
         
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            submitBtn.disabled = true;
+        const status = document.getElementById('status');
+        const formContainer = document.getElementById('formContainer');
+        const successContainer = document.getElementById('successContainer');
+        
+        function showLoading(message) {
             status.className = 'status loading';
-            status.innerHTML = '<span class="spinner"></span> Installing... This may take a minute.';
-            
-            const formData = new FormData(form);
-            const data = Object.fromEntries(formData.entries());
+            status.innerHTML = '<span class="spinner"></span> ' + message;
+        }
+        
+        function showError(message) {
+            status.className = 'status error';
+            status.textContent = message;
+        }
+        
+        function showSuccess() {
+            formContainer.style.display = 'none';
+            successContainer.style.display = 'block';
+        }
+        
+        async function submitConfig(data) {
+            showLoading('Configuring system...');
             
             try {
                 const response = await fetch('/install', {
@@ -347,20 +436,84 @@ HTML_PAGE = '''<!DOCTYPE html>
                 const result = await response.json();
                 
                 if (result.success) {
-                    status.style.display = 'none';
-                    form.style.display = 'none';
-                    successContent.style.display = 'block';
-                    appUrl.textContent = result.url;
+                    showSuccess();
                 } else {
-                    status.className = 'status error';
-                    status.textContent = 'Error: ' + result.error;
-                    submitBtn.disabled = false;
+                    showError('Error: ' + result.error);
                 }
             } catch (err) {
-                status.className = 'status error';
-                status.textContent = 'Connection error. Please try again.';
-                submitBtn.disabled = false;
+                showError('Connection error. Please try again.');
             }
+        }
+        
+        // Online form - login to API
+        document.getElementById('onlineForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            showLoading('Logging in...');
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            
+            try {
+                // Call the local server which will proxy to the API
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    showLoading('Configuring system...');
+                    await submitConfig(result.config);
+                } else {
+                    showError(result.error || 'Login failed. Please check your credentials.');
+                }
+            } catch (err) {
+                showError('Connection error. Please try again.');
+            }
+        });
+        
+        // Offline form - setup code
+        document.getElementById('offlineForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const setupCode = document.getElementById('setup_code').value.trim();
+            if (!setupCode) {
+                showError('Please enter your setup code.');
+                return;
+            }
+            
+            try {
+                // Decode the setup code (base64 JSON)
+                const config = JSON.parse(atob(setupCode));
+                await submitConfig(config);
+            } catch (err) {
+                showError('Invalid setup code. Please check and try again.');
+            }
+        });
+        
+        // Manual form
+        document.getElementById('manualForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const config = {
+                api_key: document.getElementById('api_key').value,
+                telnyx_number: document.getElementById('telnyx_number').value,
+                telnyx_api_key: document.getElementById('telnyx_api_key').value,
+                telnyx_public_key: document.getElementById('telnyx_public_key').value,
+                openai_api_key: document.getElementById('openai_api_key').value,
+                jwt_secret: document.getElementById('jwt_secret').value
+            };
+            
+            // Validate
+            const missing = Object.entries(config).filter(([k, v]) => !v).map(([k]) => k);
+            if (missing.length > 0) {
+                showError('Please fill in all fields.');
+                return;
+            }
+            
+            await submitConfig(config);
         });
     </script>
 </body>
@@ -371,13 +524,7 @@ def generate_secret():
     return secrets.token_urlsafe(32)
 
 def create_env_file(data):
-    domain = data['domain']
-    if not domain.startswith('http'):
-        public_base_url = f"https://{domain}"
-    else:
-        public_base_url = domain
-    
-    audio_url = f"{public_base_url}/audio"
+    """Create .env file from configuration data."""
     
     env_content = f'''# =============================================================================
 # Veralux Receptionist - Configuration
@@ -394,20 +541,20 @@ POSTGRES_PASSWORD={generate_secret()}
 POSTGRES_DB=veralux
 
 # Security
-JWT_SECRET={generate_secret()}
+JWT_SECRET={data.get('jwt_secret', generate_secret())}
+API_KEY={data.get('api_key', '')}
 
-# URLs
-BASE_URL={public_base_url}
-PUBLIC_BASE_URL={public_base_url}
-AUDIO_PUBLIC_BASE_URL={audio_url}
+# Telnyx
+TELNYX_API_KEY={data.get('telnyx_api_key', '')}
+TELNYX_PUBLIC_KEY={data.get('telnyx_public_key', '')}
+TELNYX_PHONE_NUMBER={data.get('telnyx_number', '')}
+
+# OpenAI
+OPENAI_API_KEY={data.get('openai_api_key', '')}
 
 # Ports
 CONTROL_PORT=4000
 RUNTIME_PORT=4001
-
-# Telnyx
-TELNYX_API_KEY={data['telnyx_api_key']}
-TELNYX_PUBLIC_KEY={data['telnyx_public_key']}
 
 # Media
 MEDIA_STREAM_TOKEN={generate_secret()}
@@ -439,10 +586,9 @@ XTTS_LANGUAGE=en
     env_path = os.path.join(SCRIPT_DIR, '.env')
     with open(env_path, 'w') as f:
         f.write(env_content)
-    
-    return public_base_url
 
 def run_deploy():
+    """Load images if offline, then start services."""
     # Check for offline images first
     images_path = os.path.join(SCRIPT_DIR, 'images.tar.zst')
     if os.path.exists(images_path):
@@ -461,6 +607,39 @@ def run_deploy():
     if result.returncode != 0:
         raise Exception(result.stderr or result.stdout or "Deploy failed")
 
+def fetch_config_from_api(email, password):
+    """
+    Fetch configuration from the Veralux API.
+    TODO: Implement actual API call to your backend.
+    """
+    import urllib.request
+    import urllib.error
+    
+    try:
+        url = f"{API_BASE_URL}/api/v1/installer/config"
+        data = json.dumps({"email": email, "password": password}).encode()
+        
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={"Content-Type": "application/json"}
+        )
+        
+        with urllib.request.urlopen(req, timeout=30) as response:
+            result = json.loads(response.read().decode())
+            return result
+    except urllib.error.HTTPError as e:
+        if e.code == 401:
+            return {"success": False, "error": "Invalid email or password."}
+        elif e.code == 404:
+            return {"success": False, "error": "Account not found. Please sign up first."}
+        else:
+            return {"success": False, "error": f"Server error: {e.code}"}
+    except urllib.error.URLError as e:
+        return {"success": False, "error": "Could not connect to server. Check your internet connection."}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 class SetupHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/' or self.path == '/setup':
@@ -472,16 +651,24 @@ class SetupHandler(http.server.SimpleHTTPRequestHandler):
             self.send_error(404)
     
     def do_POST(self):
-        if self.path == '/install':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
-            data = json.loads(post_data.decode())
+        content_length = int(self.headers['Content-Length'])
+        post_data = self.rfile.read(content_length)
+        data = json.loads(post_data.decode())
+        
+        if self.path == '/login':
+            # Fetch config from API
+            result = fetch_config_from_api(data['email'], data['password'])
             
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(result).encode())
+            
+        elif self.path == '/install':
             try:
-                url = create_env_file(data)
+                create_env_file(data)
                 run_deploy()
-                
-                response = {'success': True, 'url': url}
+                response = {'success': True}
             except Exception as e:
                 response = {'success': False, 'error': str(e)}
             
