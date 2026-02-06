@@ -243,20 +243,34 @@ check_docker() {
     fi
     
     if ! docker info &> /dev/null; then
-        echo -e "${RED}✗ Docker is not running or permission denied${NC}"
+        echo -e "${YELLOW}⚠${NC} Docker permission issue detected"
         echo ""
         
-        # Try to start it
+        # Try to start Docker service first
         if command -v systemctl &> /dev/null; then
-            echo "Attempting to start Docker..."
+            echo "Attempting to start Docker service..."
             sudo systemctl start docker 2>/dev/null && sleep 2
         fi
         
+        # Still no access? Likely a group issue
         if ! docker info &> /dev/null; then
-            echo "  Please ensure Docker is running and you have permission."
-            echo "  Try: sudo systemctl start docker"
-            echo "  Or:  sudo usermod -aG docker $USER && newgrp docker"
-            exit 1
+            # Check if user is in docker group but group not loaded
+            if groups 2>/dev/null | grep -q docker || id -nG 2>/dev/null | grep -q docker; then
+                echo "You're in the docker group but it's not active in this shell."
+                echo ""
+                echo -e "${BLUE}Restarting installer with docker group...${NC}"
+                echo ""
+                exec sg docker -c "$0 $*"
+            fi
+            
+            # User not in docker group - add them
+            echo "Adding you to the docker group..."
+            sudo usermod -aG docker "$USER"
+            
+            echo ""
+            echo -e "${BLUE}Restarting installer with docker group...${NC}"
+            echo ""
+            exec sg docker -c "$0 $*"
         fi
     fi
     
