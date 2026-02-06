@@ -120,12 +120,11 @@ fetch_config() {
 # Config Generation
 # -----------------------------------------------------------------------------
 write_env_file() {
-    local api_key="${1:-}"
-    local telnyx_number="${2:-}"
-    local telnyx_api_key="${3:-}"
-    local telnyx_public_key="${4:-}"
-    local openai_api_key="${5:-}"
-    local jwt_secret="${6:-}"
+    local telnyx_number="${1:-}"
+    local telnyx_api_key="${2:-}"
+    local telnyx_public_key="${3:-}"
+    local openai_api_key="${4:-}"
+    local jwt_secret="${5:-}"
     
     cat > .env << ENVFILE
 # =============================================================================
@@ -144,7 +143,6 @@ POSTGRES_DB=veralux
 
 # Security
 JWT_SECRET=${jwt_secret}
-API_KEY=${api_key}
 
 # Telnyx
 TELNYX_API_KEY=${telnyx_api_key}
@@ -290,7 +288,6 @@ main() {
         fi
         
         # Extract config from response
-        API_KEY=$(echo "$RESPONSE" | grep -o '"api_key":\s*"[^"]*"' | cut -d'"' -f4 || echo "")
         TELNYX_NUMBER=$(echo "$RESPONSE" | grep -o '"telnyx_number":\s*"[^"]*"' | cut -d'"' -f4 || echo "")
         TELNYX_API_KEY=$(echo "$RESPONSE" | grep -o '"telnyx_api_key":\s*"[^"]*"' | cut -d'"' -f4 || echo "")
         TELNYX_PUBLIC_KEY=$(echo "$RESPONSE" | grep -o '"telnyx_public_key":\s*"[^"]*"' | cut -d'"' -f4 || echo "")
@@ -328,7 +325,6 @@ main() {
             }
             
             # Extract values from JSON
-            API_KEY=$(echo "$DECODED" | grep -o '"api_key":\s*"[^"]*"' | cut -d'"' -f4 || echo "")
             TELNYX_NUMBER=$(echo "$DECODED" | grep -o '"telnyx_number":\s*"[^"]*"' | cut -d'"' -f4 || echo "")
             TELNYX_API_KEY=$(echo "$DECODED" | grep -o '"telnyx_api_key":\s*"[^"]*"' | cut -d'"' -f4 || echo "")
             TELNYX_PUBLIC_KEY=$(echo "$DECODED" | grep -o '"telnyx_public_key":\s*"[^"]*"' | cut -d'"' -f4 || echo "")
@@ -341,7 +337,6 @@ main() {
             echo -e "${DIM}Enter the details from your welcome email:${NC}"
             echo ""
             
-            API_KEY=$("$GUM_BIN" input --placeholder "API Key (vx_...)" --width 50)
             TELNYX_NUMBER=$("$GUM_BIN" input --placeholder "Phone Number (+1...)" --width 50)
             TELNYX_API_KEY=$("$GUM_BIN" input --placeholder "Telnyx API Key" --password --width 50)
             TELNYX_PUBLIC_KEY=$("$GUM_BIN" input --placeholder "Telnyx Public Key" --width 50)
@@ -393,7 +388,6 @@ main() {
         
         # API Keys
         echo -e "${BLUE}── API Keys ──${NC}"
-        API_KEY=$("$GUM_BIN" input --placeholder "Customer API Key (vx_...)" --width 50)
         OPENAI_API_KEY=$("$GUM_BIN" input --placeholder "OpenAI API Key (sk-...)" --password --width 50)
         echo ""
         
@@ -416,7 +410,6 @@ main() {
         echo "  Phone:        $BUSINESS_PHONE"
         echo "  Contact:      $CONTACT_NAME <$CONTACT_EMAIL>"
         echo "  Telnyx #:     $TELNYX_NUMBER"
-        echo "  API Key:      ${API_KEY:0:10}..."
         echo ""
         
         "$GUM_BIN" confirm "Proceed with this configuration?" || continue
@@ -429,7 +422,7 @@ main() {
     # Write configuration
     echo ""
     "$GUM_BIN" spin --spinner dot --title "Saving configuration..." -- \
-        bash -c "$(declare -f write_env_file generate_secret); write_env_file '$API_KEY' '$TELNYX_NUMBER' '$TELNYX_API_KEY' '$TELNYX_PUBLIC_KEY' '$OPENAI_API_KEY' '$JWT_SECRET'"
+        bash -c "$(declare -f write_env_file generate_secret); write_env_file '$TELNYX_NUMBER' '$TELNYX_API_KEY' '$TELNYX_PUBLIC_KEY' '$OPENAI_API_KEY' '$JWT_SECRET'"
     
     echo -e "${GREEN}✓${NC} Configuration saved"
     
