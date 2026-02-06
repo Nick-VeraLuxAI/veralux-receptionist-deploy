@@ -147,6 +147,47 @@ cmd_update() {
     success "Update complete!"
 }
 
+cmd_tunnel() {
+    local tunnel_type="${1:-cloudflare}"
+    
+    case "$tunnel_type" in
+        cloudflare|cf)
+            if [[ -z "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]] && ! grep -q "CLOUDFLARE_TUNNEL_TOKEN=." "$ENV_FILE" 2>/dev/null; then
+                error "CLOUDFLARE_TUNNEL_TOKEN not set in .env"
+                echo ""
+                echo "  To get a token:"
+                echo "    1. Go to Cloudflare Zero Trust dashboard"
+                echo "    2. Networks → Tunnels → Create tunnel"
+                echo "    3. Copy the token and add to .env:"
+                echo "       CLOUDFLARE_TUNNEL_TOKEN=your_token_here"
+                exit 1
+            fi
+            info "Starting with Cloudflare Tunnel..."
+            $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" --profile cloudflare up -d
+            success "Cloudflare Tunnel started!"
+            echo ""
+            info "Your public URL is configured in the Cloudflare dashboard."
+            ;;
+        ngrok)
+            if [[ -z "${NGROK_AUTHTOKEN:-}" ]] && ! grep -q "NGROK_AUTHTOKEN=." "$ENV_FILE" 2>/dev/null; then
+                error "NGROK_AUTHTOKEN not set in .env"
+                echo "  Get your token at: https://dashboard.ngrok.com"
+                exit 1
+            fi
+            info "Starting with ngrok tunnel..."
+            $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" --profile ngrok up -d
+            success "ngrok started!"
+            echo ""
+            info "View your public URL at: http://localhost:4040"
+            ;;
+        *)
+            error "Unknown tunnel type: $tunnel_type"
+            echo "  Use: cloudflare (or cf) | ngrok"
+            exit 1
+            ;;
+    esac
+}
+
 cmd_help() {
     echo "Veralux Receptionist - Deployment Script"
     echo ""
@@ -159,14 +200,19 @@ cmd_help() {
     echo "  status               Show service status"
     echo "  logs [service]       Follow service logs"
     echo "  update               Pull latest images and recreate containers"
+    echo "  tunnel [type]        Start with tunnel (cloudflare or ngrok)"
     echo "  help                 Show this help message"
     echo ""
+    echo "Tunnel Options:"
+    echo "  ./deploy.sh tunnel cloudflare   # Start with Cloudflare Tunnel (recommended)"
+    echo "  ./deploy.sh tunnel ngrok        # Start with ngrok (for testing)"
+    echo ""
     echo "GPU Services:"
-    echo "  To start with GPU services enabled:"
-    echo "    ./deploy.sh up --profile gpu"
+    echo "  ./deploy.sh up --profile gpu    # Start with GPU services"
     echo ""
     echo "Examples:"
     echo "  ./deploy.sh up                    # Start all core services"
+    echo "  ./deploy.sh tunnel cloudflare     # Start with Cloudflare Tunnel"
     echo "  ./deploy.sh up --profile gpu      # Start with GPU services"
     echo "  ./deploy.sh logs control          # Follow control service logs"
     echo "  ./deploy.sh restart runtime       # Restart only the runtime service"
@@ -205,6 +251,10 @@ main() {
             ;;
         update)
             cmd_update
+            ;;
+        tunnel)
+            shift
+            cmd_tunnel "$@"
             ;;
         help|--help|-h)
             cmd_help

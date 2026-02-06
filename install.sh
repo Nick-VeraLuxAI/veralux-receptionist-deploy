@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+./install.sh#!/usr/bin/env bash
 # =============================================================================
 # Veralux Receptionist - Installer
 # =============================================================================
@@ -77,7 +77,8 @@ ensure_gum() {
 # Helpers
 # -----------------------------------------------------------------------------
 generate_secret() {
-    openssl rand -base64 32 2>/dev/null || head -c 32 /dev/urandom | base64
+    # Generate URL-safe secret (no +, /, = characters)
+    openssl rand -hex 24 2>/dev/null || head -c 24 /dev/urandom | xxd -p
 }
 
 check_docker() {
@@ -126,6 +127,7 @@ write_env_file() {
     local telnyx_public_key="${4:-}"
     local openai_api_key="${5:-}"
     local jwt_secret="${6:-}"
+    local cloudflare_token="${7:-}"
     
     cat > .env << ENVFILE
 # =============================================================================
@@ -183,6 +185,20 @@ KOKORO_PORT=7001
 KOKORO_VOICE_ID=default
 XTTS_PORT=7002
 XTTS_LANGUAGE=en
+
+# Control Plane
+SECRET_ENCRYPTION_KEY=$(generate_secret)
+SECRET_MANAGER=db
+ADMIN_ALLOWED_ORIGINS=http://localhost:4000,http://127.0.0.1:4000
+
+# Runtime URLs
+PUBLIC_BASE_URL=http://localhost:4001
+AUDIO_PUBLIC_BASE_URL=http://localhost:4001
+TTS_MODE=kokoro_http
+KOKORO_URL=http://kokoro:7001
+
+# Cloudflare Tunnel (optional)
+CLOUDFLARE_TUNNEL_TOKEN=${cloudflare_token}
 ENVFILE
 }
 
@@ -296,6 +312,7 @@ main() {
         TELNYX_PUBLIC_KEY=$(echo "$RESPONSE" | grep -o '"telnyx_public_key":\s*"[^"]*"' | cut -d'"' -f4 || echo "")
         OPENAI_API_KEY=$(echo "$RESPONSE" | grep -o '"openai_api_key":\s*"[^"]*"' | cut -d'"' -f4 || echo "")
         JWT_SECRET=$(echo "$RESPONSE" | grep -o '"jwt_secret":\s*"[^"]*"' | cut -d'"' -f4 || echo "")
+        CLOUDFLARE_TOKEN=$(echo "$RESPONSE" | grep -o '"cloudflare_token":\s*"[^"]*"' | cut -d'"' -f4 || echo "")
         
         echo -e "${GREEN}✓${NC} Logged in successfully"
         
@@ -334,6 +351,7 @@ main() {
             TELNYX_PUBLIC_KEY=$(echo "$DECODED" | grep -o '"telnyx_public_key":\s*"[^"]*"' | cut -d'"' -f4 || echo "")
             OPENAI_API_KEY=$(echo "$DECODED" | grep -o '"openai_api_key":\s*"[^"]*"' | cut -d'"' -f4 || echo "")
             JWT_SECRET=$(echo "$DECODED" | grep -o '"jwt_secret":\s*"[^"]*"' | cut -d'"' -f4 || echo "")
+            CLOUDFLARE_TOKEN=$(echo "$DECODED" | grep -o '"cloudflare_token":\s*"[^"]*"' | cut -d'"' -f4 || echo "")
             
             echo -e "${GREEN}✓${NC} Setup code accepted"
             
@@ -347,6 +365,7 @@ main() {
             TELNYX_PUBLIC_KEY=$("$GUM_BIN" input --placeholder "Telnyx Public Key" --width 50)
             OPENAI_API_KEY=$("$GUM_BIN" input --placeholder "OpenAI API Key (sk-...)" --password --width 50)
             JWT_SECRET=$("$GUM_BIN" input --placeholder "Your Password" --password --width 50)
+            CLOUDFLARE_TOKEN=""  # Customers don't need to enter this manually
         fi
         
     elif [[ "$SETUP_METHOD" == "Admin"* ]]; then
@@ -392,6 +411,10 @@ main() {
         JWT_SECRET=$("$GUM_BIN" input --placeholder "Password / JWT Secret" --password --width 50)
         
         echo ""
+        echo -e "${DIM}Optional: Cloudflare Tunnel (leave blank to skip)${NC}"
+        CLOUDFLARE_TOKEN=$("$GUM_BIN" input --placeholder "Cloudflare Tunnel Token (eyJ...)" --password --width 50)
+        
+        echo ""
         echo -e "${DIM}Telnyx #: $TELNYX_NUMBER${NC}"
         echo ""
         
@@ -405,7 +428,7 @@ main() {
     # Write configuration
     echo ""
     "$GUM_BIN" spin --spinner dot --title "Saving configuration..." -- \
-        bash -c "$(declare -f write_env_file generate_secret); write_env_file '$API_KEY' '$TELNYX_NUMBER' '$TELNYX_API_KEY' '$TELNYX_PUBLIC_KEY' '$OPENAI_API_KEY' '$JWT_SECRET'"
+        bash -c "$(declare -f write_env_file generate_secret); write_env_file '$API_KEY' '$TELNYX_NUMBER' '$TELNYX_API_KEY' '$TELNYX_PUBLIC_KEY' '$OPENAI_API_KEY' '$JWT_SECRET' '$CLOUDFLARE_TOKEN'"
     
     echo -e "${GREEN}✓${NC} Configuration saved"
     
@@ -414,7 +437,13 @@ main() {
     echo -e "${BOLD}Starting services...${NC}"
     echo ""
     
-    ./deploy.sh up
+    # Start with Cloudflare tunnel if token is provided
+    if [[ -n "$CLOUDFLARE_TOKEN" ]]; then
+        echo -e "${DIM}Starting with Cloudflare Tunnel...${NC}"
+        ./deploy.sh tunnel cloudflare
+    else
+        ./deploy.sh up
+    fi
     
     # Success
     echo ""

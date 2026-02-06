@@ -21,6 +21,9 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - TELNYX_PHONE_NUMBER=${TELNYX_PHONE_NUMBER}
       - BASE_URL=${BASE_URL:-http://localhost:4000}
+      - SECRET_ENCRYPTION_KEY=${SECRET_ENCRYPTION_KEY}
+      - SECRET_MANAGER=${SECRET_MANAGER:-db}
+      - ADMIN_ALLOWED_ORIGINS=${ADMIN_ALLOWED_ORIGINS:-http://localhost:4000}
     ports:
       - "${CONTROL_PORT:-4000}:4000"
     networks:
@@ -47,6 +50,10 @@ services:
       # URLs
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
       - AUDIO_PUBLIC_BASE_URL=${AUDIO_PUBLIC_BASE_URL}
+      # TTS Mode
+      - TTS_MODE=${TTS_MODE:-coqui_xtts}
+      - KOKORO_URL=${KOKORO_URL:-http://kokoro:7001}
+      - XTTS_URL=${XTTS_URL:-http://xtts:7002}
       # Media/Audio
       - MEDIA_STREAM_TOKEN=${MEDIA_STREAM_TOKEN}
       - AUDIO_STORAGE_DIR=${AUDIO_STORAGE_DIR:-/app/audio}
@@ -94,6 +101,43 @@ services:
     #   - "${POSTGRES_PORT:-5432}:5432"  # Uncomment to expose for debugging
     networks:
       - veralux-network
+
+  # =============================================================================
+  # Tunnel Service (Optional - enable with: docker compose --profile tunnel up)
+  # =============================================================================
+
+  # Option A: Cloudflare Tunnel (recommended for production)
+  # Get token from: Cloudflare Zero Trust → Networks → Tunnels → Create
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: veralux-cloudflared
+    restart: unless-stopped
+    profiles:
+      - tunnel
+      - cloudflare
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - veralux-network
+    depends_on:
+      - runtime
+      - control
+
+  # Option B: ngrok (for quick testing)
+  ngrok:
+    image: ngrok/ngrok:latest
+    container_name: veralux-ngrok
+    restart: unless-stopped
+    profiles:
+      - ngrok
+    environment:
+      - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
+    command: http runtime:4001 --log stdout
+    ports:
+      - "4040:4040"  # ngrok web interface
+    networks:
+      - veralux-network
+    depends_on:
+      - runtime
 
   # =============================================================================
   # GPU Services (Optional - enable with: docker compose --profile gpu up)
