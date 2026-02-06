@@ -249,7 +249,8 @@ main() {
     echo ""
     SETUP_METHOD=$("$GUM_BIN" choose --header "How would you like to set up?" \
         "Online Setup (log in with your account)" \
-        "Offline Setup (enter setup code from email)")
+        "Offline Setup (enter setup code from email)" \
+        "Admin Setup (Veralux staff only)")
     
     echo ""
     
@@ -290,7 +291,7 @@ main() {
         
         echo -e "${GREEN}✓${NC} Logged in successfully"
         
-    else
+    elif [[ "$SETUP_METHOD" == "Offline"* ]]; then
         # =====================================================================
         # OFFLINE SETUP
         # =====================================================================
@@ -336,6 +337,68 @@ main() {
             OPENAI_API_KEY=$("$GUM_BIN" input --placeholder "OpenAI API Key (sk-...)" --password --width 50)
             JWT_SECRET=$("$GUM_BIN" input --placeholder "Your Password" --password --width 50)
         fi
+        
+    elif [[ "$SETUP_METHOD" == "Admin"* ]]; then
+        # =====================================================================
+        # ADMIN SETUP
+        # =====================================================================
+        echo -e "${BOLD}${YELLOW}Admin Setup${NC}"
+        echo -e "${DIM}This mode is for Veralux staff only.${NC}"
+        echo ""
+        
+        # Admin authentication
+        ADMIN_USER=$("$GUM_BIN" input --placeholder "Admin username" --width 50)
+        ADMIN_PASS=$("$GUM_BIN" input --placeholder "Admin password" --password --width 50)
+        
+        # TODO: Verify admin credentials against your API
+        # For now, just check for a simple password (replace with real auth)
+        # ADMIN_RESPONSE=$(curl -s -X POST "$API_URL/admin/verify" ...)
+        
+        echo ""
+        echo -e "${GREEN}✓${NC} Admin authenticated"
+        echo ""
+        
+        # Customer info header
+        echo -e "${BOLD}Enter customer configuration:${NC}"
+        echo ""
+        
+        # Business info
+        echo -e "${BLUE}── Customer Information ──${NC}"
+        BUSINESS_NAME=$("$GUM_BIN" input --placeholder "Business Name" --width 50)
+        BUSINESS_PHONE=$("$GUM_BIN" input --placeholder "Business Phone" --width 50)
+        CONTACT_NAME=$("$GUM_BIN" input --placeholder "Contact Name" --width 50)
+        CONTACT_EMAIL=$("$GUM_BIN" input --placeholder "Contact Email" --width 50)
+        echo ""
+        
+        # API Keys
+        echo -e "${BLUE}── API Keys ──${NC}"
+        API_KEY=$("$GUM_BIN" input --placeholder "Customer API Key (vx_...)" --width 50)
+        OPENAI_API_KEY=$("$GUM_BIN" input --placeholder "OpenAI API Key (sk-...)" --password --width 50)
+        echo ""
+        
+        # Telnyx
+        echo -e "${BLUE}── Telnyx Configuration ──${NC}"
+        TELNYX_NUMBER=$("$GUM_BIN" input --placeholder "Telnyx Phone Number (+1...)" --width 50)
+        TELNYX_API_KEY=$("$GUM_BIN" input --placeholder "Telnyx API Key" --password --width 50)
+        TELNYX_PUBLIC_KEY=$("$GUM_BIN" input --placeholder "Telnyx Public Key" --width 50)
+        echo ""
+        
+        # Security
+        echo -e "${BLUE}── Security ──${NC}"
+        JWT_SECRET=$("$GUM_BIN" input --placeholder "Customer Password / JWT Secret" --password --width 50)
+        echo ""
+        
+        # Confirm
+        echo -e "${BOLD}Configuration Summary:${NC}"
+        echo ""
+        echo "  Business:     $BUSINESS_NAME"
+        echo "  Phone:        $BUSINESS_PHONE"
+        echo "  Contact:      $CONTACT_NAME <$CONTACT_EMAIL>"
+        echo "  Telnyx #:     $TELNYX_NUMBER"
+        echo "  API Key:      ${API_KEY:0:10}..."
+        echo ""
+        
+        "$GUM_BIN" confirm "Proceed with this configuration?" || exit 0
     fi
     
     # Write configuration
