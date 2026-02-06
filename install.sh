@@ -81,20 +81,146 @@ generate_secret() {
     openssl rand -hex 24 2>/dev/null || head -c 24 /dev/urandom | xxd -p
 }
 
+install_docker() {
+    echo -e "${BLUE}Installing Docker...${NC}"
+    echo ""
+    
+    # Detect OS
+    if [[ -f /etc/os-release ]]; then
+        . /etc/os-release
+        OS=$ID
+    elif [[ "$(uname)" == "Darwin" ]]; then
+        OS="macos"
+    else
+        OS="unknown"
+    fi
+    
+    case "$OS" in
+        ubuntu|debian)
+            echo "Detected: Ubuntu/Debian"
+            echo ""
+            # Install Docker using official script
+            curl -fsSL https://get.docker.com | sudo sh
+            # Add current user to docker group
+            sudo usermod -aG docker "$USER"
+            echo ""
+            echo -e "${GREEN}✓ Docker installed${NC}"
+            echo ""
+            echo -e "${YELLOW}NOTE: You may need to log out and back in for group changes to take effect.${NC}"
+            echo "      Or run: newgrp docker"
+            echo ""
+            ;;
+        centos|rhel|fedora|rocky|almalinux)
+            echo "Detected: RHEL-based system"
+            echo ""
+            curl -fsSL https://get.docker.com | sudo sh
+            sudo systemctl start docker
+            sudo systemctl enable docker
+            sudo usermod -aG docker "$USER"
+            echo ""
+            echo -e "${GREEN}✓ Docker installed${NC}"
+            ;;
+        macos)
+            echo -e "${RED}✗ Docker Desktop required for macOS${NC}"
+            echo ""
+            echo "  Please download and install Docker Desktop:"
+            echo "  https://www.docker.com/products/docker-desktop/"
+            exit 1
+            ;;
+        *)
+            echo -e "${RED}✗ Unsupported OS: $OS${NC}"
+            echo ""
+            echo "  Please install Docker manually:"
+            echo "  https://docs.docker.com/get-docker/"
+            exit 1
+            ;;
+    esac
+}
+
+install_nvidia_docker() {
+    echo -e "${BLUE}Installing NVIDIA Container Toolkit...${NC}"
+    echo ""
+    
+    # Add NVIDIA repository
+    distribution=$(. /etc/os-release; echo $ID$VERSION_ID)
+    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
+    curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
+        sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+        sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+    
+    sudo apt-get update
+    sudo apt-get install -y nvidia-container-toolkit
+    sudo nvidia-ctk runtime configure --runtime=docker
+    sudo systemctl restart docker
+    
+    echo ""
+    echo -e "${GREEN}✓ NVIDIA Container Toolkit installed${NC}"
+}
+
 check_docker() {
     if ! command -v docker &> /dev/null; then
         echo -e "${RED}✗ Docker is not installed${NC}"
         echo ""
-        echo "  Please install Docker first:"
-        echo "  https://docs.docker.com/get-docker/"
-        exit 1
+        
+        # Ask if we should install it
+        read -p "Would you like to install Docker now? [y/N] " -n 1 -r
+        echo ""
+        
+        if [[ $REPLY =~ ^[Yy]$ ]]; then
+            install_docker
+            
+            # Check if we need to use newgrp or re-run
+            if ! docker info &> /dev/null 2>&1; then
+                echo ""
+                echo -e "${YELLOW}Docker installed but requires group reload.${NC}"
+                echo ""
+                echo "Please run one of the following, then re-run this installer:"
+                echo "  Option 1: newgrp docker && ./install.sh"
+                echo "  Option 2: Log out and log back in, then run ./install.sh"
+                exit 0
+            fi
+        else
+            echo ""
+            echo "  Please install Docker first:"
+            echo "  https://docs.docker.com/get-docker/"
+            exit 1
+        fi
     fi
     
     if ! docker info &> /dev/null; then
-        echo -e "${RED}✗ Docker is not running${NC}"
+        echo -e "${RED}✗ Docker is not running or permission denied${NC}"
         echo ""
-        echo "  Please start Docker and try again."
-        exit 1
+        
+        # Try to start it
+        if command -v systemctl &> /dev/null; then
+            echo "Attempting to start Docker..."
+            sudo systemctl start docker 2>/dev/null && sleep 2
+        fi
+        
+        if ! docker info &> /dev/null; then
+            echo "  Please ensure Docker is running and you have permission."
+            echo "  Try: sudo systemctl start docker"
+            echo "  Or:  sudo usermod -aG docker $USER && newgrp docker"
+            exit 1
+        fi
+    fi
+    
+    echo -e "${GREEN}✓${NC} Docker is running"
+    
+    # Check for NVIDIA GPU and toolkit (optional)
+    if command -v nvidia-smi &> /dev/null; then
+        if ! docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi &> /dev/null 2>&1; then
+            echo -e "${YELLOW}⚠${NC} NVIDIA GPU detected but container toolkit not configured"
+            echo ""
+            read -p "Would you like to install NVIDIA Container Toolkit? [y/N] " -n 1 -r
+            echo ""
+            
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                install_nvidia_docker
+            fi
+        else
+            echo -e "${GREEN}✓${NC} NVIDIA GPU support available"
+        fi
     fi
 }
 
