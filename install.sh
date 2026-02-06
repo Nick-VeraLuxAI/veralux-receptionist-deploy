@@ -28,34 +28,56 @@ GUM_BIN="$SCRIPT_DIR/.bin/gum"
 install_gum() {
     local os arch url
     
-    os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+    os="$(uname -s)"
     arch="$(uname -m)"
     
+    # Gum uses these exact names in releases
     case "$arch" in
-        x86_64) arch="amd64" ;;
-        aarch64|arm64) arch="arm64" ;;
+        x86_64) arch="x86_64" ;;
+        aarch64) arch="arm64" ;;
+        arm64) arch="arm64" ;;
         *) echo "Unsupported architecture: $arch"; exit 1 ;;
     esac
     
     case "$os" in
-        darwin) os="Darwin" ;;
-        linux) os="Linux" ;;
+        Darwin) os="Darwin" ;;
+        Linux) os="Linux" ;;
         *) echo "Unsupported OS: $os"; exit 1 ;;
     esac
     
     url="https://github.com/charmbracelet/gum/releases/download/v${GUM_VERSION}/gum_${GUM_VERSION}_${os}_${arch}.tar.gz"
     
     echo -e "${DIM}Downloading installer components...${NC}"
+    echo -e "${DIM}URL: $url${NC}"
     mkdir -p "$SCRIPT_DIR/.bin"
     
+    # Download to temp file first to check for errors
+    local tmpfile=$(mktemp)
     if command -v curl &> /dev/null; then
-        curl -sL "$url" | tar -xzf - -C "$SCRIPT_DIR/.bin" gum
+        if ! curl -fsSL "$url" -o "$tmpfile"; then
+            echo -e "${RED}Failed to download gum from $url${NC}"
+            rm -f "$tmpfile"
+            exit 1
+        fi
     elif command -v wget &> /dev/null; then
-        wget -qO- "$url" | tar -xzf - -C "$SCRIPT_DIR/.bin" gum
+        if ! wget -q "$url" -O "$tmpfile"; then
+            echo -e "${RED}Failed to download gum from $url${NC}"
+            rm -f "$tmpfile"
+            exit 1
+        fi
     else
         echo -e "${RED}Error: curl or wget required${NC}"
         exit 1
     fi
+    
+    # Extract
+    if ! tar -xzf "$tmpfile" -C "$SCRIPT_DIR/.bin" gum 2>/dev/null; then
+        echo -e "${RED}Failed to extract gum${NC}"
+        rm -f "$tmpfile"
+        exit 1
+    fi
+    
+    rm -f "$tmpfile"
     
     chmod +x "$GUM_BIN"
 }
