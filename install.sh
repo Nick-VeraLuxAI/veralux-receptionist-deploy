@@ -245,14 +245,18 @@ main() {
         echo ""
     fi
     
-    # Choose setup method
-    echo ""
-    SETUP_METHOD=$("$GUM_BIN" choose --header "How would you like to set up?" \
-        "Online Setup (log in with your account)" \
-        "Offline Setup (enter setup code from email)" \
-        "Admin Setup (Veralux staff only)")
-    
-    echo ""
+    # Main menu loop
+    while true; do
+        echo ""
+        SETUP_METHOD=$("$GUM_BIN" choose --header "How would you like to set up?" \
+            "Online Setup (log in with your account)" \
+            "Offline Setup (enter setup code from email)" \
+            "Admin Setup (Veralux staff only)" \
+            "Exit")
+        
+        [[ "$SETUP_METHOD" == "Exit" ]] && exit 0
+        
+        echo ""
     
     if [[ "$SETUP_METHOD" == "Online"* ]]; then
         # =====================================================================
@@ -260,10 +264,14 @@ main() {
         # =====================================================================
         echo -e "${BOLD}Log in with your Veralux account${NC}"
         echo -e "${DIM}Enter the email and password from your signup.${NC}"
+        echo -e "${DIM}(Leave blank and press Enter to go back)${NC}"
         echo ""
         
         EMAIL=$("$GUM_BIN" input --placeholder "Email address" --width 50)
+        [[ -z "$EMAIL" ]] && continue
+        
         PASSWORD=$("$GUM_BIN" input --placeholder "Password" --password --width 50)
+        [[ -z "$PASSWORD" ]] && continue
         
         echo ""
         RESPONSE=$("$GUM_BIN" spin --spinner dot --title "Logging in..." -- \
@@ -300,7 +308,10 @@ main() {
         
         ENTRY_METHOD=$("$GUM_BIN" choose --header "How do you want to enter your credentials?" \
             "Paste setup code from email" \
-            "Enter details manually")
+            "Enter details manually" \
+            "← Back")
+        
+        [[ "$ENTRY_METHOD" == "← Back" ]] && continue
         
         echo ""
         
@@ -347,14 +358,21 @@ main() {
         echo ""
         
         # Admin authentication
+        echo -e "${DIM}(Leave blank and press Enter to go back)${NC}"
+        echo ""
+        
         ADMIN_USER=$("$GUM_BIN" input --placeholder "Admin username" --width 50)
+        [[ -z "$ADMIN_USER" ]] && continue
+        
         ADMIN_PASS=$("$GUM_BIN" input --placeholder "Admin password" --password --width 50)
+        [[ -z "$ADMIN_PASS" ]] && continue
         
         # Verify admin credentials
         if [[ "$ADMIN_USER" != "VeraLux" || "$ADMIN_PASS" != "fuzzyone" ]]; then
             echo ""
             echo -e "${RED}✗ Invalid admin credentials${NC}"
-            exit 1
+            echo ""
+            "$GUM_BIN" confirm "Try again?" && continue || exit 1
         fi
         
         echo ""
@@ -401,8 +419,12 @@ main() {
         echo "  API Key:      ${API_KEY:0:10}..."
         echo ""
         
-        "$GUM_BIN" confirm "Proceed with this configuration?" || exit 0
+        "$GUM_BIN" confirm "Proceed with this configuration?" || continue
     fi
+    
+    # Break out of menu loop - configuration collected successfully
+    break
+    done
     
     # Write configuration
     echo ""
