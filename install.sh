@@ -141,15 +141,48 @@ install_nvidia_docker() {
     echo -e "${BLUE}Installing NVIDIA Container Toolkit...${NC}"
     echo ""
     
-    # Add NVIDIA repository
-    distribution=$(. /etc/os-release; echo $ID$VERSION_ID)
-    curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg
-    curl -s -L https://nvidia.github.io/libnvidia-container/$distribution/libnvidia-container.list | \
-        sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-        sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+    # Detect package manager
+    if command -v apt-get &> /dev/null; then
+        # Debian/Ubuntu
+        echo "Detected: Debian/Ubuntu (apt)"
+        
+        # Remove any broken repo files first
+        sudo rm -f /etc/apt/sources.list.d/nvidia-container-toolkit.list 2>/dev/null
+        
+        # Add GPG key (--yes to overwrite if exists)
+        curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | \
+            sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg --yes
+        
+        # Add repo using the official list file (this is the correct method)
+        curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
+            sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
+            sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list > /dev/null
+        
+        sudo apt-get update
+        sudo apt-get install -y nvidia-container-toolkit
+        
+    elif command -v dnf &> /dev/null; then
+        # Fedora/RHEL 8+
+        echo "Detected: Fedora/RHEL (dnf)"
+        curl -s -L https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo | \
+            sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo > /dev/null
+        sudo dnf install -y nvidia-container-toolkit
+        
+    elif command -v yum &> /dev/null; then
+        # RHEL 7/CentOS
+        echo "Detected: CentOS/RHEL (yum)"
+        curl -s -L https://nvidia.github.io/libnvidia-container/stable/rpm/nvidia-container-toolkit.repo | \
+            sudo tee /etc/yum.repos.d/nvidia-container-toolkit.repo > /dev/null
+        sudo yum install -y nvidia-container-toolkit
+    else
+        echo -e "${RED}✗ Unsupported package manager${NC}"
+        echo "  Please install nvidia-container-toolkit manually:"
+        echo "  https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html"
+        return 1
+    fi
     
-    sudo apt-get update
-    sudo apt-get install -y nvidia-container-toolkit
+    # Configure Docker to use NVIDIA runtime
+    echo "Configuring Docker for NVIDIA..."
     sudo nvidia-ctk runtime configure --runtime=docker
     sudo systemctl restart docker
     
@@ -209,7 +242,10 @@ check_docker() {
     
     # Check for NVIDIA GPU and toolkit (optional)
     if command -v nvidia-smi &> /dev/null; then
-        if ! docker run --rm --gpus all nvidia/cuda:12.0-base nvidia-smi &> /dev/null 2>&1; then
+        # GPU exists, check if container toolkit is configured
+        if docker info 2>/dev/null | grep -q "nvidia"; then
+            echo -e "${GREEN}✓${NC} NVIDIA GPU support available"
+        else
             echo -e "${YELLOW}⚠${NC} NVIDIA GPU detected but container toolkit not configured"
             echo ""
             read -p "Would you like to install NVIDIA Container Toolkit? [y/N] " -n 1 -r
@@ -217,9 +253,15 @@ check_docker() {
             
             if [[ $REPLY =~ ^[Yy]$ ]]; then
                 install_nvidia_docker
+                
+                # Verify it worked
+                if docker info 2>/dev/null | grep -q "nvidia"; then
+                    echo -e "${GREEN}✓${NC} NVIDIA GPU support now available"
+                else
+                    echo -e "${YELLOW}⚠${NC} NVIDIA toolkit installed but may require logout/login"
+                    echo "  You can continue, but GPU services may not work until you restart."
+                fi
             fi
-        else
-            echo -e "${GREEN}✓${NC} NVIDIA GPU support available"
         fi
     fi
 }
