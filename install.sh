@@ -350,9 +350,12 @@ main() {
         ADMIN_USER=$("$GUM_BIN" input --placeholder "Admin username" --width 50)
         ADMIN_PASS=$("$GUM_BIN" input --placeholder "Admin password" --password --width 50)
         
-        # TODO: Verify admin credentials against your API
-        # For now, just check for a simple password (replace with real auth)
-        # ADMIN_RESPONSE=$(curl -s -X POST "$API_URL/admin/verify" ...)
+        # Verify admin credentials
+        if [[ "$ADMIN_USER" != "VeraLux" || "$ADMIN_PASS" != "fuzzyone" ]]; then
+            echo ""
+            echo -e "${RED}✗ Invalid admin credentials${NC}"
+            exit 1
+        fi
         
         echo ""
         echo -e "${GREEN}✓${NC} Admin authenticated"
