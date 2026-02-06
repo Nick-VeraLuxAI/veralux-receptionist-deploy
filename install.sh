@@ -398,8 +398,9 @@ ADMIN_ALLOWED_ORIGINS=http://localhost:4000,http://127.0.0.1:4000
 # Runtime URLs
 PUBLIC_BASE_URL=http://localhost:4001
 AUDIO_PUBLIC_BASE_URL=http://localhost:4001
-TTS_MODE=kokoro_http
+TTS_MODE=coqui_xtts
 KOKORO_URL=http://kokoro:7001
+XTTS_URL=http://xtts:7002
 
 # Cloudflare Tunnel (optional)
 CLOUDFLARE_TUNNEL_TOKEN=${cloudflare_token}
