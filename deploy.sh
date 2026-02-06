@@ -93,12 +93,20 @@ check_env() {
 cmd_up() {
     info "Starting Veralux Receptionist..."
     
+    # Check if GPU profile is needed based on TTS_MODE
+    local gpu_profile=""
+    local tts_mode=$(grep "^TTS_MODE=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2)
+    if [[ "$tts_mode" == "coqui_xtts" || "$tts_mode" == "kokoro_http" ]]; then
+        gpu_profile="--profile gpu"
+        info "GPU TTS mode detected ($tts_mode), including GPU services..."
+    fi
+    
     # Best-effort pull (don't fail if offline)
     info "Pulling latest images (if available)..."
-    $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" pull --ignore-pull-failures 2>/dev/null || true
+    $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" $gpu_profile pull --ignore-pull-failures 2>/dev/null || true
     
     # Start services
-    $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d "$@"
+    $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" $gpu_profile up -d "$@"
     
     echo ""
     success "Services started!"
@@ -150,6 +158,14 @@ cmd_update() {
 cmd_tunnel() {
     local tunnel_type="${1:-cloudflare}"
     
+    # Check if GPU profile is needed based on TTS_MODE
+    local gpu_profile=""
+    local tts_mode=$(grep "^TTS_MODE=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2)
+    if [[ "$tts_mode" == "coqui_xtts" || "$tts_mode" == "kokoro_http" ]]; then
+        gpu_profile="--profile gpu"
+        info "GPU TTS mode detected ($tts_mode), including GPU services..."
+    fi
+    
     case "$tunnel_type" in
         cloudflare|cf)
             if [[ -z "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]] && ! grep -q "CLOUDFLARE_TUNNEL_TOKEN=." "$ENV_FILE" 2>/dev/null; then
@@ -163,7 +179,7 @@ cmd_tunnel() {
                 exit 1
             fi
             info "Starting with Cloudflare Tunnel..."
-            $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" --profile cloudflare up -d
+            $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" $gpu_profile --profile cloudflare up -d
             success "Cloudflare Tunnel started!"
             echo ""
             info "Your public URL is configured in the Cloudflare dashboard."
@@ -175,7 +191,7 @@ cmd_tunnel() {
                 exit 1
             fi
             info "Starting with ngrok tunnel..."
-            $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" --profile ngrok up -d
+            $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" $gpu_profile --profile ngrok up -d
             success "ngrok started!"
             echo ""
             info "View your public URL at: http://localhost:4040"
