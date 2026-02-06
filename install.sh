@@ -260,7 +260,7 @@ check_docker() {
                 echo ""
                 echo -e "${BLUE}Restarting installer with docker group...${NC}"
                 echo ""
-                exec sg docker -c "$0 $*"
+                exec sg docker -c "bash $0 $*"
             fi
             
             # User not in docker group - add them
@@ -270,7 +270,7 @@ check_docker() {
             echo ""
             echo -e "${BLUE}Restarting installer with docker group...${NC}"
             echo ""
-            exec sg docker -c "$0 $*"
+            exec sg docker -c "bash $0 $*"
         fi
     fi
     
