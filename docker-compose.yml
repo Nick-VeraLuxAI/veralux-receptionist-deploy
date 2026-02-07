@@ -162,7 +162,9 @@ services:
     ports:
       - "${WHISPER_PORT:-9000}:9000"
     networks:
-      - veralux-network
+      veralux-network:
+        aliases:
+          - whisper
 
   kokoro-gpu:
     image: ${REGISTRY:-ghcr.io/nick-veraluxai}/kokoro:${VERSION:-latest}
@@ -182,7 +184,9 @@ services:
     ports:
       - "${KOKORO_PORT:-7001}:7001"
     networks:
-      - veralux-network
+      veralux-network:
+        aliases:
+          - kokoro
 
   xtts-gpu:
     image: ${REGISTRY:-ghcr.io/nick-veraluxai}/xtts:${VERSION:-latest}
@@ -202,7 +206,9 @@ services:
     ports:
       - "${XTTS_PORT:-7002}:7002"
     networks:
-      - veralux-network
+      veralux-network:
+        aliases:
+          - xtts
 
   # =============================================================================
   # CPU Services (No GPU required - auto-selected by deploy.sh)
@@ -221,7 +227,9 @@ services:
     ports:
       - "${WHISPER_PORT:-9000}:9000"
     networks:
-      - veralux-network
+      veralux-network:
+        aliases:
+          - whisper
 
   kokoro-cpu:
     image: ${REGISTRY:-ghcr.io/nick-veraluxai}/kokoro:${VERSION:-latest}
@@ -235,7 +243,9 @@ services:
     ports:
       - "${KOKORO_PORT:-7001}:7001"
     networks:
-      - veralux-network
+      veralux-network:
+        aliases:
+          - kokoro
 
   xtts-cpu:
     image: ${REGISTRY:-ghcr.io/nick-veraluxai}/xtts:${VERSION:-latest}
@@ -249,7 +259,9 @@ services:
     ports:
       - "${XTTS_PORT:-7002}:7002"
     networks:
-      - veralux-network
+      veralux-network:
+        aliases:
+          - xtts
 
 # =============================================================================
 # Volumes & Networks
