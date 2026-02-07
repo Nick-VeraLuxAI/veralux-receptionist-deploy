@@ -54,7 +54,7 @@ services:
       - TTS_MODE=${TTS_MODE:-coqui_xtts}
       - KOKORO_URL=${KOKORO_URL:-http://kokoro:7001}
       - XTTS_URL=${XTTS_URL:-http://xtts:7002}
-      - COQUI_XTTS_URL=${XTTS_URL:-http://xtts:7002}
+      - COQUI_XTTS_URL=${COQUI_XTTS_URL:-http://xtts:7002/tts}
       # Media/Audio
       - MEDIA_STREAM_TOKEN=${MEDIA_STREAM_TOKEN}
       - AUDIO_STORAGE_DIR=${AUDIO_STORAGE_DIR:-/app/audio}

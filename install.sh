@@ -401,7 +401,7 @@ AUDIO_PUBLIC_BASE_URL=http://localhost:4001
 TTS_MODE=coqui_xtts
 KOKORO_URL=http://kokoro:7001
 XTTS_URL=http://xtts:7002
-COQUI_XTTS_URL=http://xtts:7002
+COQUI_XTTS_URL=http://xtts:7002/tts
 
 # Cloudflare Tunnel (optional)
 CLOUDFLARE_TUNNEL_TOKEN=${cloudflare_token}
