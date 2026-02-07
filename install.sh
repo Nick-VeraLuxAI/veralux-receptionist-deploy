@@ -1,4 +1,4 @@
-./install.sh#!/usr/bin/env bash
+#!/usr/bin/env bash
 # =============================================================================
 # Veralux Receptionist - Installer
 # =============================================================================
@@ -401,6 +401,7 @@ AUDIO_PUBLIC_BASE_URL=http://localhost:4001
 TTS_MODE=coqui_xtts
 KOKORO_URL=http://kokoro:7001
 XTTS_URL=http://xtts:7002
+COQUI_XTTS_URL=http://xtts:7002
 
 # Cloudflare Tunnel (optional)
 CLOUDFLARE_TUNNEL_TOKEN=${cloudflare_token}
