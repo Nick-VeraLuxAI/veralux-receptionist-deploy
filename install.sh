@@ -669,6 +669,17 @@ main() {
     echo ""
     echo "  Your Veralux Receptionist is now running!"
     echo ""
+    echo -e "  ${BOLD}Your Credentials:${NC}"
+    echo -e "  ────────────────────────────────────────────"
+    echo -e "  Admin Panel:    ${GREEN}http://localhost:4000${NC}"
+    echo -e "  JWT Secret:     ${DIM}${JWT_SECRET}${NC}"
+    if [[ -n "$TELNYX_NUMBER" ]]; then
+        echo -e "  Phone Number:   ${GREEN}${TELNYX_NUMBER}${NC}"
+    fi
+    echo -e "  ────────────────────────────────────────────"
+    echo ""
+    echo -e "  ${YELLOW}Save your JWT Secret somewhere safe!${NC}"
+    echo ""
     echo -e "  ${DIM}Commands:${NC}"
     echo "    ./deploy.sh status   - Check service status"
     echo "    ./deploy.sh logs     - View logs"
