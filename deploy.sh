@@ -97,8 +97,17 @@ cmd_up() {
     local gpu_profile=""
     local tts_mode=$(grep "^TTS_MODE=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2)
     if [[ "$tts_mode" == "coqui_xtts" || "$tts_mode" == "kokoro_http" ]]; then
-        gpu_profile="--profile gpu"
-        info "GPU TTS mode detected ($tts_mode), including GPU services..."
+        # Check if NVIDIA GPU is actually available
+        if docker info 2>/dev/null | grep -qi nvidia || command -v nvidia-smi &>/dev/null; then
+            gpu_profile="--profile gpu"
+            info "GPU TTS mode detected ($tts_mode), including GPU services..."
+        else
+            warn "TTS_MODE is $tts_mode but no NVIDIA GPU detected."
+            warn "Falling back to OpenAI TTS. Update TTS_MODE in .env if needed."
+            sed -i.bak "s/^TTS_MODE=.*/TTS_MODE=openai/" "$ENV_FILE" 2>/dev/null || \
+                sed -i '' "s/^TTS_MODE=.*/TTS_MODE=openai/" "$ENV_FILE"
+            rm -f "${ENV_FILE}.bak"
+        fi
     fi
     
     # Remove any leftover containers to avoid name conflicts
@@ -166,8 +175,16 @@ cmd_tunnel() {
     local gpu_profile=""
     local tts_mode=$(grep "^TTS_MODE=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2)
     if [[ "$tts_mode" == "coqui_xtts" || "$tts_mode" == "kokoro_http" ]]; then
-        gpu_profile="--profile gpu"
-        info "GPU TTS mode detected ($tts_mode), including GPU services..."
+        if docker info 2>/dev/null | grep -qi nvidia || command -v nvidia-smi &>/dev/null; then
+            gpu_profile="--profile gpu"
+            info "GPU TTS mode detected ($tts_mode), including GPU services..."
+        else
+            warn "TTS_MODE is $tts_mode but no NVIDIA GPU detected."
+            warn "Falling back to OpenAI TTS. Update TTS_MODE in .env if needed."
+            sed -i.bak "s/^TTS_MODE=.*/TTS_MODE=openai/" "$ENV_FILE" 2>/dev/null || \
+                sed -i '' "s/^TTS_MODE=.*/TTS_MODE=openai/" "$ENV_FILE"
+            rm -f "${ENV_FILE}.bak"
+        fi
     fi
     
     case "$tunnel_type" in
