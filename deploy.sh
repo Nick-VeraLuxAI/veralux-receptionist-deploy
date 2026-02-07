@@ -101,6 +101,10 @@ cmd_up() {
         info "GPU TTS mode detected ($tts_mode), including GPU services..."
     fi
     
+    # Remove any leftover containers to avoid name conflicts
+    docker rm -f veralux-control veralux-runtime veralux-redis veralux-postgres \
+        veralux-cloudflared veralux-whisper veralux-kokoro veralux-xtts veralux-ngrok 2>/dev/null || true
+    
     # Best-effort pull (don't fail if offline)
     info "Pulling latest images (if available)..."
     $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" $gpu_profile pull --ignore-pull-failures 2>/dev/null || true
@@ -179,6 +183,9 @@ cmd_tunnel() {
                 exit 1
             fi
             info "Starting with Cloudflare Tunnel..."
+            # Remove any leftover containers to avoid name conflicts
+            docker rm -f veralux-control veralux-runtime veralux-redis veralux-postgres \
+                veralux-cloudflared veralux-whisper veralux-kokoro veralux-xtts veralux-ngrok 2>/dev/null || true
             $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" $gpu_profile --profile cloudflare up -d
             success "Cloudflare Tunnel started!"
             echo ""
