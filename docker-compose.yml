@@ -140,10 +140,10 @@ services:
       - runtime
 
   # =============================================================================
-  # GPU Services (Optional - enable with: docker compose --profile gpu up)
+  # GPU Services (NVIDIA GPU required - auto-selected by deploy.sh)
   # =============================================================================
 
-  whisper:
+  whisper-gpu:
     image: ${REGISTRY:-ghcr.io/nick-veraluxai}/whisper:${VERSION:-latest}
     container_name: veralux-whisper
     restart: unless-stopped
@@ -163,7 +163,7 @@ services:
     networks:
       - veralux-network
 
-  kokoro:
+  kokoro-gpu:
     image: ${REGISTRY:-ghcr.io/nick-veraluxai}/kokoro:${VERSION:-latest}
     container_name: veralux-kokoro
     restart: unless-stopped
@@ -183,7 +183,7 @@ services:
     networks:
       - veralux-network
 
-  xtts:
+  xtts-gpu:
     image: ${REGISTRY:-ghcr.io/nick-veraluxai}/xtts:${VERSION:-latest}
     container_name: veralux-xtts
     restart: unless-stopped
@@ -198,6 +198,53 @@ services:
               capabilities: [gpu]
     environment:
       - LANGUAGE=${XTTS_LANGUAGE:-en}
+    ports:
+      - "${XTTS_PORT:-7002}:7002"
+    networks:
+      - veralux-network
+
+  # =============================================================================
+  # CPU Services (No GPU required - auto-selected by deploy.sh)
+  # Same images, just without NVIDIA device reservations. Slower but works anywhere.
+  # =============================================================================
+
+  whisper-cpu:
+    image: ${REGISTRY:-ghcr.io/nick-veraluxai}/whisper:${VERSION:-latest}
+    container_name: veralux-whisper
+    restart: unless-stopped
+    profiles:
+      - cpu
+    environment:
+      - MODEL_SIZE=${WHISPER_MODEL_SIZE:-base}
+      - CUDA_VISIBLE_DEVICES=""
+    ports:
+      - "${WHISPER_PORT:-9000}:9000"
+    networks:
+      - veralux-network
+
+  kokoro-cpu:
+    image: ${REGISTRY:-ghcr.io/nick-veraluxai}/kokoro:${VERSION:-latest}
+    container_name: veralux-kokoro
+    restart: unless-stopped
+    profiles:
+      - cpu
+    environment:
+      - VOICE_ID=${KOKORO_VOICE_ID:-default}
+      - CUDA_VISIBLE_DEVICES=""
+    ports:
+      - "${KOKORO_PORT:-7001}:7001"
+    networks:
+      - veralux-network
+
+  xtts-cpu:
+    image: ${REGISTRY:-ghcr.io/nick-veraluxai}/xtts:${VERSION:-latest}
+    container_name: veralux-xtts
+    restart: unless-stopped
+    profiles:
+      - cpu
+    environment:
+      - LANGUAGE=${XTTS_LANGUAGE:-en}
+      - CUDA_VISIBLE_DEVICES=""
     ports:
       - "${XTTS_PORT:-7002}:7002"
     networks:

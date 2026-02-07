@@ -93,20 +93,16 @@ check_env() {
 cmd_up() {
     info "Starting Veralux Receptionist..."
     
-    # Check if GPU profile is needed based on TTS_MODE
-    local gpu_profile=""
+    # Detect audio profile based on TTS_MODE and hardware
+    local audio_profile=""
     local tts_mode=$(grep "^TTS_MODE=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2)
     if [[ "$tts_mode" == "coqui_xtts" || "$tts_mode" == "kokoro_http" ]]; then
-        # Check if NVIDIA GPU is actually available
         if docker info 2>/dev/null | grep -qi nvidia || command -v nvidia-smi &>/dev/null; then
-            gpu_profile="--profile gpu"
-            info "GPU TTS mode detected ($tts_mode), including GPU services..."
+            audio_profile="--profile gpu"
+            info "NVIDIA GPU detected — running audio services with GPU acceleration"
         else
-            warn "TTS_MODE is $tts_mode but no NVIDIA GPU detected."
-            warn "Falling back to OpenAI TTS. Update TTS_MODE in .env if needed."
-            sed -i.bak "s/^TTS_MODE=.*/TTS_MODE=openai/" "$ENV_FILE" 2>/dev/null || \
-                sed -i '' "s/^TTS_MODE=.*/TTS_MODE=openai/" "$ENV_FILE"
-            rm -f "${ENV_FILE}.bak"
+            audio_profile="--profile cpu"
+            info "No NVIDIA GPU detected — running audio services in CPU mode (slower but functional)"
         fi
     fi
     
@@ -116,10 +112,10 @@ cmd_up() {
     
     # Best-effort pull (don't fail if offline)
     info "Pulling latest images (if available)..."
-    $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" $gpu_profile pull --ignore-pull-failures 2>/dev/null || true
+    $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" $audio_profile pull --ignore-pull-failures 2>/dev/null || true
     
     # Start services
-    $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" $gpu_profile up -d "$@"
+    $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" $audio_profile up -d "$@"
     
     echo ""
     success "Services started!"
@@ -171,19 +167,16 @@ cmd_update() {
 cmd_tunnel() {
     local tunnel_type="${1:-cloudflare}"
     
-    # Check if GPU profile is needed based on TTS_MODE
-    local gpu_profile=""
+    # Detect audio profile based on TTS_MODE and hardware
+    local audio_profile=""
     local tts_mode=$(grep "^TTS_MODE=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2)
     if [[ "$tts_mode" == "coqui_xtts" || "$tts_mode" == "kokoro_http" ]]; then
         if docker info 2>/dev/null | grep -qi nvidia || command -v nvidia-smi &>/dev/null; then
-            gpu_profile="--profile gpu"
-            info "GPU TTS mode detected ($tts_mode), including GPU services..."
+            audio_profile="--profile gpu"
+            info "NVIDIA GPU detected — running audio services with GPU acceleration"
         else
-            warn "TTS_MODE is $tts_mode but no NVIDIA GPU detected."
-            warn "Falling back to OpenAI TTS. Update TTS_MODE in .env if needed."
-            sed -i.bak "s/^TTS_MODE=.*/TTS_MODE=openai/" "$ENV_FILE" 2>/dev/null || \
-                sed -i '' "s/^TTS_MODE=.*/TTS_MODE=openai/" "$ENV_FILE"
-            rm -f "${ENV_FILE}.bak"
+            audio_profile="--profile cpu"
+            info "No NVIDIA GPU detected — running audio services in CPU mode (slower but functional)"
         fi
     fi
     
@@ -203,7 +196,7 @@ cmd_tunnel() {
             # Remove any leftover containers to avoid name conflicts
             docker rm -f veralux-control veralux-runtime veralux-redis veralux-postgres \
                 veralux-cloudflared veralux-whisper veralux-kokoro veralux-xtts veralux-ngrok 2>/dev/null || true
-            $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" $gpu_profile --profile cloudflare up -d
+            $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" $audio_profile --profile cloudflare up -d
             success "Cloudflare Tunnel started!"
             echo ""
             info "Your public URL is configured in the Cloudflare dashboard."
@@ -215,7 +208,7 @@ cmd_tunnel() {
                 exit 1
             fi
             info "Starting with ngrok tunnel..."
-            $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" $gpu_profile --profile ngrok up -d
+            $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" $audio_profile --profile ngrok up -d
             success "ngrok started!"
             echo ""
             info "View your public URL at: http://localhost:4040"
