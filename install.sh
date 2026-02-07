@@ -447,7 +447,12 @@ main() {
         case "$CHOICE" in
             "Start services"*)
                 echo ""
-                ./deploy.sh up
+                # Use tunnel if Cloudflare token exists in .env
+                if grep -q "CLOUDFLARE_TUNNEL_TOKEN=." .env 2>/dev/null; then
+                    ./deploy.sh tunnel cloudflare
+                else
+                    ./deploy.sh up
+                fi
                 exit 0
                 ;;
             "Exit")
@@ -569,7 +574,8 @@ main() {
             TELNYX_API_KEY=$("$GUM_BIN" input --placeholder "Telnyx API Key" --password --width 50)
             TELNYX_PUBLIC_KEY=$("$GUM_BIN" input --placeholder "Telnyx Public Key" --width 50)
             OPENAI_API_KEY=$("$GUM_BIN" input --placeholder "OpenAI API Key (sk-...)" --password --width 50)
-            JWT_SECRET=$("$GUM_BIN" input --placeholder "Your Password" --password --width 50)
+            # Auto-generate a strong JWT secret
+            JWT_SECRET=$(openssl rand -hex 32)
             CLOUDFLARE_TOKEN=""  # Customers don't need to enter this manually
         fi
         
@@ -613,7 +619,8 @@ main() {
         TELNYX_API_KEY=$("$GUM_BIN" input --placeholder "Telnyx API Key" --password --width 50)
         TELNYX_PUBLIC_KEY=$("$GUM_BIN" input --placeholder "Telnyx Public Key" --width 50)
         TELNYX_NUMBER=$("$GUM_BIN" input --placeholder "Telnyx Phone Number (+1...)" --width 50)
-        JWT_SECRET=$("$GUM_BIN" input --placeholder "Password / JWT Secret" --password --width 50)
+        # Auto-generate a strong JWT secret (control plane rejects weak ones)
+        JWT_SECRET=$(openssl rand -hex 32)
         
         echo ""
         echo -e "${DIM}Optional: Cloudflare Tunnel (leave blank to skip)${NC}"
