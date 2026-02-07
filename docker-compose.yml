@@ -203,6 +203,7 @@ services:
               capabilities: [gpu]
     environment:
       - LANGUAGE=${XTTS_LANGUAGE:-en}
+      - COQUI_TOS_AGREED=1
     ports:
       - "${XTTS_PORT:-7002}:7002"
     networks:
@@ -256,6 +257,7 @@ services:
     environment:
       - LANGUAGE=${XTTS_LANGUAGE:-en}
       - CUDA_VISIBLE_DEVICES=""
+      - COQUI_TOS_AGREED=1
     ports:
       - "${XTTS_PORT:-7002}:7002"
     networks:
