@@ -50,7 +50,9 @@ services:
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
       - API_KEY=${API_KEY}
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
       - TELNYX_PHONE_NUMBER=${TELNYX_PHONE_NUMBER}
       - TELNYX_API_KEY=${TELNYX_API_KEY}
       - BASE_URL=${BASE_URL:-http://localhost:4000}
@@ -58,6 +60,10 @@ services:
       - SECRET_MANAGER=${SECRET_MANAGER:-db}
       - ADMIN_API_KEY=${ADMIN_API_KEY}
       - ADMIN_ALLOWED_ORIGINS=${ADMIN_ALLOWED_ORIGINS:-http://localhost:4000}
+      # Stripe
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
       # ── Redis sync env vars (used by redisSync.ts) ──
       - TTS_MODE=${TTS_MODE:-coqui_xtts}
       - KOKORO_URL=${KOKORO_URL:-http://kokoro:7001}
@@ -107,8 +113,10 @@ services:
       - REDIS_URL=redis://redis:6379
       - CONTROL_URL=http://control:4000
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      # OpenAI
+      # LLM / OpenAI
+      - LLM_PROVIDER=${LLM_PROVIDER:-openai}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
       # Telnyx Configuration
       - TELNYX_API_KEY=${TELNYX_API_KEY}
       - TELNYX_PUBLIC_KEY=${TELNYX_PUBLIC_KEY}
@@ -217,16 +225,15 @@ services:
     profiles:
       - tunnel
       - cloudflare
-    command: tunnel --config /etc/cloudflared/config.yml run
+    command: tunnel run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    network_mode: host
     deploy:
       resources:
         limits:
           cpus: "0.5"
           memory: 256M
-    volumes:
-      - ./cloudflared:/etc/cloudflared:ro
-    networks:
-      - veralux-network
     depends_on:
       runtime:
         condition: service_healthy

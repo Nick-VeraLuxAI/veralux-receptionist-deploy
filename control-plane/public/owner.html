@@ -9,18 +9,18 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <style>
       :root {
-        --bg: #06090f;
-        --surface: rgba(255, 255, 255, 0.03);
-        --surface-hover: rgba(255, 255, 255, 0.06);
-        --border: rgba(255, 255, 255, 0.07);
-        --border-focus: rgba(124, 240, 255, 0.4);
-        --text: #f0f4fc;
-        --text-soft: #a8b8d4;
-        --muted: #6b7fa0;
-        --primary: #0ea5e9;
-        --primary-glow: rgba(14, 165, 233, 0.35);
-        --accent: #22d3ee;
-        --accent-warm: #f59e0b;
+        --bg: #070708;
+        --surface: rgba(246, 243, 236, 0.03);
+        --surface-hover: rgba(246, 243, 236, 0.06);
+        --border: rgba(246, 243, 236, 0.08);
+        --border-focus: rgba(201, 160, 78, 0.5);
+        --text: #F6F3EC;
+        --text-soft: #c9c3b5;
+        --muted: #8a8477;
+        --primary: #C9A04E;
+        --primary-glow: rgba(201, 160, 78, 0.35);
+        --accent: #d4af61;
+        --accent-warm: #C9A04E;
         --success: #34d399;
         --success-glow: rgba(52, 211, 153, 0.25);
         --danger: #f87171;
@@ -41,9 +41,9 @@
         position: fixed;
         inset: 0;
         background:
-          radial-gradient(ellipse 100% 80% at 20% -10%, rgba(14, 165, 233, 0.15), transparent 50%),
-          radial-gradient(ellipse 80% 60% at 90% 20%, rgba(34, 211, 238, 0.08), transparent 45%),
-          radial-gradient(ellipse 60% 80% at 50% 100%, rgba(245, 158, 11, 0.06), transparent 50%);
+          radial-gradient(ellipse 100% 80% at 20% -10%, rgba(201, 160, 78, 0.12), transparent 50%),
+          radial-gradient(ellipse 80% 60% at 90% 20%, rgba(201, 160, 78, 0.06), transparent 45%),
+          radial-gradient(ellipse 60% 80% at 50% 100%, rgba(201, 160, 78, 0.04), transparent 50%);
         pointer-events: none;
         z-index: 0;
       }
@@ -76,15 +76,13 @@
         width: 52px;
         height: 52px;
         border-radius: 16px;
-        background: linear-gradient(145deg, var(--accent) 0%, var(--primary) 50%, #6366f1 100%);
         box-shadow: 0 0 40px var(--primary-glow), 0 8px 32px rgba(0,0,0,0.3);
-        display: grid;
-        place-items: center;
-        font-weight: 700;
-        color: #fff;
-        font-size: 22px;
-        letter-spacing: -0.02em;
-        border: 1px solid rgba(255,255,255,0.2);
+        overflow: hidden;
+      }
+      .owner-logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
       }
       .owner-brand h1 {
         margin: 0;
@@ -219,10 +217,10 @@
       input:focus, textarea:focus, select:focus {
         outline: none;
         border-color: var(--border-focus);
-        box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12);
+        box-shadow: 0 0 0 3px rgba(201, 160, 78, 0.15);
       }
       button {
-        background: linear-gradient(135deg, var(--primary) 0%, #0284c7 100%);
+        background: linear-gradient(135deg, var(--primary) 0%, #a67e3a 100%);
         color: #fff;
         border: none;
         border-radius: 12px;
@@ -326,7 +324,7 @@
   <body>
     <header class="owner-header">
       <div class="owner-brand">
-        <div class="owner-logo">V</div>
+        <div class="owner-logo"><img src="https://veralux.ai/wp-content/uploads/2025/11/eralux-100-x-98-px-1-300x293.png" alt="VeraLux"></div>
         <div>
           <h1>Your receptionist</h1>
           <div class="tagline">One place to set up calls, transfers, and pricing.</div>
@@ -403,10 +401,14 @@
       </section>
 
       <section class="owner-panel">
-        <h2>Services & pricing</h2>
-        <p class="help">What your receptionist can tell callers about your services and rates. Keep it short.</p>
+        <h2>Services & products</h2>
+        <p class="help">What your receptionist can tell callers about your services, products, and rates. Keep it short.</p>
         <div class="row">
-          <input type="text" id="price-name" class="sm" placeholder="Service" />
+          <select id="price-type" class="sm" style="min-width:100px;">
+            <option value="service">Service</option>
+            <option value="product">Product</option>
+          </select>
+          <input type="text" id="price-name" class="sm" placeholder="Name" />
           <input type="text" id="price-amount" class="sm" placeholder="Price" />
           <input type="text" id="price-desc" class="mid" placeholder="Short description" />
           <button type="button" id="price-add">Add</button>
@@ -422,6 +424,9 @@
         <h2>Receptionist personality</h2>
         <p class="help">Customize how your AI receptionist introduces itself and interacts with callers.</p>
         
+        <label for="owner-greetingText">Greeting message (what callers hear first)</label>
+        <textarea id="owner-greetingText" rows="2" placeholder="e.g. Hi! Thanks for calling Sunny Day Plumbing. How can I help you today?"></textarea>
+
         <label for="owner-systemPreamble">Who is your receptionist?</label>
         <textarea id="owner-systemPreamble" rows="4" placeholder="e.g. You're the friendly receptionist for Sunny Day Plumbing. Greet callers warmly, ask how you can help, and offer to schedule an appointment or connect them with the right person."></textarea>
         
@@ -466,6 +471,45 @@
           <span class="stat">Messages: <strong id="stat-messages">—</strong></span>
         </div>
         <button type="button" class="secondary" id="owner-refresh" style="margin-top: 10px">Refresh</button>
+      </section>
+
+      <!-- Billing (hidden if admin disables) -->
+      <section class="owner-panel" id="billing-section" style="display:none;">
+        <h2>Your subscription</h2>
+        <p class="help">Your current plan and payment details.</p>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:8px 0;">
+          <div class="stat">Plan: <strong id="bill-plan">—</strong></div>
+          <div class="stat">Status: <strong id="bill-status">—</strong></div>
+          <div class="stat">Price: <strong id="bill-price">—</strong></div>
+          <div class="stat">Frequency: <strong id="bill-frequency">—</strong></div>
+          <div class="stat">Next billing: <strong id="bill-next">—</strong></div>
+          <div class="stat">Payment: <strong id="bill-payment">—</strong></div>
+        </div>
+        <!-- Stripe actions (shown when Stripe is configured) -->
+        <div id="bill-stripe-actions" style="display:none; margin-top:14px;">
+          <div id="bill-checkout-area" style="display:none; margin-bottom:10px;">
+            <button type="button" id="bill-pay-now" style="width:100%; padding:12px; font-size:15px;">Pay now</button>
+          </div>
+          <button type="button" id="bill-manage-billing" style="width:100%;">Manage billing & payment methods</button>
+          <div id="bill-stripe-msg" class="help" style="margin-top:6px;"></div>
+        </div>
+        <!-- Manual fallback (shown when Stripe is NOT configured) -->
+        <div id="bill-manual-actions" style="display:none; margin-top:14px;">
+            <h3>Update payment method</h3>
+            <div class="row" style="gap:8px;">
+              <select id="bill-card-brand" class="sm" style="min-width:110px;">
+                <option value="">Select</option>
+                <option value="visa">Visa</option>
+                <option value="mastercard">Mastercard</option>
+                <option value="amex">Amex</option>
+                <option value="discover">Discover</option>
+                <option value="other">Other</option>
+              </select>
+              <input type="text" id="bill-card-last4" class="sm" maxlength="4" placeholder="Last 4 digits" style="max-width:120px;" />
+              <button type="button" id="bill-update-payment">Update</button>
+            </div>
+            <div id="bill-status-msg" class="help" style="margin-top:6px;"></div>
+        </div>
       </section>
     </main>
 
@@ -595,12 +639,14 @@
 
       async function loadOwnerData() {
         try {
-          const [tenantsRes, profilesRes, pricingRes, promptsRes, analyticsRes] = await Promise.all([
+          await checkStripeStatus();
+          const [tenantsRes, profilesRes, pricingRes, promptsRes, analyticsRes, billingRes] = await Promise.all([
             ownerFetch("/api/admin/tenants", { skipTenantHeader: true }),
             ownerFetch("/api/admin/forwarding-profiles"),
             ownerFetch("/api/admin/pricing"),
             ownerFetch("/api/admin/prompts").catch(() => null),
             ownerFetch("/api/admin/analytics").catch(() => null),
+            ownerFetch("/api/admin/subscription").catch(() => null),
           ]);
           
           // Also load voice config
@@ -644,6 +690,7 @@
           renderForwarding();
           renderPricing();
           if (promptsRes) {
+            $("owner-greetingText").value = promptsRes.greetingText || "";
             $("owner-systemPreamble").value = promptsRes.systemPreamble || "";
             $("owner-policyPrompt").value = promptsRes.policyPrompt || "";
             $("owner-voicePrompt").value = promptsRes.voicePrompt || "";
@@ -653,8 +700,121 @@
             $("stat-calls").textContent = analyticsRes.callCount ?? "—";
             $("stat-messages").textContent = analyticsRes.callerMessageCount ?? "—";
           }
+          if (billingRes) renderBilling(billingRes);
         } catch (err) {
           $("owner-numbers-status").textContent = "";
+        }
+      }
+
+      // ── Billing ──
+      let stripeConfigured = false;
+
+      async function checkStripeStatus() {
+        try {
+          const status = await ownerFetch("/api/admin/stripe/status");
+          stripeConfigured = !!status.configured;
+        } catch { stripeConfigured = false; }
+      }
+
+      function renderBilling(sub) {
+        // Hide billing if admin disabled it or no subscription is set up yet
+        if (!sub || !sub.showBillingPortal || sub.configured === false) {
+          $("billing-section").style.display = "none";
+          return;
+        }
+        $("billing-section").style.display = "";
+        $("bill-plan").textContent = sub.planName || "—";
+        const statusMap = { trial: "Trial", active: "Active", past_due: "Past due", paused: "Paused", cancelled: "Cancelled" };
+        $("bill-status").textContent = statusMap[sub.status] || sub.status || "—";
+        const price = sub.priceCents ? "$" + (sub.priceCents / 100).toFixed(2) : "—";
+        const curr = (sub.currency || "usd").toUpperCase();
+        $("bill-price").textContent = sub.priceCents ? `${price} ${curr}` : "—";
+        const freqMap = { monthly: "Monthly", quarterly: "Quarterly", yearly: "Yearly", one_time: "One-time" };
+        $("bill-frequency").textContent = freqMap[sub.billingFrequency] || sub.billingFrequency || "—";
+        $("bill-next").textContent = sub.nextBillingDate ? new Date(sub.nextBillingDate).toLocaleDateString() : "—";
+        const card = sub.paymentMethodBrand && sub.paymentMethodLast4
+          ? `${sub.paymentMethodBrand.charAt(0).toUpperCase() + sub.paymentMethodBrand.slice(1)} ····${sub.paymentMethodLast4}`
+          : "None on file";
+        $("bill-payment").textContent = card;
+        // Show Stripe actions or manual fallback
+        if (stripeConfigured) {
+          $("bill-stripe-actions").style.display = "";
+          $("bill-manual-actions").style.display = "none";
+          // Show "Pay now" if there's a Stripe price but no active Stripe subscription
+          const hasStripeSubscription = !!sub.stripeSubscriptionId;
+          const hasStripePriceId = !!sub.stripePriceId;
+          if (hasStripePriceId && !hasStripeSubscription) {
+            $("bill-checkout-area").style.display = "";
+          } else {
+            $("bill-checkout-area").style.display = "none";
+          }
+        } else {
+          $("bill-stripe-actions").style.display = "none";
+          $("bill-manual-actions").style.display = "";
+          if (sub.paymentMethodBrand) $("bill-card-brand").value = sub.paymentMethodBrand;
+          if (sub.paymentMethodLast4) $("bill-card-last4").value = sub.paymentMethodLast4;
+        }
+      }
+
+      async function payNowOwner() {
+        const statusEl = $("bill-stripe-msg");
+        try {
+          if (statusEl) statusEl.textContent = "Redirecting to checkout…";
+          const sub = await ownerFetch("/api/admin/subscription");
+          if (!sub.stripePriceId) {
+            if (statusEl) statusEl.textContent = "No price configured. Contact your provider.";
+            return;
+          }
+          const data = await ownerFetch("/api/admin/stripe/checkout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              priceId: sub.stripePriceId,
+              successUrl: window.location.href + "?checkout=success",
+              cancelUrl: window.location.href + "?checkout=cancelled",
+            }),
+          });
+          if (data.url) window.location.href = data.url;
+          else if (statusEl) statusEl.textContent = "Could not create checkout session.";
+        } catch (err) {
+          if (statusEl) statusEl.textContent = "Checkout error: " + (err.message || err);
+        }
+      }
+
+      async function openOwnerBillingPortal() {
+        const statusEl = $("bill-stripe-msg");
+        try {
+          const data = await ownerFetch("/api/admin/stripe/portal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ returnUrl: window.location.href }),
+          });
+          if (data.url) window.location.href = data.url;
+        } catch (err) {
+          if (statusEl) statusEl.textContent = "Could not open billing portal: " + (err.message || err);
+        }
+      }
+
+      async function updateOwnerPayment() {
+        const brand = $("bill-card-brand").value;
+        const last4 = $("bill-card-last4").value.trim();
+        const statusEl = $("bill-status-msg");
+        if (!brand || !last4 || last4.length !== 4) {
+          if (statusEl) statusEl.textContent = "Please select a card brand and enter the last 4 digits.";
+          return;
+        }
+        try {
+          await ownerFetch("/api/admin/subscription", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ paymentMethodBrand: brand, paymentMethodLast4: last4 }),
+          });
+          if (statusEl) statusEl.textContent = "Payment method updated.";
+          // Refresh
+          const sub = await ownerFetch("/api/admin/subscription");
+          renderBilling(sub);
+        } catch (err) {
+          if (statusEl) statusEl.textContent = "Update failed: " + (err.message || err);
         }
       }
 
@@ -690,8 +850,11 @@
         }
         pricingCache.items.forEach((item, i) => {
           const li = document.createElement("li");
+          const badge = (item.type === "product")
+            ? '<span style="background:rgba(201,160,78,0.18);color:#C9A04E;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;margin-right:6px;">Product</span>'
+            : '<span style="background:rgba(246,243,236,0.10);color:var(--muted);padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;margin-right:6px;">Service</span>';
           li.innerHTML = `
-            <span><strong>${escapeHtml(item.name)}</strong> ${escapeHtml(item.price)} ${item.description ? `<span class=\"help\">${escapeHtml(item.description)}</span>` : ""}</span>
+            <span>${badge}<strong>${escapeHtml(item.name)}</strong> ${escapeHtml(item.price)} ${item.description ? `<span class="help">${escapeHtml(item.description)}</span>` : ""}</span>
             <button type="button" class="secondary remove" data-i="${i}">Remove</button>
           `;
           li.querySelector("button").onclick = () => {
@@ -737,6 +900,7 @@
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              greetingText: $("owner-greetingText").value,
               systemPreamble: $("owner-systemPreamble").value,
               policyPrompt: $("owner-policyPrompt").value,
               voicePrompt: $("owner-voicePrompt").value,
@@ -1222,16 +1386,20 @@
         });
         $("fp-save").addEventListener("click", () => requireAuth(() => saveForwarding()));
         $("price-add").addEventListener("click", () => {
+          const type = ($("price-type").value || "service");
           const name = ($("price-name").value || "").trim();
           const price = ($("price-amount").value || "").trim();
           const desc = ($("price-desc").value || "").trim();
           if (!name) return;
           if (!pricingCache.items) pricingCache.items = [];
-          pricingCache.items.push({ id: "id_" + Date.now(), name, price, description: desc || undefined });
+          pricingCache.items.push({ id: "id_" + Date.now(), type, name, price, description: desc || undefined });
           $("price-name").value = $("price-amount").value = $("price-desc").value = "";
           renderPricing();
         });
         $("price-save").addEventListener("click", () => requireAuth(() => savePricing()));
+        $("bill-update-payment").addEventListener("click", () => requireAuth(() => updateOwnerPayment()));
+        $("bill-manage-billing").addEventListener("click", () => requireAuth(() => openOwnerBillingPortal()));
+        $("bill-pay-now").addEventListener("click", () => requireAuth(() => payNowOwner()));
         $("owner-save-prompts").addEventListener("click", () => requireAuth(() => saveOwnerPrompts()));
         $("owner-refresh").addEventListener("click", () => requireAuth(() => loadOwnerData()));
         

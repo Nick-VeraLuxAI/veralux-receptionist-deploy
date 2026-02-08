@@ -118,6 +118,8 @@ export interface PromptConfig {
   schemaHint: string;
   policyPrompt: string;
   voicePrompt: string;
+  /** Custom greeting text for the welcome message when a caller dials in */
+  greetingText: string;
 }
 
 export interface STTConfig {
@@ -173,7 +175,7 @@ export class LLMConfigStore {
 
   constructor(initial?: Partial<SerializedLLMConfig>) {
     const providerEnv = (process.env.LLM_PROVIDER || "").toLowerCase();
-    const provider: LLMProvider = providerEnv === "openai" ? "openai" : "local";
+    const provider: LLMProvider = providerEnv === "local" ? "local" : "openai";
 
     this.config = initial?.config || {
       provider,
@@ -182,12 +184,16 @@ export class LLMConfigStore {
       openaiApiKey: process.env.OPENAI_API_KEY,
     };
 
-    this.prompts = initial?.prompts || {
+    this.prompts = {
       systemPreamble: DEFAULT_SYSTEM_PREAMBLE,
       schemaHint: DEFAULT_SCHEMA_HINT,
       policyPrompt: DEFAULT_POLICY_PROMPT,
       voicePrompt: DEFAULT_VOICE_PROMPT,
+      greetingText: "",
+      ...(initial?.prompts || {}),
     };
+    // Ensure greetingText exists for configs loaded before this field was added
+    if (this.prompts.greetingText === undefined) this.prompts.greetingText = "";
 
     this.stt = initial?.stt || {
       whisperUrl: DEFAULT_WHISPER_URL,
@@ -213,9 +219,9 @@ export class LLMConfigStore {
     const provider =
       next.provider ??
       this.config.provider ??
-      ((process.env.LLM_PROVIDER || "").toLowerCase() === "openai"
-        ? "openai"
-        : "local");
+      ((process.env.LLM_PROVIDER || "").toLowerCase() === "local"
+        ? "local"
+        : "openai");
 
     const localUrl =
       next.localUrl ??
@@ -262,6 +268,9 @@ export class LLMConfigStore {
       schemaHint: next.schemaHint?.trim() || this.prompts.schemaHint,
       policyPrompt: next.policyPrompt?.trim() || this.prompts.policyPrompt,
       voicePrompt: next.voicePrompt?.trim() || this.prompts.voicePrompt,
+      greetingText: next.greetingText !== undefined
+        ? next.greetingText.trim()
+        : this.prompts.greetingText,
     };
     return this.prompts;
   }

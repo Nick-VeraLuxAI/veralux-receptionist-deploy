@@ -49,13 +49,24 @@ import {
   type AdminRole,
 } from "./auth";
 import { secretStore } from "./secretStore";
-import { listAuditLogs, upsertUserBySub, listMembershipsForUser, closePool, pingPool } from "./db";
+import { listAuditLogs, upsertUserBySub, listMembershipsForUser, closePool, pingPool, getSubscription, upsertSubscription, pool as dbPool } from "./db";
 import { rateLimit } from "./rateLimit";
 import { closeRedis as closeRateLimitRedis } from "./redis";
 import { normalizePhoneNumber } from "./utils/phone";
 import { isUuid } from "./utils/validation";
 import { parsePricingInfo, createForwardingProfile } from "./llmContext";
 import { verifyOwnerPasscode, setOwnerPasscode, issueOwnerJwt } from "./ownerAuth";
+import {
+  isStripeConfigured,
+  getOrCreateStripeCustomer,
+  createCheckoutSession,
+  createPortalSession,
+  handleStripeWebhook,
+  syncSubscriptionFromStripe,
+  listStripePlans,
+  createStripePlan,
+  deleteStripePlan,
+} from "./stripe";
 
 dotenv.config();
 
@@ -1027,7 +1038,7 @@ app.post("/api/admin/prompts", async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);
   if (!tenant) return;
 
-  const { systemPreamble, schemaHint, policyPrompt, voicePrompt } =
+  const { systemPreamble, schemaHint, policyPrompt, voicePrompt, greetingText } =
     req.body as Partial<PromptConfig>;
 
   const updated = tenant.config.setPrompts({
@@ -1035,6 +1046,7 @@ app.post("/api/admin/prompts", async (req, res) => {
     schemaHint,
     policyPrompt,
     voicePrompt,
+    greetingText,
   });
 
   tenants.persistConfig(tenant.id);
@@ -1092,6 +1104,229 @@ app.post("/api/admin/pricing", async (req, res) => {
   await syncLLMContextToRuntime(updated);
   res.json(updated.pricing);
 });
+
+/* ────────────────────────────────────────────────
+   Admin – Subscription / Billing
+   ──────────────────────────────────────────────── */
+
+app.get("/api/admin/subscription", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const sub = await getSubscription(tenant.id);
+  if (!sub) {
+    // No subscription record exists yet — tell the frontend
+    return res.json({
+      configured: false,
+      tenantId: tenant.id,
+      showBillingPortal: false,
+      adminNotes: null,
+    });
+  }
+  res.json(sub);
+}));
+
+app.post("/api/admin/subscription", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  const {
+    planName, priceCents, currency, billingFrequency, status,
+    paymentMethodBrand, paymentMethodLast4,
+    trialEndsAt, nextBillingDate, cancelledAt,
+    showBillingPortal, adminNotes,
+    stripePriceId, stripeProductId,
+  } = req.body || {};
+
+  const sub = await upsertSubscription(tenant.id, {
+    planName, priceCents, currency, billingFrequency, status,
+    paymentMethodBrand, paymentMethodLast4,
+    trialEndsAt, nextBillingDate, cancelledAt,
+    showBillingPortal, adminNotes,
+    stripePriceId, stripeProductId,
+  });
+
+  res.json(sub);
+}));
+
+// DELETE: remove a tenant's subscription entirely
+app.delete("/api/admin/subscription", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  const existing = await getSubscription(tenant.id);
+  if (!existing) {
+    return res.json({ success: true, message: "No subscription to remove" });
+  }
+
+  const client = await dbPool.connect();
+  try {
+    await client.query("DELETE FROM tenant_subscriptions WHERE tenant_id = $1", [tenant.id]);
+  } finally {
+    client.release();
+  }
+
+  res.json({ success: true });
+}));
+
+// PATCH: update only specific fields on an EXISTING subscription (won't create)
+app.patch("/api/admin/subscription", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  const existing = await getSubscription(tenant.id);
+  if (!existing) {
+    return res.json({ configured: false, message: "No subscription to update" });
+  }
+
+  const { showBillingPortal, adminNotes } = req.body || {};
+
+  const sub = await upsertSubscription(tenant.id, {
+    ...existing,
+    showBillingPortal: showBillingPortal !== undefined ? showBillingPortal : existing.showBillingPortal,
+    adminNotes: adminNotes !== undefined ? adminNotes : existing.adminNotes,
+  });
+
+  res.json(sub);
+}));
+
+/* ────────────────────────────────────────────────
+   Stripe – Webhook (public, raw body)
+   ──────────────────────────────────────────────── */
+
+app.post("/api/stripe/webhook", asyncHandler(async (req, res) => {
+  if (!isStripeConfigured()) {
+    return res.status(501).json({ error: "Stripe not configured" });
+  }
+  const sig = req.headers["stripe-signature"] as string;
+  if (!sig) return res.status(400).json({ error: "Missing stripe-signature" });
+
+  const rawBody = (req as any).rawBody as Buffer;
+  if (!rawBody) return res.status(400).json({ error: "Missing raw body" });
+
+  try {
+    const result = await handleStripeWebhook(rawBody, sig);
+    console.log(`[stripe] Webhook processed: ${result.event} tenant=${result.tenantId || "?"}`);
+    res.json({ received: true, event: result.event });
+  } catch (err: any) {
+    console.error("[stripe] Webhook error:", err.message);
+    res.status(400).json({ error: err.message });
+  }
+}));
+
+/* ────────────────────────────────────────────────
+   Stripe – Admin routes
+   ──────────────────────────────────────────────── */
+
+// Check if Stripe is configured
+app.get("/api/admin/stripe/status", (req, res) => {
+  res.json({
+    configured: isStripeConfigured(),
+    publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || null,
+  });
+});
+
+// List available plans
+app.get("/api/admin/stripe/plans", asyncHandler(async (req, res) => {
+  const plans = await listStripePlans();
+  res.json({ plans });
+}));
+
+// Create a new plan (admin only, creates product+price in Stripe)
+app.post("/api/admin/stripe/plans", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  if (!isStripeConfigured()) {
+    return res.status(501).json({ error: "Stripe not configured" });
+  }
+
+  const { name, priceCents, currency, billingInterval } = req.body || {};
+  if (!name || typeof priceCents !== "number") {
+    return res.status(400).json({ error: "name and priceCents required" });
+  }
+
+  const plan = await createStripePlan({ name, priceCents, currency, billingInterval });
+  res.json(plan);
+}));
+
+// Delete (deactivate) a plan
+app.delete("/api/admin/stripe/plans/:planId", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  if (!isStripeConfigured()) {
+    return res.status(501).json({ error: "Stripe not configured" });
+  }
+
+  const { planId } = req.params;
+  const deleted = await deleteStripePlan(planId);
+  if (!deleted) return res.status(404).json({ error: "Plan not found" });
+  res.json({ success: true });
+}));
+
+// Create a checkout session for a tenant to subscribe
+app.post("/api/admin/stripe/checkout", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  if (!isStripeConfigured()) {
+    return res.status(501).json({ error: "Stripe not configured" });
+  }
+
+  const { priceId, successUrl, cancelUrl } = req.body || {};
+  if (!priceId) return res.status(400).json({ error: "priceId required" });
+
+  const baseUrl = process.env.PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 4000}`;
+  const session = await createCheckoutSession({
+    tenantId: tenant.id,
+    priceId,
+    successUrl: successUrl || `${baseUrl}/portal.html?checkout=success`,
+    cancelUrl: cancelUrl || `${baseUrl}/portal.html?checkout=cancelled`,
+    tenantName: tenant.meta.name,
+  });
+
+  res.json({ url: session.url, sessionId: session.id });
+}));
+
+// Create a customer portal session (owner manages billing)
+app.post("/api/admin/stripe/portal", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  if (!isStripeConfigured()) {
+    return res.status(501).json({ error: "Stripe not configured" });
+  }
+
+  const { returnUrl } = req.body || {};
+  const baseUrl = process.env.PUBLIC_BASE_URL || `http://localhost:${process.env.PORT || 4000}`;
+
+  const session = await createPortalSession({
+    tenantId: tenant.id,
+    returnUrl: returnUrl || `${baseUrl}/portal.html`,
+  });
+
+  res.json({ url: session.url });
+}));
+
+// Sync a tenant's subscription from Stripe
+app.post("/api/admin/stripe/sync", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  if (!isStripeConfigured()) {
+    return res.status(501).json({ error: "Stripe not configured" });
+  }
+
+  // Get the subscription ID from DB
+  const sub = await getSubscription(tenant.id);
+  if (!sub || !(sub as any).stripeSubscriptionId) {
+    return res.status(404).json({ error: "No Stripe subscription found for this tenant" });
+  }
+
+  await syncSubscriptionFromStripe(tenant.id, (sub as any).stripeSubscriptionId);
+  const updated = await getSubscription(tenant.id);
+  res.json(updated);
+}));
 
 /* ────────────────────────────────────────────────
    Admin – TTS config + preview (XTTS / Kokoro)

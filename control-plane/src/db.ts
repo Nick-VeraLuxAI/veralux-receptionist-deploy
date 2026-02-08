@@ -12,7 +12,7 @@ const POOL_MIN = parseInt(process.env.DATABASE_POOL_MIN || "2", 10);
 const POOL_IDLE_TIMEOUT = parseInt(process.env.DATABASE_POOL_IDLE_TIMEOUT_MS || "30000", 10);
 const POOL_CONNECTION_TIMEOUT = parseInt(process.env.DATABASE_POOL_CONNECTION_TIMEOUT_MS || "5000", 10);
 
-const pool = new Pool({
+export const pool = new Pool({
   connectionString: DEFAULT_DATABASE_URL,
   max: POOL_MAX,
   min: POOL_MIN,
@@ -700,6 +700,122 @@ export async function upsertTenantMembership(params: {
          SET role = $3`,
       [params.tenantId, params.userId, params.role]
     );
+  } finally {
+    client.release();
+  }
+}
+
+// ── Subscription helpers ──────────────────────────
+
+export interface TenantSubscription {
+  tenantId: string;
+  planName: string;
+  priceCents: number;
+  currency: string;
+  billingFrequency: string;
+  status: string;
+  paymentMethodBrand: string | null;
+  paymentMethodLast4: string | null;
+  trialEndsAt: string | null;
+  nextBillingDate: string | null;
+  cancelledAt: string | null;
+  showBillingPortal: boolean;
+  adminNotes: string | null;
+  stripeCustomerId: string | null;
+  stripeSubscriptionId: string | null;
+  stripePriceId: string | null;
+  stripeProductId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function rowToSubscription(row: any): TenantSubscription {
+  return {
+    tenantId: row.tenant_id,
+    planName: row.plan_name,
+    priceCents: row.price_cents,
+    currency: row.currency,
+    billingFrequency: row.billing_frequency,
+    status: row.status,
+    paymentMethodBrand: row.payment_method_brand,
+    paymentMethodLast4: row.payment_method_last4,
+    trialEndsAt: row.trial_ends_at?.toISOString() ?? null,
+    nextBillingDate: row.next_billing_date?.toISOString() ?? null,
+    cancelledAt: row.cancelled_at?.toISOString() ?? null,
+    showBillingPortal: row.show_billing_portal,
+    adminNotes: row.admin_notes,
+    stripeCustomerId: row.stripe_customer_id ?? null,
+    stripeSubscriptionId: row.stripe_subscription_id ?? null,
+    stripePriceId: row.stripe_price_id ?? null,
+    stripeProductId: row.stripe_product_id ?? null,
+    createdAt: row.created_at?.toISOString(),
+    updatedAt: row.updated_at?.toISOString(),
+  };
+}
+
+export async function getSubscription(tenantId: string): Promise<TenantSubscription | null> {
+  const client = await pool.connect();
+  try {
+    const res = await client.query(
+      "SELECT * FROM tenant_subscriptions WHERE tenant_id = $1",
+      [tenantId]
+    );
+    return res.rows[0] ? rowToSubscription(res.rows[0]) : null;
+  } finally {
+    client.release();
+  }
+}
+
+export async function upsertSubscription(
+  tenantId: string,
+  data: Partial<Omit<TenantSubscription, "tenantId" | "createdAt" | "updatedAt">>
+): Promise<TenantSubscription> {
+  const client = await pool.connect();
+  try {
+    const res = await client.query(
+      `INSERT INTO tenant_subscriptions (
+        tenant_id, plan_name, price_cents, currency, billing_frequency,
+        status, payment_method_brand, payment_method_last4,
+        trial_ends_at, next_billing_date, cancelled_at,
+        show_billing_portal, admin_notes,
+        stripe_price_id, stripe_product_id, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, now())
+      ON CONFLICT (tenant_id) DO UPDATE SET
+        plan_name = COALESCE($2, tenant_subscriptions.plan_name),
+        price_cents = COALESCE($3, tenant_subscriptions.price_cents),
+        currency = COALESCE($4, tenant_subscriptions.currency),
+        billing_frequency = COALESCE($5, tenant_subscriptions.billing_frequency),
+        status = COALESCE($6, tenant_subscriptions.status),
+        payment_method_brand = COALESCE($7, tenant_subscriptions.payment_method_brand),
+        payment_method_last4 = COALESCE($8, tenant_subscriptions.payment_method_last4),
+        trial_ends_at = COALESCE($9, tenant_subscriptions.trial_ends_at),
+        next_billing_date = COALESCE($10, tenant_subscriptions.next_billing_date),
+        cancelled_at = $11,
+        show_billing_portal = COALESCE($12, tenant_subscriptions.show_billing_portal),
+        admin_notes = COALESCE($13, tenant_subscriptions.admin_notes),
+        stripe_price_id = COALESCE($14, tenant_subscriptions.stripe_price_id),
+        stripe_product_id = COALESCE($15, tenant_subscriptions.stripe_product_id),
+        updated_at = now()
+      RETURNING *`,
+      [
+        tenantId,
+        data.planName ?? "Starter",
+        data.priceCents ?? 0,
+        data.currency ?? "usd",
+        data.billingFrequency ?? "monthly",
+        data.status ?? "trial",
+        data.paymentMethodBrand ?? null,
+        data.paymentMethodLast4 ?? null,
+        data.trialEndsAt ?? null,
+        data.nextBillingDate ?? null,
+        data.cancelledAt ?? null,
+        data.showBillingPortal ?? true,
+        data.adminNotes ?? null,
+        data.stripePriceId ?? null,
+        data.stripeProductId ?? null,
+      ]
+    );
+    return rowToSubscription(res.rows[0]);
   } finally {
     client.release();
   }

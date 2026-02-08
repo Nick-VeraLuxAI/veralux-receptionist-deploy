@@ -9,18 +9,18 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <style>
       :root {
-        --bg: #06090f;
-        --surface: rgba(255, 255, 255, 0.03);
-        --surface-hover: rgba(255, 255, 255, 0.06);
-        --border: rgba(255, 255, 255, 0.07);
-        --border-focus: rgba(124, 240, 255, 0.4);
-        --text: #f0f4fc;
-        --text-soft: #a8b8d4;
-        --muted: #6b7fa0;
-        --primary: #0ea5e9;
-        --primary-glow: rgba(14, 165, 233, 0.35);
-        --accent: #22d3ee;
-        --accent-warm: #f59e0b;
+        --bg: #070708;
+        --surface: rgba(246, 243, 236, 0.03);
+        --surface-hover: rgba(246, 243, 236, 0.06);
+        --border: rgba(246, 243, 236, 0.08);
+        --border-focus: rgba(201, 160, 78, 0.5);
+        --text: #F6F3EC;
+        --text-soft: #c9c3b5;
+        --muted: #8a8477;
+        --primary: #C9A04E;
+        --primary-glow: rgba(201, 160, 78, 0.35);
+        --accent: #d4af61;
+        --accent-warm: #C9A04E;
         --success: #34d399;
         --success-glow: rgba(52, 211, 153, 0.25);
         --danger: #f87171;
@@ -41,9 +41,9 @@
         position: fixed;
         inset: 0;
         background:
-          radial-gradient(ellipse 100% 80% at 20% -10%, rgba(14, 165, 233, 0.15), transparent 50%),
-          radial-gradient(ellipse 80% 60% at 90% 20%, rgba(34, 211, 238, 0.08), transparent 45%),
-          radial-gradient(ellipse 60% 80% at 50% 100%, rgba(245, 158, 11, 0.06), transparent 50%);
+          radial-gradient(ellipse 100% 80% at 20% -10%, rgba(201, 160, 78, 0.12), transparent 50%),
+          radial-gradient(ellipse 80% 60% at 90% 20%, rgba(201, 160, 78, 0.06), transparent 45%),
+          radial-gradient(ellipse 60% 80% at 50% 100%, rgba(201, 160, 78, 0.04), transparent 50%);
         pointer-events: none;
         z-index: 0;
       }
@@ -86,15 +86,14 @@
         width: 64px;
         height: 64px;
         border-radius: 20px;
-        background: linear-gradient(145deg, var(--accent) 0%, var(--primary) 50%, #6366f1 100%);
         box-shadow: 0 0 40px var(--primary-glow), 0 8px 32px rgba(0,0,0,0.3);
-        display: grid;
-        place-items: center;
-        font-weight: 700;
-        color: #fff;
-        font-size: 28px;
         margin: 0 auto 24px;
-        border: 1px solid rgba(255,255,255,0.2);
+        overflow: hidden;
+      }
+      .login-logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
       }
       .login-card h2 {
         margin: 0 0 8px;
@@ -132,11 +131,11 @@
       .login-card input:focus {
         outline: none;
         border-color: var(--border-focus);
-        box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12);
+        box-shadow: 0 0 0 3px rgba(201, 160, 78, 0.15);
       }
       .login-card button {
         width: 100%;
-        background: linear-gradient(135deg, var(--primary) 0%, #0284c7 100%);
+        background: linear-gradient(135deg, var(--primary) 0%, #a67e3a 100%);
         color: #fff;
         border: none;
         border-radius: 12px;
@@ -186,10 +185,11 @@
       .owner-brand { display: flex; align-items: center; gap: 16px; }
       .owner-logo {
         width: 52px; height: 52px; border-radius: 16px;
-        background: linear-gradient(145deg, var(--accent) 0%, var(--primary) 50%, #6366f1 100%);
         box-shadow: 0 0 40px var(--primary-glow), 0 8px 32px rgba(0,0,0,0.3);
-        display: grid; place-items: center; font-weight: 700; color: #fff; font-size: 22px;
-        border: 1px solid rgba(255,255,255,0.2);
+        overflow: hidden;
+      }
+      .owner-logo img {
+        width: 100%; height: 100%; object-fit: cover;
       }
       .owner-brand h1 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
       .owner-brand .tagline { font-size: 14px; color: var(--muted); margin-top: 4px; }
@@ -253,7 +253,7 @@
         box-shadow: 0 0 0 3px rgba(14,165,233,0.12);
       }
       button {
-        background: linear-gradient(135deg, var(--primary) 0%, #0284c7 100%);
+        background: linear-gradient(135deg, var(--primary) 0%, #a67e3a 100%);
         color: #fff; border: none; border-radius: 12px; padding: 12px 20px;
         cursor: pointer; font-weight: 600; font-size: 14px; font-family: inherit;
         box-shadow: 0 4px 20px var(--primary-glow);
@@ -295,7 +295,7 @@
     <!-- ═══════════════ LOGIN SCREEN ═══════════════ -->
     <div id="login-screen" class="login-wrap">
       <div class="login-card">
-        <div class="login-logo">V</div>
+        <div class="login-logo"><img src="https://veralux.ai/wp-content/uploads/2025/11/eralux-100-x-98-px-1-300x293.png" alt="VeraLux"></div>
         <h2>Welcome back</h2>
         <p class="subtitle">Sign in to manage your AI receptionist</p>
 
@@ -314,7 +314,7 @@
     <div id="dashboard" class="dashboard">
       <header class="owner-header">
         <div class="owner-brand">
-          <div class="owner-logo">V</div>
+          <div class="owner-logo"><img src="https://veralux.ai/wp-content/uploads/2025/11/eralux-100-x-98-px-1-300x293.png" alt="VeraLux"></div>
           <div>
             <h1 id="dash-tenant-name">Your receptionist</h1>
             <div class="tagline">Manage your AI receptionist settings</div>
@@ -345,6 +345,9 @@
           <h2>How your receptionist speaks</h2>
           <p class="help">Customize what your AI receptionist says and how it behaves.</p>
 
+          <label for="p-greeting">Greeting message (what callers hear first)</label>
+          <textarea id="p-greeting" rows="2" placeholder="e.g. Hi! Thanks for calling King-Sod Lawn Care. How can I help you today?"></textarea>
+
           <label for="p-system">Business description &amp; instructions</label>
           <textarea id="p-system" rows="4" placeholder="e.g. You're the receptionist for King-Sod Lawn Care. Be friendly and helpful. Ask callers if they need a quote or want to schedule service."></textarea>
 
@@ -363,10 +366,14 @@
 
         <!-- Pricing -->
         <section class="owner-panel">
-          <h2>Your pricing</h2>
-          <p class="help">Services and prices the receptionist can reference when quoting callers.</p>
+          <h2>Services & products</h2>
+          <p class="help">Services, products, and prices the receptionist can reference when quoting callers.</p>
           <div class="row">
-            <input type="text" id="price-name" class="sm" placeholder="Service name" />
+            <select id="price-type" class="sm" style="min-width:100px;">
+              <option value="service">Service</option>
+              <option value="product">Product</option>
+            </select>
+            <input type="text" id="price-name" class="sm" placeholder="Name" />
             <input type="text" id="price-amount" class="sm" placeholder="$50" />
             <input type="text" id="price-desc" style="flex:1; min-width:120px;" placeholder="Description" />
             <button type="button" id="price-add">Add</button>
@@ -375,6 +382,45 @@
           <label for="price-notes" style="margin-top: 12px;">Pricing notes</label>
           <textarea id="price-notes" rows="2" placeholder="e.g. All prices are estimates. Final price depends on lawn size."></textarea>
           <button type="button" id="price-save" style="margin-top: 6px;">Save pricing</button>
+        </section>
+
+        <!-- Billing (hidden if admin disables) -->
+        <section class="owner-panel" id="billing-section" style="display:none;">
+          <h2>Your subscription</h2>
+          <p class="help">Your current plan and payment details.</p>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:8px 0;">
+            <div class="stat">Plan: <strong id="bill-plan">—</strong></div>
+            <div class="stat">Status: <strong id="bill-status">—</strong></div>
+            <div class="stat">Price: <strong id="bill-price">—</strong></div>
+            <div class="stat">Frequency: <strong id="bill-frequency">—</strong></div>
+            <div class="stat">Next billing: <strong id="bill-next">—</strong></div>
+            <div class="stat">Payment: <strong id="bill-payment">—</strong></div>
+          </div>
+          <!-- Stripe actions (shown when Stripe is configured) -->
+          <div id="bill-stripe-actions" style="display:none; margin-top:14px;">
+            <div id="bill-checkout-area" style="display:none; margin-bottom:10px;">
+              <button type="button" id="bill-pay-now" style="width:100%; padding:12px; font-size:15px;">Pay now</button>
+            </div>
+            <button type="button" id="bill-manage-billing" style="width:100%;">Manage billing & payment methods</button>
+            <div id="bill-stripe-msg" class="help" style="margin-top:6px;"></div>
+          </div>
+          <!-- Manual fallback (shown when Stripe is NOT configured at all) -->
+          <div id="bill-manual-actions" style="display:none; margin-top:14px;">
+            <h3>Update payment method</h3>
+            <div class="row" style="gap:8px;">
+              <select id="bill-card-brand" class="sm" style="min-width:110px;">
+                <option value="">Select</option>
+                <option value="visa">Visa</option>
+                <option value="mastercard">Mastercard</option>
+                <option value="amex">Amex</option>
+                <option value="discover">Discover</option>
+                <option value="other">Other</option>
+              </select>
+              <input type="text" id="bill-card-last4" class="sm" maxlength="4" placeholder="Last 4 digits" style="max-width:120px;" />
+              <button type="button" id="bill-update-payment">Update</button>
+            </div>
+            <div id="bill-status-msg" class="help" style="margin-top:6px;"></div>
+          </div>
         </section>
 
         <!-- Analytics -->
@@ -513,7 +559,117 @@
           loadPrompts(),
           loadPricing(),
           loadAnalytics(),
+          loadBilling(),
         ]);
+      }
+
+      // ── Billing ──
+      async function loadBilling() {
+        try {
+          const [sub, stripeStatus] = await Promise.all([
+            apiFetch("/api/admin/subscription"),
+            apiFetch("/api/admin/stripe/status").catch(() => ({ configured: false })),
+          ]);
+          // Hide billing if admin disabled it or no subscription is set up yet
+          if (!sub.showBillingPortal || sub.configured === false) {
+            $("billing-section").style.display = "none";
+            return;
+          }
+          $("billing-section").style.display = "";
+          $("bill-plan").textContent = sub.planName || "—";
+          const statusMap = { trial: "Trial", active: "Active", past_due: "Past due", paused: "Paused", cancelled: "Cancelled" };
+          $("bill-status").textContent = statusMap[sub.status] || sub.status || "—";
+          const price = sub.priceCents ? "$" + (sub.priceCents / 100).toFixed(2) : "—";
+          const curr = (sub.currency || "usd").toUpperCase();
+          $("bill-price").textContent = sub.priceCents ? `${price} ${curr}` : "—";
+          const freqMap = { monthly: "Monthly", quarterly: "Quarterly", yearly: "Yearly", one_time: "One-time" };
+          $("bill-frequency").textContent = freqMap[sub.billingFrequency] || sub.billingFrequency || "—";
+          $("bill-next").textContent = sub.nextBillingDate ? new Date(sub.nextBillingDate).toLocaleDateString() : "—";
+          const card = sub.paymentMethodBrand && sub.paymentMethodLast4
+            ? `${sub.paymentMethodBrand.charAt(0).toUpperCase() + sub.paymentMethodBrand.slice(1)} ····${sub.paymentMethodLast4}`
+            : "None on file";
+          $("bill-payment").textContent = card;
+          // Show Stripe actions or manual fallback
+          if (stripeStatus.configured) {
+            $("bill-stripe-actions").style.display = "";
+            $("bill-manual-actions").style.display = "none";
+            // Show "Pay now" if there's a Stripe price but no active Stripe subscription
+            const hasStripeSubscription = !!sub.stripeSubscriptionId;
+            const hasStripePriceId = !!sub.stripePriceId;
+            if (hasStripePriceId && !hasStripeSubscription) {
+              $("bill-checkout-area").style.display = "";
+            } else {
+              $("bill-checkout-area").style.display = "none";
+            }
+          } else {
+            $("bill-stripe-actions").style.display = "none";
+            $("bill-manual-actions").style.display = "";
+            if (sub.paymentMethodBrand) $("bill-card-brand").value = sub.paymentMethodBrand;
+            if (sub.paymentMethodLast4) $("bill-card-last4").value = sub.paymentMethodLast4;
+          }
+        } catch (err) {
+          console.error("loadBilling:", err);
+        }
+      }
+
+      async function payNow() {
+        const statusEl = $("bill-stripe-msg");
+        try {
+          if (statusEl) statusEl.textContent = "Redirecting to checkout…";
+          const sub = await apiFetch("/api/admin/subscription");
+          if (!sub.stripePriceId) {
+            if (statusEl) statusEl.textContent = "No price configured. Contact your provider.";
+            return;
+          }
+          const data = await apiFetch("/api/admin/stripe/checkout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              priceId: sub.stripePriceId,
+              successUrl: window.location.href + "?checkout=success",
+              cancelUrl: window.location.href + "?checkout=cancelled",
+            }),
+          });
+          if (data.url) window.location.href = data.url;
+          else if (statusEl) statusEl.textContent = "Could not create checkout session.";
+        } catch (err) {
+          if (statusEl) statusEl.textContent = "Checkout error: " + err.message;
+        }
+      }
+
+      async function openBillingPortal() {
+        const statusEl = $("bill-stripe-msg");
+        try {
+          const data = await apiFetch("/api/admin/stripe/portal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ returnUrl: window.location.href }),
+          });
+          if (data.url) window.location.href = data.url;
+        } catch (err) {
+          if (statusEl) statusEl.textContent = "Could not open billing portal: " + err.message;
+        }
+      }
+
+      async function updatePaymentMethod() {
+        const brand = $("bill-card-brand").value;
+        const last4 = $("bill-card-last4").value.trim();
+        const statusEl = $("bill-status-msg");
+        if (!brand || !last4 || last4.length !== 4) {
+          if (statusEl) statusEl.textContent = "Please select a card brand and enter the last 4 digits.";
+          return;
+        }
+        try {
+          await apiFetch("/api/admin/subscription", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ paymentMethodBrand: brand, paymentMethodLast4: last4 }),
+          });
+          if (statusEl) statusEl.textContent = "Payment method updated.";
+          await loadBilling();
+        } catch (err) {
+          if (statusEl) statusEl.textContent = "Update failed: " + err.message;
+        }
       }
 
       async function loadForwarding() {
@@ -572,6 +728,7 @@
       async function loadPrompts() {
         try {
           const data = await apiFetch("/api/admin/prompts");
+          $("p-greeting").value = data.greetingText || "";
           $("p-system").value = data.systemPreamble || "";
           $("p-voice").value = data.voicePrompt || "";
           $("p-policy").value = data.policyPrompt || "";
@@ -586,6 +743,7 @@
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
+              greetingText: $("p-greeting").value,
               systemPreamble: $("p-system").value,
               voicePrompt: $("p-voice").value,
               policyPrompt: $("p-policy").value,
@@ -613,21 +771,25 @@
 
       function renderPricing() {
         const ul = $("price-list");
-        if (!pricingItems.length) { ul.innerHTML = "<li style='color:var(--muted)'>No services added yet</li>"; return; }
-        ul.innerHTML = pricingItems.map((item, i) =>
-          `<li>
-            <span><strong>${escapeHtml(item.name)}</strong> — ${escapeHtml(item.price)} <span style="color:var(--muted)">${escapeHtml(item.description || "")}</span></span>
+        if (!pricingItems.length) { ul.innerHTML = "<li style='color:var(--muted)'>No items added yet</li>"; return; }
+        ul.innerHTML = pricingItems.map((item, i) => {
+          const badge = (item.type === "product")
+            ? '<span style="background:rgba(201,160,78,0.18);color:#C9A04E;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;margin-right:6px;">Product</span>'
+            : '<span style="background:rgba(246,243,236,0.10);color:var(--muted);padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;margin-right:6px;">Service</span>';
+          return `<li>
+            <span>${badge}<strong>${escapeHtml(item.name)}</strong> — ${escapeHtml(item.price)} <span style="color:var(--muted)">${escapeHtml(item.description || "")}</span></span>
             <button class="secondary remove" onclick="removePricing(${i})">Remove</button>
-          </li>`
-        ).join("");
+          </li>`;
+        }).join("");
       }
 
       function addPricing() {
+        const type = $("price-type").value;
         const name = $("price-name").value.trim();
         const price = $("price-amount").value.trim();
         const description = $("price-desc").value.trim();
         if (!name || !price) return;
-        pricingItems.push({ id: crypto.randomUUID(), name, price, description });
+        pricingItems.push({ id: crypto.randomUUID(), type, name, price, description });
         renderPricing();
         $("price-name").value = "";
         $("price-amount").value = "";
@@ -673,6 +835,9 @@
         $("refresh-prompts").addEventListener("click", loadPrompts);
         $("price-add").addEventListener("click", addPricing);
         $("price-save").addEventListener("click", savePricing);
+        $("bill-update-payment").addEventListener("click", updatePaymentMethod);
+        $("bill-manage-billing").addEventListener("click", openBillingPortal);
+        $("bill-pay-now").addEventListener("click", payNow);
 
         // Auto-refresh
         setInterval(loadAnalytics, 30000);

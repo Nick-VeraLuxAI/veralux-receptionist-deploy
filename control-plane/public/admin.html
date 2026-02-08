@@ -6,14 +6,14 @@
     <title>VeraLux Admin</title>
     <style>
       :root {
-        --bg: #050712;
-        --panel: rgba(255, 255, 255, 0.06);
-        --panel-strong: rgba(255, 255, 255, 0.12);
-        --text: #e8edf6;
-        --muted: #9fb4d2;
-        --primary: #7cf0ff;
-        --accent: #ffb86c;
-        --danger: #ff6b6b;
+        --bg: #070708;
+        --panel: rgba(246, 243, 236, 0.06);
+        --panel-strong: rgba(246, 243, 236, 0.12);
+        --text: #F6F3EC;
+        --muted: #a09a8e;
+        --primary: #C9A04E;
+        --accent: #C9A04E;
+        --danger: #c45050;
         --shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
         font-family: "Space Grotesk", "Avenir Next", "Helvetica Neue", sans-serif;
         color: var(--text);
@@ -25,10 +25,10 @@
       body {
         margin: 0;
         min-height: 100vh;
-        background: radial-gradient(circle at 18% 22%, rgba(124, 240, 255, 0.18), transparent 28%),
-          radial-gradient(circle at 82% 18%, rgba(255, 184, 108, 0.18), transparent 30%),
-          radial-gradient(circle at 50% 85%, rgba(124, 240, 255, 0.08), transparent 35%),
-          linear-gradient(145deg, #050712 0%, #0a1226 55%, #0a1020 100%);
+        background: radial-gradient(circle at 18% 22%, rgba(201, 160, 78, 0.14), transparent 28%),
+          radial-gradient(circle at 82% 18%, rgba(201, 160, 78, 0.10), transparent 30%),
+          radial-gradient(circle at 50% 85%, rgba(201, 160, 78, 0.06), transparent 35%),
+          linear-gradient(145deg, #070708 0%, #0d0b08 55%, #0a0908 100%);
       }
       .glow {
         position: fixed;
@@ -36,8 +36,8 @@
         pointer-events: none;
         filter: blur(80px);
         opacity: 0.3;
-        background: radial-gradient(circle at 28% 28%, #7cf0ff, transparent 26%),
-          radial-gradient(circle at 72% 22%, #ffb86c, transparent 24%);
+        background: radial-gradient(circle at 28% 28%, #C9A04E, transparent 26%),
+          radial-gradient(circle at 72% 22%, #C9A04E, transparent 24%);
       }
       header {
         padding: 20px 28px;
@@ -54,12 +54,13 @@
         width: 42px;
         height: 42px;
         border-radius: 14px;
-        background: linear-gradient(135deg, #7cf0ff, #5d9dff 65%, #4b6cff);
-        box-shadow: 0 15px 35px rgba(124, 240, 255, 0.38);
-        display: grid;
-        place-items: center;
-        font-weight: 700;
-        color: #061021;
+        box-shadow: 0 15px 35px rgba(201, 160, 78, 0.38);
+        overflow: hidden;
+      }
+      .logo img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
       }
       h1 {
         margin: 0;
@@ -75,7 +76,7 @@
         font-size: 12px;
         background: rgba(255, 255, 255, 0.1);
         color: var(--primary);
-        border: 1px solid rgba(124, 240, 255, 0.25);
+        border: 1px solid rgba(201, 160, 78, 0.25);
       }
       main {
         padding: 0 28px 32px;
@@ -94,7 +95,7 @@
         content: "";
         position: absolute;
         inset: 0;
-        background: linear-gradient(135deg, rgba(124, 240, 255, 0.08), rgba(255, 184, 108, 0.06));
+        background: linear-gradient(135deg, rgba(201, 160, 78, 0.08), rgba(201, 160, 78, 0.06));
         opacity: 0.6;
         pointer-events: none;
       }
@@ -156,15 +157,15 @@
         outline: 1px solid var(--primary);
       }
       button {
-        background: linear-gradient(135deg, #7cf0ff, #5d9dff);
-        color: #081324;
+        background: linear-gradient(135deg, #C9A04E, #a67e3a);
+        color: #070708;
         border: none;
         border-radius: 10px;
         padding: 10px 12px;
         cursor: pointer;
         font-weight: 700;
         letter-spacing: 0.01em;
-        box-shadow: 0 10px 30px rgba(124, 240, 255, 0.28);
+        box-shadow: 0 10px 30px rgba(201, 160, 78, 0.28);
         transition: transform 0.08s ease, box-shadow 0.1s ease;
       }
       button.secondary {
@@ -173,7 +174,7 @@
         box-shadow: none;
       }
       button.recording {
-        background: rgba(255, 80, 80, 0.8);
+        background: rgba(196, 80, 80, 0.85);
         color: white;
         animation: pulse-recording 1s ease-in-out infinite;
       }
@@ -183,7 +184,7 @@
       }
       button:hover {
         transform: translateY(-1px);
-        box-shadow: 0 12px 36px rgba(124, 240, 255, 0.35);
+        box-shadow: 0 12px 36px rgba(201, 160, 78, 0.35);
       }
       .row {
         display: flex;
@@ -201,16 +202,16 @@
         font-weight: 700;
       }
       .pill.ok {
-        background: rgba(124, 240, 255, 0.2);
-        color: #7cf0ff;
+        background: rgba(201, 160, 78, 0.2);
+        color: #C9A04E;
       }
       .pill.warn {
-        background: rgba(255, 169, 90, 0.2);
-        color: #ffbe7f;
+        background: rgba(201, 160, 78, 0.15);
+        color: #d4af61;
       }
       .pill.err {
-        background: rgba(255, 107, 107, 0.2);
-        color: #ff9c9c;
+        background: rgba(180, 60, 60, 0.25);
+        color: #e07070;
       }
       ul {
         list-style: none;
@@ -297,9 +298,9 @@
         transition: transform 0.08s ease, box-shadow 0.1s ease, background 0.1s ease;
       }
       .tab.active {
-        background: linear-gradient(135deg, #7cf0ff, #5d9dff);
-        color: #081324;
-        box-shadow: 0 12px 30px rgba(124, 240, 255, 0.35);
+        background: linear-gradient(135deg, #C9A04E, #a67e3a);
+        color: #070708;
+        box-shadow: 0 12px 30px rgba(201, 160, 78, 0.35);
         transform: translateY(-1px);
       }
       .tab-content {
@@ -324,19 +325,19 @@
         gap: 8px;
       }
       .status-bar.ok {
-        border-color: rgba(124, 240, 255, 0.4);
-        background: rgba(124, 240, 255, 0.08);
+        border-color: rgba(201, 160, 78, 0.4);
+        background: rgba(201, 160, 78, 0.08);
       }
       .status-bar.err {
-        border-color: rgba(255, 107, 107, 0.4);
-        background: rgba(255, 107, 107, 0.12);
+        border-color: rgba(180, 60, 60, 0.4);
+        background: rgba(180, 60, 60, 0.12);
       }
       .debug-block {
         background: rgba(0, 0, 0, 0.35);
         border: 1px solid rgba(255, 255, 255, 0.12);
         border-radius: 10px;
         padding: 10px;
-        color: #cdd6e8;
+        color: #c5bfb2;
         font-size: 12px;
         overflow: auto;
         max-height: 200px;
@@ -357,8 +358,8 @@
         display: flex;
       }
       .modal-card {
-        background: #0c1324;
-        border: 1px solid rgba(124, 240, 255, 0.3);
+        background: #0d0b08;
+        border: 1px solid rgba(201, 160, 78, 0.3);
         border-radius: 12px;
         padding: 16px;
         width: min(400px, 90vw);
@@ -379,7 +380,7 @@
     <div class="glow"></div>
     <header>
       <div class="brand">
-        <div class="logo">V</div>
+        <div class="logo"><img src="https://veralux.ai/wp-content/uploads/2025/11/eralux-100-x-98-px-1-300x293.png" alt="VeraLux"></div>
         <div>
           <h1>VeraLux Receptionist</h1>
           <div class="muted">Precision control, live insight.</div>
@@ -391,10 +392,11 @@
     <div class="tabs">
       <button type="button" class="tab active" data-tab="overview">Overview</button>
       <button type="button" class="tab" data-tab="models">Models &amp; Prompts</button>
-      <button type="button" class="tab" data-tab="forwarding">Forwarding &amp; Pricing</button>
+      <button type="button" class="tab" data-tab="forwarding">Forwarding &amp; Products</button>
       <button type="button" class="tab" data-tab="analytics">Analytics</button>
       <button type="button" class="tab" data-tab="calls">Calls</button>
       <button type="button" class="tab" data-tab="audit">Audit Logs</button>
+      <button type="button" class="tab" data-tab="billing">Billing</button>
       <button type="button" class="tab" data-tab="settings">Settings</button>
       <button type="button" class="tab" id="refresh-all" style="margin-left: auto">Refresh All</button>
     </div>
@@ -470,19 +472,23 @@
           <form id="config-form">
             <label for="provider">Provider</label>
             <select id="provider" name="provider">
-              <option value="local">Local</option>
-              <option value="openai">OpenAI</option>
+              <option value="openai">OpenAI (ChatGPT)</option>
+              <option value="local">Local LLM</option>
             </select>
 
-            <label for="localUrl">Local URL</label>
-            <input id="localUrl" name="localUrl" type="text" placeholder="http://127.0.0.1:8080/completion" />
+            <div id="openai-fields">
+              <label for="openaiModel">Model</label>
+              <input id="openaiModel" name="openaiModel" type="text" placeholder="gpt-4o-mini" />
 
-            <label for="openaiModel">OpenAI model</label>
-            <input id="openaiModel" name="openaiModel" type="text" placeholder="gpt-4o-mini" />
+              <label for="openaiApiKey">API key (kept server-side, never shown)</label>
+              <input id="openaiApiKey" name="openaiApiKey" type="password" autocomplete="off" placeholder="sk-..." />
+              <div class="small" id="api-key-status">API key not set</div>
+            </div>
 
-            <label for="openaiApiKey">OpenAI API key (kept server-side, never shown)</label>
-            <input id="openaiApiKey" name="openaiApiKey" type="password" autocomplete="off" placeholder="sk-..." />
-            <div class="small" id="api-key-status">API key not set</div>
+            <div id="local-fields" style="display:none;">
+              <label for="localUrl">Local LLM URL</label>
+              <input id="localUrl" name="localUrl" type="text" placeholder="http://127.0.0.1:8080/completion" />
+            </div>
 
             <div class="row" style="margin-top: 6px">
               <button type="submit">Apply</button>
@@ -495,6 +501,9 @@
         <section class="panel">
           <h2>Prompt Controls</h2>
           <form id="prompt-form">
+            <label for="greetingText">Greeting message (what callers hear first)</label>
+            <textarea id="greetingText" name="greetingText" rows="2" placeholder="e.g. Hi! Thanks for calling King-Sod Lawn Care. How can I help you today?"></textarea>
+
             <label for="systemPreamble">System preamble (role, scope, goals, stages)</label>
             <textarea id="systemPreamble" name="systemPreamble" rows="4"></textarea>
 
@@ -541,7 +550,7 @@
             </div>
 
             <!-- Voice Cloning Section (XTTS only) -->
-            <div id="voice-cloning-section" style="display: block; margin-top: 16px; padding: 16px; border-radius: 12px; background: rgba(124, 240, 255, 0.06); border: 1px solid rgba(124, 240, 255, 0.2);">
+            <div id="voice-cloning-section" style="display: block; margin-top: 16px; padding: 16px; border-radius: 12px; background: rgba(201, 160, 78, 0.06); border: 1px solid rgba(201, 160, 78, 0.2);">
               <h3 style="margin: 0 0 12px; font-size: 15px; color: var(--primary);">Voice Cloning (XTTS)</h3>
               
               <label for="defaultVoiceMode">Default Voice Mode</label>
@@ -573,12 +582,12 @@
                   <audio id="audio-preview" controls style="width: 100%; height: 40px;"></audio>
                   <div style="display: flex; gap: 8px; margin-top: 8px;">
                     <button type="button" id="use-recording-btn" class="secondary" style="flex: 1;">Use This Recording</button>
-                    <button type="button" id="discard-recording-btn" class="secondary" style="flex: 1; background: rgba(255,100,100,0.2);">Discard</button>
+                    <button type="button" id="discard-recording-btn" class="secondary" style="flex: 1; background: rgba(180,60,60,0.25);">Discard</button>
                   </div>
                 </div>
                 
                 <!-- Upload Status -->
-                <div id="upload-status" style="display: none; font-size: 13px; padding: 8px; border-radius: 6px; background: rgba(124, 240, 255, 0.1);"></div>
+                <div id="upload-status" style="display: none; font-size: 13px; padding: 8px; border-radius: 6px; background: rgba(201, 160, 78, 0.1);"></div>
               </div>
               
               <label for="clonedVoiceUrl">Reference Audio URL (WAV)</label>
@@ -593,7 +602,7 @@
                 A friendly name for this cloned voice profile.
               </div>
 
-              <div id="voice-cloning-warning" style="display: none; padding: 10px; border-radius: 8px; background: rgba(255, 184, 108, 0.15); border: 1px solid rgba(255, 184, 108, 0.3); margin-bottom: 12px;">
+              <div id="voice-cloning-warning" style="display: none; padding: 10px; border-radius: 8px; background: rgba(201, 160, 78, 0.15); border: 1px solid rgba(201, 160, 78, 0.3); margin-bottom: 12px;">
                 <span class="small" style="color: var(--accent);">⚠️ Cloned voice mode requires a reference audio URL to be set.</span>
               </div>
             </div>
@@ -675,10 +684,14 @@
           <div id="fp-status" class="small" style="margin-top: 6px; min-height: 16px"></div>
         </section>
         <section class="panel">
-          <h2>Pricing information</h2>
-          <p class="small muted">Services and prices the receptionist can reference. Kept short for voice.</p>
+          <h2>Services & products</h2>
+          <p class="small muted">Services, products, and prices the receptionist can reference. Kept short for voice.</p>
           <div class="row" style="gap: 8px; flex-wrap: wrap; margin: 10px 0">
-            <input id="price-name" type="text" placeholder="Service name" style="min-width: 120px" />
+            <select id="price-type" style="min-width: 100px">
+              <option value="service">Service</option>
+              <option value="product">Product</option>
+            </select>
+            <input id="price-name" type="text" placeholder="Name" style="min-width: 120px" />
             <input id="price-amount" type="text" placeholder="Price (e.g. $50)" style="min-width: 80px" />
             <input id="price-desc" type="text" placeholder="Short description" style="min-width: 140px" />
             <button type="button" id="price-add">Add item</button>
@@ -734,9 +747,188 @@
             </select>
             <button type="button" id="create-admin-key">Create Key</button>
           </div>
-          <div id="admin-key-token" class="small" style="color: #7cf0ff; min-height: 16px"></div>
+          <div id="admin-key-token" class="small" style="color: #C9A04E; min-height: 16px"></div>
           <div class="list-title" style="margin-top: 6px">Existing keys</div>
           <div id="admin-keys" class="debug-block" style="max-height: 260px; overflow: auto"></div>
+        </section>
+      </div>
+
+      <div class="tab-content" data-tab="billing">
+        <section class="panel">
+          <h2>Subscription & billing</h2>
+          <div id="stripe-status-bar" style="padding:10px; border-radius:8px; margin-bottom:12px; font-size:13px;"></div>
+
+          <!-- Admin toggle — always visible -->
+          <div style="display:flex; align-items:center; gap:10px; margin:12px 0; padding:12px; border-radius:10px; background:rgba(201,160,78,0.08); border:1px solid rgba(201,160,78,0.2);">
+            <label for="sub-show-portal" style="margin:0; cursor:pointer; display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" id="sub-show-portal" checked style="width:18px;height:18px;accent-color:#C9A04E;cursor:pointer;" />
+              <span>Show billing section to business owner</span>
+            </label>
+            <span class="small muted">(When off, the owner won't see billing info in their portal)</span>
+          </div>
+
+          <!-- Current subscription summary -->
+          <div id="sub-summary" style="display:none; margin:12px 0; padding:14px; border-radius:10px; background:rgba(246,243,236,0.04); border:1px solid rgba(246,243,236,0.08);">
+            <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px;">
+              <div class="small">Plan: <strong id="sub-summary-plan">—</strong></div>
+              <div class="small">Status: <strong id="sub-summary-status">—</strong></div>
+              <div class="small">Price: <strong id="sub-summary-price">—</strong></div>
+              <div class="small">Frequency: <strong id="sub-summary-freq">—</strong></div>
+              <div class="small">Next billing: <strong id="sub-summary-next">—</strong></div>
+              <div class="small">Payment: <strong id="sub-summary-card">—</strong></div>
+            </div>
+            <div class="row" style="margin-top:10px; gap:8px;">
+              <button type="button" id="sub-remove" style="background:rgba(196,80,80,0.15); color:#e07070; border:1px solid rgba(196,80,80,0.3); padding:5px 14px; border-radius:8px; font-size:13px; cursor:pointer;">Remove subscription</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Stripe section — shown when Stripe is connected -->
+        <section class="panel" id="stripe-section" style="display:none;">
+          <h2>Stripe controls</h2>
+
+          <div id="stripe-configured" style="display:none;">
+            <h3>Plans</h3>
+            <p class="small muted">Create subscription plans in Stripe. Each plan gets a Stripe Product + Price.</p>
+            <div style="display:grid; grid-template-columns:1fr auto auto auto; gap:8px; align-items:end; margin:8px 0;">
+              <div>
+                <label for="stripe-plan-name" class="small">Plan name</label>
+                <input id="stripe-plan-name" type="text" placeholder="e.g. Pro" />
+              </div>
+              <div>
+                <label for="stripe-plan-price" class="small">Price ($)</label>
+                <input id="stripe-plan-price" type="number" min="0" step="0.01" placeholder="49.00" style="width:110px;" />
+              </div>
+              <div>
+                <label for="stripe-plan-interval" class="small">Interval</label>
+                <select id="stripe-plan-interval" style="width:130px;">
+                  <option value="month">Monthly</option>
+                  <option value="quarter">Quarterly</option>
+                  <option value="year">Yearly</option>
+                  <option value="one_time">One-time</option>
+                </select>
+              </div>
+              <div>
+                <label class="small" style="visibility:hidden;">Action</label>
+                <button type="button" id="stripe-create-plan" style="margin:0;">Create plan</button>
+              </div>
+            </div>
+            <ul id="stripe-plans-list" style="list-style:none; padding:0; margin:8px 0;"></ul>
+
+            <h3 style="margin-top:14px;">Assign plan to this business</h3>
+            <p class="small muted">Select a plan and click "Assign plan" to save it to this tenant's subscription. Or generate a Stripe Checkout link for the owner to pay.</p>
+            <div class="row" style="gap:8px; flex-wrap:wrap; margin:8px 0;">
+              <select id="stripe-assign-plan" style="min-width:180px;"></select>
+              <button type="button" id="stripe-assign-save">Assign plan</button>
+              <button type="button" class="secondary" id="stripe-send-checkout">Checkout link</button>
+              <button type="button" class="secondary" id="stripe-open-portal">Customer portal</button>
+              <button type="button" class="secondary" id="stripe-sync">Sync from Stripe</button>
+            </div>
+            <div id="stripe-checkout-url" style="display:none; margin-top:8px; padding:10px; border-radius:8px; background:rgba(201,160,78,0.08); border:1px solid rgba(201,160,78,0.2); word-break:break-all; font-size:13px;"></div>
+            <div id="stripe-action-status" class="small" style="margin-top:6px; min-height:16px;"></div>
+
+            <div style="margin-top:14px; padding:10px; border-radius:8px; background:rgba(246,243,236,0.04); border:1px solid rgba(246,243,236,0.08);">
+              <div class="small muted">Stripe IDs for this tenant</div>
+              <div class="small" style="margin-top:4px;">
+                Customer: <code id="stripe-cust-id">—</code> &nbsp;
+                Subscription: <code id="stripe-sub-id">—</code> &nbsp;
+                Price: <code id="stripe-price-id">—</code>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Manual fallback — shown when Stripe is NOT connected -->
+        <section class="panel" id="manual-billing-section">
+          <h2>Manual subscription setup</h2>
+          <p class="small muted">Manage subscription details manually (no payment processing).</p>
+
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div>
+              <label for="sub-plan">Plan name</label>
+              <input id="sub-plan" type="text" placeholder="e.g. Starter, Pro, Enterprise" />
+            </div>
+            <div>
+              <label for="sub-status">Status</label>
+              <select id="sub-status">
+                <option value="trial">Trial</option>
+                <option value="active">Active</option>
+                <option value="past_due">Past due</option>
+                <option value="paused">Paused</option>
+                <option value="cancelled">Cancelled</option>
+              </select>
+            </div>
+            <div>
+              <label for="sub-price">Price ($)</label>
+              <input id="sub-price" type="number" min="0" step="0.01" placeholder="49.00" />
+            </div>
+            <div>
+              <label for="sub-currency">Currency</label>
+              <select id="sub-currency">
+                <option value="usd">USD ($)</option>
+                <option value="eur">EUR (&euro;)</option>
+                <option value="gbp">GBP (&pound;)</option>
+                <option value="cad">CAD (C$)</option>
+              </select>
+            </div>
+            <div>
+              <label for="sub-frequency">Billing frequency</label>
+              <select id="sub-frequency">
+                <option value="monthly">Monthly</option>
+                <option value="quarterly">Quarterly</option>
+                <option value="yearly">Yearly</option>
+                <option value="one_time">One-time</option>
+              </select>
+            </div>
+            <div>
+              <label for="sub-next-billing">Next billing date</label>
+              <input id="sub-next-billing" type="date" />
+            </div>
+          </div>
+
+          <h3 style="margin-top:16px;">Payment method on file</h3>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+            <div>
+              <label for="sub-card-brand">Card brand</label>
+              <select id="sub-card-brand">
+                <option value="">None</option>
+                <option value="visa">Visa</option>
+                <option value="mastercard">Mastercard</option>
+                <option value="amex">Amex</option>
+                <option value="discover">Discover</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <label for="sub-card-last4">Last 4 digits</label>
+              <input id="sub-card-last4" type="text" maxlength="4" placeholder="4242" />
+            </div>
+          </div>
+
+          <div style="margin-top:12px;">
+            <label for="sub-trial-ends">Trial ends</label>
+            <input id="sub-trial-ends" type="date" style="max-width:220px;" />
+          </div>
+
+          <h3 style="margin-top:16px;">Admin notes</h3>
+          <textarea id="sub-notes" rows="2" placeholder="Internal notes (not shown to owner). e.g. Comp'd for beta, Invoice #1234"></textarea>
+
+          <div class="row" style="margin-top:10px; gap:8px;">
+            <button type="button" id="sub-save">Save subscription</button>
+            <button type="button" class="secondary" id="sub-refresh">Refresh</button>
+          </div>
+          <div id="sub-status-msg" class="small" style="margin-top:6px; min-height:16px;"></div>
+        </section>
+
+        <!-- Admin notes — always visible when Stripe is active -->
+        <section class="panel" id="stripe-admin-extras" style="display:none;">
+          <h3>Admin notes</h3>
+          <textarea id="sub-notes-stripe" rows="2" placeholder="Internal notes (not shown to owner). e.g. Comp'd for beta, Invoice #1234"></textarea>
+          <div class="row" style="margin-top:8px; gap:8px;">
+            <button type="button" id="sub-save-stripe">Save settings</button>
+            <button type="button" class="secondary" id="sub-refresh-stripe">Refresh</button>
+          </div>
+          <div id="sub-status-msg-stripe" class="small" style="margin-top:6px; min-height:16px;"></div>
         </section>
       </div>
 
@@ -762,7 +954,7 @@
         <h3>Admin Access Required</h3>
         <div class="small">Enter an admin token (API key or JWT) to access settings.</div>
         <input id="admin-pass-input" type="password" placeholder="Admin token (API key or JWT)" />
-        <div id="admin-pass-error" class="small" style="color: #ff9c9c; min-height: 16px"></div>
+        <div id="admin-pass-error" class="small" style="color: #e07070; min-height: 16px"></div>
         <div class="modal-actions">
           <button type="button" class="secondary" id="admin-pass-cancel">Cancel</button>
           <button type="button" id="admin-pass-confirm">Confirm</button>
@@ -977,14 +1169,27 @@
         }
       }
 
+      function toggleProviderFields() {
+        const isOpenAI = $("provider").value === "openai";
+        $("openai-fields").style.display = isOpenAI ? "" : "none";
+        $("local-fields").style.display = isOpenAI ? "none" : "";
+      }
+
       function renderConfig(cfg) {
         $("provider").value = cfg.provider;
         $("localUrl").value = cfg.localUrl || "";
         $("openaiModel").value = cfg.openaiModel || "";
-        $("summary-provider").textContent = cfg.provider.toUpperCase();
-        $("summary-model").textContent = cfg.openaiModel ? `Model: ${cfg.openaiModel}` : "";
-        $("api-key-status").textContent = cfg.hasOpenAIApiKey ? "API key set" : "API key not set";
+        const providerLabel = cfg.provider === "openai" ? "OpenAI (ChatGPT)" : "Local LLM";
+        $("summary-provider").textContent = providerLabel;
+        $("summary-model").textContent = cfg.provider === "openai"
+          ? `Model: ${cfg.openaiModel || "gpt-4o-mini"}`
+          : cfg.localUrl ? `URL: ${cfg.localUrl}` : "";
+        $("api-key-status").textContent = cfg.hasOpenAIApiKey
+          ? "API key is configured"
+          : "No API key — set one to enable OpenAI";
+        $("api-key-status").style.color = cfg.hasOpenAIApiKey ? "var(--primary)" : "#e07070";
         $("debug-config").textContent = JSON.stringify(cfg, null, 2);
+        toggleProviderFields();
       }
 
       async function loadConfig(showStatus = false) {
@@ -1002,6 +1207,7 @@
       async function loadPrompts(showStatus = false) {
         try {
           const prompts = await fetchJSON("/api/admin/prompts");
+          $("greetingText").value = prompts.greetingText || "";
           $("systemPreamble").value = prompts.systemPreamble || "";
           $("policyPrompt").value = prompts.policyPrompt || "";
           $("voicePrompt").value = prompts.voicePrompt || "";
@@ -1104,6 +1310,7 @@
           return;
         }
         const payload = {
+          greetingText: $("greetingText").value,
           systemPreamble: $("systemPreamble").value,
           policyPrompt: $("policyPrompt").value,
           voicePrompt: $("voicePrompt").value,
@@ -1167,12 +1374,12 @@
           return card;
         };
 
+        const llmProvider = data.llm.provider === "openai" ? "OpenAI (ChatGPT)" : "Local LLM";
+        const llmDetails = data.llm.provider === "openai"
+          ? [`Provider: ${llmProvider}`, `Model: ${data.llm.model || "gpt-4o-mini"}`, `API Key: ${data.llm.hasOpenAIApiKey ? "Configured" : "Missing"}`]
+          : [`Provider: ${llmProvider}`, `URL: ${data.llm.localUrl || "-"}`];
         container.appendChild(
-          healthCard("LLM", data.llm.status, [
-            `Provider: ${data.llm.provider}`,
-            `Model: ${data.llm.model || "-"}`,
-            `URL: ${data.llm.localUrl || "-"}`,
-          ])
+          healthCard("LLM", data.llm.status, llmDetails)
         );
 
         container.appendChild(healthCard("STT", data.stt.status, [`Status: ${data.stt.status}`]));
@@ -1610,7 +1817,7 @@
 
           if (uploadStatus) {
             uploadStatus.textContent = "Recording uploaded successfully!";
-            uploadStatus.style.background = "rgba(100, 255, 100, 0.1)";
+            uploadStatus.style.background = "rgba(201, 160, 78, 0.15)";
           }
           
           setStatus("Voice recording uploaded", "ok");
@@ -1625,7 +1832,7 @@
           console.error("Upload error:", err);
           if (uploadStatus) {
             uploadStatus.textContent = "Upload failed: " + err.message;
-            uploadStatus.style.background = "rgba(255, 100, 100, 0.1)";
+            uploadStatus.style.background = "rgba(180, 60, 60, 0.15)";
           }
           setStatus("Voice recording upload failed", "err");
         }
@@ -1837,6 +2044,312 @@
         loadAudit();
         loadAdminKeys();
         loadCloudflareStatus();
+        loadSubscription();
+      }
+
+      // ── Subscription / Billing ──
+
+      async function loadSubscription() {
+        try {
+          const sub = await fetchJSON("/api/admin/subscription");
+          const hasData = sub.configured !== false;
+          // Always populate the toggle
+          $("sub-show-portal").checked = hasData ? sub.showBillingPortal !== false : false;
+          // Populate manual form fields (used when Stripe is not connected)
+          if ($("sub-plan")) $("sub-plan").value = hasData ? (sub.planName || "") : "";
+          if ($("sub-status")) $("sub-status").value = hasData ? (sub.status || "trial") : "trial";
+          if ($("sub-price")) $("sub-price").value = hasData && sub.priceCents ? (sub.priceCents / 100).toFixed(2) : "";
+          if ($("sub-currency")) $("sub-currency").value = hasData ? (sub.currency || "usd") : "usd";
+          if ($("sub-frequency")) $("sub-frequency").value = hasData ? (sub.billingFrequency || "monthly") : "monthly";
+          if ($("sub-card-brand")) $("sub-card-brand").value = hasData ? (sub.paymentMethodBrand || "") : "";
+          if ($("sub-card-last4")) $("sub-card-last4").value = hasData ? (sub.paymentMethodLast4 || "") : "";
+          if ($("sub-notes")) $("sub-notes").value = hasData ? (sub.adminNotes || "") : "";
+          if (hasData && sub.nextBillingDate && $("sub-next-billing")) $("sub-next-billing").value = sub.nextBillingDate.slice(0, 10);
+          else if ($("sub-next-billing")) $("sub-next-billing").value = "";
+          if (hasData && sub.trialEndsAt && $("sub-trial-ends")) $("sub-trial-ends").value = sub.trialEndsAt.slice(0, 10);
+          else if ($("sub-trial-ends")) $("sub-trial-ends").value = "";
+          // Populate read-only summary and Stripe IDs
+          if (hasData) {
+            renderSubscriptionSummary(sub);
+            $("sub-summary").style.display = "";
+          } else {
+            $("sub-summary").style.display = "none";
+          }
+          // Load Stripe status (toggles which panels are visible)
+          loadStripeStatus();
+        } catch (err) {
+          console.error("loadSubscription:", err);
+        }
+      }
+
+      async function saveSubscription() {
+        const statusEl = $("sub-status-msg");
+        try {
+          const payload = {
+            planName: $("sub-plan").value.trim() || "Starter",
+            priceCents: Math.round((parseFloat($("sub-price").value) || 0) * 100),
+            currency: $("sub-currency").value,
+            billingFrequency: $("sub-frequency").value,
+            status: $("sub-status").value,
+            showBillingPortal: $("sub-show-portal").checked,
+            paymentMethodBrand: $("sub-card-brand").value || null,
+            paymentMethodLast4: $("sub-card-last4").value || null,
+            nextBillingDate: $("sub-next-billing").value ? new Date($("sub-next-billing").value).toISOString() : null,
+            trialEndsAt: $("sub-trial-ends").value ? new Date($("sub-trial-ends").value).toISOString() : null,
+            adminNotes: $("sub-notes").value.trim() || null,
+          };
+          await fetchJSON("/api/admin/subscription", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (statusEl) statusEl.textContent = "Saved.";
+          setStatus("Subscription saved", "ok");
+        } catch (err) {
+          if (statusEl) statusEl.textContent = "Save failed: " + err.message;
+          setStatus("Subscription save failed", "err");
+        }
+      }
+
+      // ── Stripe ──
+
+      let stripeIsConnected = false;
+
+      async function loadStripeStatus() {
+        try {
+          const status = await fetchJSON("/api/admin/stripe/status");
+          const bar = $("stripe-status-bar");
+          stripeIsConnected = !!status.configured;
+          if (stripeIsConnected) {
+            bar.innerHTML = '<span style="color:var(--primary);">&#10003; Stripe is connected — payments are processed through Stripe</span>';
+            bar.style.background = "rgba(201,160,78,0.08)";
+            bar.style.border = "1px solid rgba(201,160,78,0.2)";
+            // Show Stripe controls, hide manual form
+            $("stripe-section").style.display = "";
+            $("stripe-configured").style.display = "";
+            $("stripe-admin-extras").style.display = "";
+            $("manual-billing-section").style.display = "none";
+            $("sub-summary").style.display = "";
+            await loadStripePlans();
+          } else {
+            bar.innerHTML = 'Stripe is not connected — using manual billing. Add <code>STRIPE_SECRET_KEY</code> to .env to enable payment processing.';
+            bar.style.background = "rgba(246,243,236,0.06)";
+            bar.style.border = "1px solid rgba(246,243,236,0.1)";
+            // Show manual form, hide Stripe controls
+            $("stripe-section").style.display = "none";
+            $("stripe-admin-extras").style.display = "none";
+            $("manual-billing-section").style.display = "";
+            $("sub-summary").style.display = "none";
+          }
+        } catch (err) {
+          console.error("loadStripeStatus:", err);
+        }
+      }
+
+      function renderSubscriptionSummary(sub) {
+        if (!sub) return;
+        const statusMap = { trial: "Trial", active: "Active", past_due: "Past due", paused: "Paused", cancelled: "Cancelled" };
+        const freqMap = { monthly: "Monthly", quarterly: "Quarterly", yearly: "Yearly", one_time: "One-time" };
+        $("sub-summary-plan").textContent = sub.planName || "—";
+        $("sub-summary-status").textContent = statusMap[sub.status] || sub.status || "—";
+        const price = sub.priceCents ? "$" + (sub.priceCents / 100).toFixed(2) : "—";
+        $("sub-summary-price").textContent = price + " " + (sub.currency || "usd").toUpperCase();
+        $("sub-summary-freq").textContent = freqMap[sub.billingFrequency] || sub.billingFrequency || "—";
+        $("sub-summary-next").textContent = sub.nextBillingDate ? new Date(sub.nextBillingDate).toLocaleDateString() : "—";
+        const card = sub.paymentMethodBrand && sub.paymentMethodLast4
+          ? `${sub.paymentMethodBrand.charAt(0).toUpperCase() + sub.paymentMethodBrand.slice(1)} ····${sub.paymentMethodLast4}`
+          : "None";
+        $("sub-summary-card").textContent = card;
+        // Stripe IDs
+        if ($("stripe-cust-id")) $("stripe-cust-id").textContent = sub.stripeCustomerId || "—";
+        if ($("stripe-sub-id")) $("stripe-sub-id").textContent = sub.stripeSubscriptionId || "—";
+        if ($("stripe-price-id")) $("stripe-price-id").textContent = sub.stripePriceId || "—";
+        // Stripe admin notes
+        if ($("sub-notes-stripe")) $("sub-notes-stripe").value = sub.adminNotes || "";
+      }
+
+      let stripePlansCache = [];
+
+      async function loadStripePlans() {
+        try {
+          const data = await fetchJSON("/api/admin/stripe/plans");
+          stripePlansCache = data.plans || [];
+          renderStripePlans();
+          renderStripePlanSelect();
+        } catch (err) {
+          console.error("loadStripePlans:", err);
+        }
+      }
+
+      function renderStripePlans() {
+        const list = $("stripe-plans-list");
+        if (!list) return;
+        if (!stripePlansCache.length) {
+          list.innerHTML = '<li class="small" style="color:var(--muted)">No plans yet. Create one above.</li>';
+          return;
+        }
+        const intervalLabels = { month: "Monthly", quarter: "Quarterly", year: "Yearly", one_time: "One-time", monthly: "Monthly", quarterly: "Quarterly", yearly: "Yearly" };
+        list.innerHTML = stripePlansCache.map(p => {
+          const intv = intervalLabels[p.billing_interval] || p.billing_interval;
+          return `<li style="margin:4px 0; padding:8px 10px; border-radius:8px; background:rgba(246,243,236,0.04); border:1px solid rgba(246,243,236,0.08); display:flex; justify-content:space-between; align-items:center; gap:8px;">
+            <span style="flex:1;"><strong>${escapeHtml(p.name)}</strong> — $${(p.price_cents / 100).toFixed(2)} ${p.currency.toUpperCase()} / ${intv}</span>
+            <code class="small" style="flex-shrink:0;">${escapeHtml(p.stripe_price_id || "—")}</code>
+            <button type="button" onclick="deleteStripePlanUI('${escapeHtml(p.id)}')" style="background:rgba(196,80,80,0.15); color:#e07070; border:1px solid rgba(196,80,80,0.3); padding:3px 10px; border-radius:6px; font-size:12px; cursor:pointer; flex-shrink:0;">Delete</button>
+          </li>`;
+        }).join("");
+      }
+
+      function renderStripePlanSelect() {
+        const sel = $("stripe-assign-plan");
+        if (!sel) return;
+        const intervalLabels = { month: "Monthly", quarter: "Quarterly", year: "Yearly", one_time: "One-time", monthly: "Monthly", quarterly: "Quarterly", yearly: "Yearly" };
+        sel.innerHTML = '<option value="">Select a plan…</option>';
+        stripePlansCache.forEach(p => {
+          const intv = intervalLabels[p.billing_interval] || p.billing_interval;
+          const opt = document.createElement("option");
+          opt.value = p.stripe_price_id;
+          opt.textContent = `${p.name} — $${(p.price_cents / 100).toFixed(2)} / ${intv}`;
+          sel.appendChild(opt);
+        });
+      }
+
+      function renderStripeIds() {
+        // Show Stripe IDs from the loaded subscription
+        const sub = {
+          customerId: $("stripe-cust-id")?.dataset?.value,
+          subscriptionId: $("stripe-sub-id")?.dataset?.value,
+          priceId: $("stripe-price-id")?.dataset?.value,
+        };
+      }
+
+      async function createStripePlan() {
+        const name = $("stripe-plan-name").value.trim();
+        const priceDollars = parseFloat($("stripe-plan-price").value) || 0;
+        const priceCents = Math.round(priceDollars * 100);
+        const billingInterval = $("stripe-plan-interval").value;
+        if (!name || !priceCents) return;
+        try {
+          await fetchJSON("/api/admin/stripe/plans", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, priceCents, billingInterval }),
+          });
+          $("stripe-plan-name").value = "";
+          $("stripe-plan-price").value = "";
+          setStatus("Stripe plan created", "ok");
+          await loadStripePlans();
+        } catch (err) {
+          setStatus("Failed to create plan: " + err.message, "err");
+        }
+      }
+
+      async function deleteStripePlanUI(planId) {
+        if (!confirm("Delete this plan? It will be deactivated in Stripe and removed from the list.")) return;
+        try {
+          await fetchJSON("/api/admin/stripe/plans/" + encodeURIComponent(planId), { method: "DELETE" });
+          setStatus("Plan deleted", "ok");
+          await loadStripePlans();
+        } catch (err) {
+          setStatus("Failed to delete plan: " + err.message, "err");
+        }
+      }
+
+      async function removeSubscription() {
+        if (!confirm("Remove this tenant's subscription? The billing section will be hidden from the owner.")) return;
+        try {
+          await fetchJSON("/api/admin/subscription", { method: "DELETE" });
+          setStatus("Subscription removed", "ok");
+          $("sub-show-portal").checked = false;
+          await loadSubscription();
+        } catch (err) {
+          setStatus("Failed to remove: " + err.message, "err");
+        }
+      }
+
+      async function assignStripePlan() {
+        const priceId = $("stripe-assign-plan").value;
+        const statusEl = $("stripe-action-status");
+        if (!priceId) { if (statusEl) statusEl.textContent = "Select a plan first."; return; }
+
+        // Find the selected plan from cache to get its details
+        const plan = stripePlansCache.find(p => p.stripe_price_id === priceId);
+        if (!plan) { if (statusEl) statusEl.textContent = "Plan not found."; return; }
+
+        const intervalLabels = { month: "monthly", quarter: "quarterly", year: "yearly", one_time: "one_time", monthly: "monthly", quarterly: "quarterly", yearly: "yearly" };
+        try {
+          await fetchJSON("/api/admin/subscription", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              planName: plan.name,
+              priceCents: plan.price_cents,
+              currency: plan.currency || "usd",
+              billingFrequency: intervalLabels[plan.billing_interval] || plan.billing_interval,
+              status: "active",
+              showBillingPortal: $("sub-show-portal").checked,
+              stripePriceId: plan.stripe_price_id || null,
+              stripeProductId: plan.stripe_product_id || null,
+            }),
+          });
+          if (statusEl) statusEl.textContent = "Plan assigned and saved.";
+          setStatus("Plan assigned to tenant", "ok");
+          await loadSubscription();
+        } catch (err) {
+          if (statusEl) statusEl.textContent = "Failed: " + err.message;
+        }
+      }
+
+      async function stripeCheckout() {
+        const priceId = $("stripe-assign-plan").value;
+        const statusEl = $("stripe-action-status");
+        if (!priceId) { if (statusEl) statusEl.textContent = "Select a plan first."; return; }
+        try {
+          const data = await fetchJSON("/api/admin/stripe/checkout", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ priceId }),
+          });
+          const urlEl = $("stripe-checkout-url");
+          if (urlEl && data.url) {
+            urlEl.style.display = "";
+            urlEl.innerHTML = `Checkout link: <a href="${escapeHtml(data.url)}" target="_blank" style="color:var(--primary); word-break:break-all;">${escapeHtml(data.url)}</a>`;
+          }
+          if (statusEl) statusEl.textContent = "Checkout session created. Send the link to the owner.";
+          setStatus("Stripe checkout created", "ok");
+        } catch (err) {
+          if (statusEl) statusEl.textContent = "Failed: " + err.message;
+        }
+      }
+
+      async function stripePortal() {
+        const statusEl = $("stripe-action-status");
+        try {
+          const data = await fetchJSON("/api/admin/stripe/portal", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          if (data.url) window.open(data.url, "_blank");
+          if (statusEl) statusEl.textContent = "Portal opened in new tab.";
+        } catch (err) {
+          if (statusEl) statusEl.textContent = "Failed: " + err.message;
+        }
+      }
+
+      async function stripeSync() {
+        const statusEl = $("stripe-action-status");
+        try {
+          const data = await fetchJSON("/api/admin/stripe/sync", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          if (statusEl) statusEl.textContent = "Synced from Stripe.";
+          setStatus("Subscription synced from Stripe", "ok");
+          await loadSubscription();
+        } catch (err) {
+          if (statusEl) statusEl.textContent = "Sync failed: " + err.message;
+        }
       }
 
       async function loadForwardingAndPricing() {
@@ -1891,16 +2404,19 @@
         if (notesEl) notesEl.value = pricingCache.notes || "";
         list.innerHTML = "";
         if (!pricingCache.items || pricingCache.items.length === 0) {
-          list.appendChild(Object.assign(document.createElement("li"), { className: "small", textContent: "No pricing items yet. Add one above." }));
+          list.appendChild(Object.assign(document.createElement("li"), { className: "small", textContent: "No items yet. Add one above." }));
           return;
         }
         pricingCache.items.forEach((item, i) => {
           const li = document.createElement("li");
           li.className = "card";
           li.style.marginBottom = "6px";
+          const badge = (item.type === "product")
+            ? '<span style="background:rgba(201,160,78,0.18);color:#C9A04E;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;margin-right:6px;">Product</span>'
+            : '<span style="background:rgba(246,243,236,0.10);color:var(--muted);padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;margin-right:6px;">Service</span>';
           li.innerHTML = `
             <div class="flex-between">
-              <div><strong>${escapeHtml(item.name)}</strong> ${escapeHtml(item.price)} ${item.description ? `<span class="small">${escapeHtml(item.description)}</span>` : ""}</div>
+              <div>${badge}<strong>${escapeHtml(item.name)}</strong> ${escapeHtml(item.price)} ${item.description ? `<span class="small">${escapeHtml(item.description)}</span>` : ""}</div>
               <button type="button" class="secondary" data-price-index="${i}">Remove</button>
             </div>
           `;
@@ -2014,6 +2530,7 @@
         if (tenantCreate) tenantCreate.addEventListener("click", saveTenantFromForm);
 
         $("config-form").addEventListener("submit", saveConfig);
+        $("provider").addEventListener("change", toggleProviderFields);
         $("refresh-config").addEventListener("click", () => loadConfig(true));
         $("prompt-form").addEventListener("submit", savePrompts);
         $("refresh-prompts").addEventListener("click", () => loadPrompts(true));
@@ -2096,12 +2613,13 @@
         const priceAdd = $("price-add");
         if (priceAdd) {
           priceAdd.addEventListener("click", () => {
+            const type = ($("price-type")?.value || "service");
             const name = ($("price-name")?.value || "").trim();
             const price = ($("price-amount")?.value || "").trim();
             const desc = ($("price-desc")?.value || "").trim();
             if (!name) return;
             if (!pricingCache.items) pricingCache.items = [];
-            pricingCache.items.push({ id: "id_" + Date.now(), name, price, description: desc || undefined });
+            pricingCache.items.push({ id: "id_" + Date.now(), type, name, price, description: desc || undefined });
             if ($("price-name")) $("price-name").value = "";
             if ($("price-amount")) $("price-amount").value = "";
             if ($("price-desc")) $("price-desc").value = "";
@@ -2110,6 +2628,65 @@
         }
         const priceSave = $("price-save");
         if (priceSave) priceSave.addEventListener("click", () => savePricing());
+
+        // Subscription / Billing — auto-save toggle (PATCH: only updates existing record, won't create)
+        const showPortalToggle = $("sub-show-portal");
+        if (showPortalToggle) showPortalToggle.addEventListener("change", async () => {
+          try {
+            const result = await fetchJSON("/api/admin/subscription", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ showBillingPortal: showPortalToggle.checked }),
+            });
+            if (result.configured === false) {
+              setStatus("Assign a plan first before toggling visibility", "err");
+              showPortalToggle.checked = false;
+              return;
+            }
+            setStatus(showPortalToggle.checked ? "Billing visible to owner" : "Billing hidden from owner", "ok");
+          } catch (err) {
+            setStatus("Toggle failed: " + err.message, "err");
+          }
+        });
+        const subSave = $("sub-save");
+        if (subSave) subSave.addEventListener("click", () => saveSubscription());
+        const subRefresh = $("sub-refresh");
+        if (subRefresh) subRefresh.addEventListener("click", () => loadSubscription());
+        // Stripe admin extras (notes + toggle save when Stripe is active)
+        const subSaveStripe = $("sub-save-stripe");
+        if (subSaveStripe) subSaveStripe.addEventListener("click", async () => {
+          const statusEl = $("sub-status-msg-stripe");
+          try {
+            await fetchJSON("/api/admin/subscription", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                showBillingPortal: $("sub-show-portal").checked,
+                adminNotes: ($("sub-notes-stripe").value || "").trim() || null,
+              }),
+            });
+            if (statusEl) statusEl.textContent = "Saved.";
+            setStatus("Billing settings saved", "ok");
+          } catch (err) {
+            if (statusEl) statusEl.textContent = "Save failed: " + err.message;
+          }
+        });
+        const subRefreshStripe = $("sub-refresh-stripe");
+        if (subRefreshStripe) subRefreshStripe.addEventListener("click", () => loadSubscription());
+
+        // Stripe
+        const stripeCreatePlanBtn = $("stripe-create-plan");
+        if (stripeCreatePlanBtn) stripeCreatePlanBtn.addEventListener("click", () => createStripePlan());
+        const stripeAssignBtn = $("stripe-assign-save");
+        if (stripeAssignBtn) stripeAssignBtn.addEventListener("click", () => assignStripePlan());
+        const subRemoveBtn = $("sub-remove");
+        if (subRemoveBtn) subRemoveBtn.addEventListener("click", () => removeSubscription());
+        const stripeCheckoutBtn = $("stripe-send-checkout");
+        if (stripeCheckoutBtn) stripeCheckoutBtn.addEventListener("click", () => stripeCheckout());
+        const stripePortalBtn = $("stripe-open-portal");
+        if (stripePortalBtn) stripePortalBtn.addEventListener("click", () => stripePortal());
+        const stripeSyncBtn = $("stripe-sync");
+        if (stripeSyncBtn) stripeSyncBtn.addEventListener("click", () => stripeSync());
 
         const createKeyBtn = $("create-admin-key");
         if (createKeyBtn) {
