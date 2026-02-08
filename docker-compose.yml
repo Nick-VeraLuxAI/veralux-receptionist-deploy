@@ -56,6 +56,7 @@ services:
       - BASE_URL=${BASE_URL:-http://localhost:4000}
       - SECRET_ENCRYPTION_KEY=${SECRET_ENCRYPTION_KEY}
       - SECRET_MANAGER=${SECRET_MANAGER:-db}
+      - ADMIN_API_KEY=${ADMIN_API_KEY}
       - ADMIN_ALLOWED_ORIGINS=${ADMIN_ALLOWED_ORIGINS:-http://localhost:4000}
       # ── Redis sync env vars (used by redisSync.ts) ──
       - TTS_MODE=${TTS_MODE:-coqui_xtts}
