@@ -55,6 +55,7 @@ import { closeRedis as closeRateLimitRedis } from "./redis";
 import { normalizePhoneNumber } from "./utils/phone";
 import { isUuid } from "./utils/validation";
 import { parsePricingInfo, createForwardingProfile } from "./llmContext";
+import { verifyOwnerPasscode, setOwnerPasscode, issueOwnerJwt } from "./ownerAuth";
 
 dotenv.config();
 
@@ -776,6 +777,106 @@ app.get("/ready", async (_req, res) => {
   
   res.json({ status: "ok", checks });
 });
+
+/* ────────────────────────────────────────────────
+   Owner Portal – public auth (no adminGuard)
+   ──────────────────────────────────────────────── */
+
+app.post("/api/owner/login", async (req, res) => {
+  try {
+    const { phone, passcode } = req.body || {};
+
+    if (!phone || typeof phone !== "string") {
+      return res.status(400).json({ error: "Phone number is required" });
+    }
+    if (!passcode || typeof passcode !== "string") {
+      return res.status(400).json({ error: "Passcode is required" });
+    }
+
+    // Try multiple normalizations to be forgiving with format
+    const normalized = normalizePhoneNumber(phone);
+    const stripped = phone.replace(/[\s\-\(\)\.]/g, "");
+    const digits = stripped.replace(/^\+/, "");
+
+    // Look up tenant by phone number — try all reasonable formats
+    const tenant =
+      (normalized ? tenants.getByNumber(normalized) : undefined) ||
+      tenants.getByNumber(stripped) ||
+      tenants.getByNumber(digits) ||
+      tenants.getByNumber("+" + digits) ||
+      // US number fallback: 10-digit → prepend 1 or +1
+      (digits.length === 10 ? (
+        tenants.getByNumber("1" + digits) ||
+        tenants.getByNumber("+1" + digits)
+      ) : undefined);
+
+    if (!tenant) {
+      // Don't reveal whether the number exists
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // Verify passcode
+    const valid = await verifyOwnerPasscode(tenant.id, passcode);
+    if (!valid) {
+      return res.status(401).json({ error: "Invalid credentials" });
+    }
+
+    // Issue tenant-scoped JWT
+    const token = await issueOwnerJwt({
+      tenantId: tenant.id,
+      tenantName: tenant.meta.name,
+    });
+
+    return res.json({
+      success: true,
+      token,
+      tenant: {
+        id: tenant.id,
+        name: tenant.meta.name,
+        numbers: tenant.meta.numbers,
+      },
+    });
+  } catch (err) {
+    console.error("POST /api/owner/login error:", err);
+    return res.status(500).json({ error: "Login failed" });
+  }
+});
+
+// Admin-only: set a tenant's owner passcode
+app.post("/api/owner/set-passcode", async (req, res) => {
+  try {
+    // Require admin auth for this endpoint
+    const adminToken = getAdminToken(req);
+    if (!adminToken) {
+      return res.status(401).json({ error: "Admin auth required" });
+    }
+    const principal = await authenticateAdminKey(adminToken);
+    if (!principal || principal.source === "oidc") {
+      return res.status(401).json({ error: "Admin auth required" });
+    }
+
+    const { tenantId, passcode } = req.body || {};
+    if (!tenantId || typeof tenantId !== "string") {
+      return res.status(400).json({ error: "tenantId is required" });
+    }
+    if (!passcode || typeof passcode !== "string" || passcode.length < 4) {
+      return res.status(400).json({ error: "passcode must be at least 4 characters" });
+    }
+
+    const tenant = tenants.getOrCreate(tenantId);
+    if (!tenant) {
+      return res.status(404).json({ error: "Tenant not found" });
+    }
+
+    await setOwnerPasscode(tenantId, passcode);
+    return res.json({ success: true, tenantId });
+  } catch (err) {
+    console.error("POST /api/owner/set-passcode error:", err);
+    return res.status(500).json({ error: "Failed to set passcode" });
+  }
+});
+
+/* ──────────────────────────────────────────────── */
 
 const ADMIN_RATE_MAX = Number(process.env.ADMIN_RATE_MAX || 100);
 const ADMIN_RATE_WINDOW_MS = Number(

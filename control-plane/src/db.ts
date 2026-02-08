@@ -656,6 +656,55 @@ export async function listMembershipsForUser(userId: string): Promise<Membership
 }
 
 
+// ── Owner passcode helpers ─────────────────────────
+
+export async function upsertOwnerPasscode(tenantId: string, passcodeHash: string): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `INSERT INTO owner_passcodes (tenant_id, passcode_hash, updated_at)
+       VALUES ($1, $2, now())
+       ON CONFLICT (tenant_id) DO UPDATE
+         SET passcode_hash = $2, updated_at = now()`,
+      [tenantId, passcodeHash]
+    );
+  } finally {
+    client.release();
+  }
+}
+
+export async function getOwnerPasscodeHash(tenantId: string): Promise<string | null> {
+  const client = await pool.connect();
+  try {
+    const res = await client.query<{ passcode_hash: string }>(
+      "SELECT passcode_hash FROM owner_passcodes WHERE tenant_id = $1",
+      [tenantId]
+    );
+    return res.rows[0]?.passcode_hash ?? null;
+  } finally {
+    client.release();
+  }
+}
+
+export async function upsertTenantMembership(params: {
+  tenantId: string;
+  userId: string;
+  role: string;
+}): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query(
+      `INSERT INTO tenant_memberships (tenant_id, user_id, role)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (tenant_id, user_id) DO UPDATE
+         SET role = $3`,
+      [params.tenantId, params.userId, params.role]
+    );
+  } finally {
+    client.release();
+  }
+}
+
 export async function closePool(): Promise<void> {
   await pool.end();
 }

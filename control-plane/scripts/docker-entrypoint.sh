@@ -19,6 +19,11 @@ if [ -z "$ALLOW_ADMIN_API_KEY_IN_PROD" ]; then
   export ALLOW_ADMIN_API_KEY_IN_PROD="true"
 fi
 
+# Owner portal JWT: fall back to JWT_SECRET if ADMIN_JWT_SECRET not set
+if [ -z "$ADMIN_JWT_SECRET" ] && [ -n "$JWT_SECRET" ]; then
+  export ADMIN_JWT_SECRET="$JWT_SECRET"
+fi
+
 echo "[entrypoint] Waiting for Postgres..."
 node scripts/wait-for-db.js
 echo "[entrypoint] Running migrations..."

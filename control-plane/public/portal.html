@@ -1,0 +1,685 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Business Portal — VeraLux</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #06090f;
+        --surface: rgba(255, 255, 255, 0.03);
+        --surface-hover: rgba(255, 255, 255, 0.06);
+        --border: rgba(255, 255, 255, 0.07);
+        --border-focus: rgba(124, 240, 255, 0.4);
+        --text: #f0f4fc;
+        --text-soft: #a8b8d4;
+        --muted: #6b7fa0;
+        --primary: #0ea5e9;
+        --primary-glow: rgba(14, 165, 233, 0.35);
+        --accent: #22d3ee;
+        --accent-warm: #f59e0b;
+        --success: #34d399;
+        --success-glow: rgba(52, 211, 153, 0.25);
+        --danger: #f87171;
+        font-family: "Outfit", system-ui, sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        position: relative;
+        overflow-x: hidden;
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background:
+          radial-gradient(ellipse 100% 80% at 20% -10%, rgba(14, 165, 233, 0.15), transparent 50%),
+          radial-gradient(ellipse 80% 60% at 90% 20%, rgba(34, 211, 238, 0.08), transparent 45%),
+          radial-gradient(ellipse 60% 80% at 50% 100%, rgba(245, 158, 11, 0.06), transparent 50%);
+        pointer-events: none;
+        z-index: 0;
+      }
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+        pointer-events: none;
+        z-index: 0;
+      }
+
+      /* ── Login screen ── */
+      .login-wrap {
+        position: relative;
+        z-index: 1;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 32px;
+      }
+      .login-card {
+        background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 40px;
+        max-width: 420px;
+        width: 100%;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        animation: fadeUp 0.5s ease;
+      }
+      @keyframes fadeUp {
+        from { opacity: 0; transform: translateY(16px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .login-logo {
+        width: 64px;
+        height: 64px;
+        border-radius: 20px;
+        background: linear-gradient(145deg, var(--accent) 0%, var(--primary) 50%, #6366f1 100%);
+        box-shadow: 0 0 40px var(--primary-glow), 0 8px 32px rgba(0,0,0,0.3);
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        color: #fff;
+        font-size: 28px;
+        margin: 0 auto 24px;
+        border: 1px solid rgba(255,255,255,0.2);
+      }
+      .login-card h2 {
+        margin: 0 0 8px;
+        font-size: 24px;
+        font-weight: 700;
+        text-align: center;
+        letter-spacing: -0.02em;
+      }
+      .login-card .subtitle {
+        text-align: center;
+        font-size: 14px;
+        color: var(--text-soft);
+        margin-bottom: 28px;
+      }
+      .login-card label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-soft);
+      }
+      .login-card input {
+        width: 100%;
+        padding: 14px 16px;
+        margin-bottom: 16px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: rgba(255,255,255,0.03);
+        color: var(--text);
+        font-family: inherit;
+        font-size: 15px;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+      .login-card input::placeholder { color: var(--muted); }
+      .login-card input:focus {
+        outline: none;
+        border-color: var(--border-focus);
+        box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12);
+      }
+      .login-card button {
+        width: 100%;
+        background: linear-gradient(135deg, var(--primary) 0%, #0284c7 100%);
+        color: #fff;
+        border: none;
+        border-radius: 12px;
+        padding: 14px 20px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 15px;
+        font-family: inherit;
+        box-shadow: 0 4px 20px var(--primary-glow);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        margin-top: 4px;
+      }
+      .login-card button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 28px var(--primary-glow);
+      }
+      .login-card button:active { transform: translateY(0); }
+      .login-card button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+      }
+      .login-error {
+        color: var(--danger);
+        font-size: 13px;
+        min-height: 20px;
+        margin-bottom: 8px;
+        text-align: center;
+      }
+
+      /* ── Dashboard (hidden until login) ── */
+      .dashboard { display: none; }
+      .dashboard.active { display: block; }
+
+      .owner-header {
+        position: relative;
+        z-index: 1;
+        padding: 28px 32px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 16px;
+        border-bottom: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%);
+      }
+      .owner-brand { display: flex; align-items: center; gap: 16px; }
+      .owner-logo {
+        width: 52px; height: 52px; border-radius: 16px;
+        background: linear-gradient(145deg, var(--accent) 0%, var(--primary) 50%, #6366f1 100%);
+        box-shadow: 0 0 40px var(--primary-glow), 0 8px 32px rgba(0,0,0,0.3);
+        display: grid; place-items: center; font-weight: 700; color: #fff; font-size: 22px;
+        border: 1px solid rgba(255,255,255,0.2);
+      }
+      .owner-brand h1 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; }
+      .owner-brand .tagline { font-size: 14px; color: var(--muted); margin-top: 4px; }
+      .owner-actions { display: flex; align-items: center; gap: 12px; }
+      .owner-status {
+        display: inline-flex; align-items: center; gap: 10px;
+        padding: 10px 18px; border-radius: 12px; font-size: 13px; font-weight: 600;
+        background: rgba(52, 211, 153, 0.12); color: var(--success);
+        border: 1px solid rgba(52, 211, 153, 0.25);
+      }
+      .owner-status::before {
+        content: ""; width: 8px; height: 8px; border-radius: 50%;
+        background: var(--success); box-shadow: 0 0 12px var(--success);
+        animation: pulse 2s ease-in-out infinite;
+      }
+      @keyframes pulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.7; transform:scale(1.05); } }
+      .btn-logout {
+        background: var(--surface-hover);
+        color: var(--text-soft);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 8px 16px;
+        cursor: pointer;
+        font-size: 13px;
+        font-family: inherit;
+        font-weight: 500;
+        box-shadow: none;
+        transition: background 0.2s;
+      }
+      .btn-logout:hover { background: rgba(255,255,255,0.08); }
+
+      .owner-main {
+        position: relative; z-index: 1; padding: 32px; max-width: 680px; margin: 0 auto;
+      }
+      .owner-panel {
+        background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+        padding: 24px; margin-bottom: 24px; backdrop-filter: blur(20px);
+        box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+        animation: panelIn 0.5s ease backwards;
+      }
+      .owner-panel:nth-child(1) { animation-delay: 0.05s; }
+      .owner-panel:nth-child(2) { animation-delay: 0.1s; }
+      .owner-panel:nth-child(3) { animation-delay: 0.15s; }
+      .owner-panel:nth-child(4) { animation-delay: 0.2s; }
+      .owner-panel:nth-child(5) { animation-delay: 0.25s; }
+      @keyframes panelIn { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+      .owner-panel:hover { border-color: rgba(255,255,255,0.1); }
+      .owner-panel h2 { margin: 0 0 8px; font-size: 18px; font-weight: 600; }
+      .owner-panel .help { font-size: 13px; color: var(--text-soft); margin-bottom: 16px; line-height: 1.5; }
+      label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 500; color: var(--text-soft); }
+      input, textarea, select {
+        width: 100%; padding: 12px 14px; margin-bottom: 14px;
+        border: 1px solid var(--border); border-radius: 12px;
+        background: rgba(255,255,255,0.03); color: var(--text);
+        font-family: inherit; font-size: 14px;
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
+      input::placeholder, textarea::placeholder { color: var(--muted); }
+      input:focus, textarea:focus, select:focus {
+        outline: none; border-color: var(--border-focus);
+        box-shadow: 0 0 0 3px rgba(14,165,233,0.12);
+      }
+      button {
+        background: linear-gradient(135deg, var(--primary) 0%, #0284c7 100%);
+        color: #fff; border: none; border-radius: 12px; padding: 12px 20px;
+        cursor: pointer; font-weight: 600; font-size: 14px; font-family: inherit;
+        box-shadow: 0 4px 20px var(--primary-glow);
+        transition: transform 0.15s, box-shadow 0.15s;
+      }
+      button:hover { transform: translateY(-1px); box-shadow: 0 6px 28px var(--primary-glow); }
+      button:active { transform: translateY(0); }
+      button.secondary {
+        background: var(--surface-hover); color: var(--text);
+        border: 1px solid var(--border); box-shadow: none;
+      }
+      button.secondary:hover { background: rgba(255,255,255,0.08); }
+      .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+      .row input { margin-bottom: 0; }
+      .row input.sm { max-width: 140px; }
+      .row input.mid { max-width: 180px; }
+      ul.owner-list { list-style: none; padding: 0; margin: 12px 0 0; }
+      ul.owner-list li {
+        display: flex; align-items: center; justify-content: space-between;
+        padding: 12px 14px; margin-bottom: 8px;
+        background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 12px;
+      }
+      ul.owner-list li:hover { background: rgba(255,255,255,0.05); }
+      ul.owner-list li .remove { font-size: 12px; padding: 6px 12px; }
+      .stat-row { display: flex; gap: 24px; margin-top: 14px; flex-wrap: wrap; }
+      .stat {
+        font-size: 14px; color: var(--text-soft); padding: 12px 16px;
+        background: rgba(255,255,255,0.03); border-radius: 12px; border: 1px solid var(--border);
+      }
+      .stat strong { color: var(--text); font-weight: 600; }
+      .owner-footer {
+        position: relative; z-index: 1; text-align: center; padding: 28px; font-size: 13px; color: var(--muted);
+      }
+      .owner-footer a { color: var(--accent); text-decoration: none; font-weight: 500; }
+    </style>
+  </head>
+  <body>
+
+    <!-- ═══════════════ LOGIN SCREEN ═══════════════ -->
+    <div id="login-screen" class="login-wrap">
+      <div class="login-card">
+        <div class="login-logo">V</div>
+        <h2>Welcome back</h2>
+        <p class="subtitle">Sign in to manage your AI receptionist</p>
+
+        <label for="login-phone">Your business phone number</label>
+        <input id="login-phone" type="tel" placeholder="+1 (208) 555-1234" autocomplete="tel" />
+
+        <label for="login-passcode">Passcode</label>
+        <input id="login-passcode" type="password" placeholder="Your passcode" autocomplete="current-password" />
+
+        <div id="login-error" class="login-error"></div>
+        <button id="login-btn" type="button">Sign in</button>
+      </div>
+    </div>
+
+    <!-- ═══════════════ DASHBOARD ═══════════════ -->
+    <div id="dashboard" class="dashboard">
+      <header class="owner-header">
+        <div class="owner-brand">
+          <div class="owner-logo">V</div>
+          <div>
+            <h1 id="dash-tenant-name">Your receptionist</h1>
+            <div class="tagline">Manage your AI receptionist settings</div>
+          </div>
+        </div>
+        <div class="owner-actions">
+          <span id="dash-status" class="owner-status">Connected</span>
+          <button class="btn-logout" id="logout-btn" type="button">Sign out</button>
+        </div>
+      </header>
+
+      <main class="owner-main">
+        <!-- Forwarding profiles -->
+        <section class="owner-panel">
+          <h2>When to transfer calls</h2>
+          <p class="help">Who should the receptionist transfer callers to? Add your team members.</p>
+          <div class="row">
+            <input type="text" id="fp-name" class="sm" placeholder="Name" />
+            <input type="text" id="fp-number" class="mid" placeholder="+15551234567" />
+            <input type="text" id="fp-role" class="mid" placeholder="Role (e.g. Owner)" />
+            <button type="button" id="fp-add">Add</button>
+          </div>
+          <ul id="fp-list" class="owner-list"></ul>
+        </section>
+
+        <!-- Prompts -->
+        <section class="owner-panel">
+          <h2>How your receptionist speaks</h2>
+          <p class="help">Customize what your AI receptionist says and how it behaves.</p>
+
+          <label for="p-system">Business description &amp; instructions</label>
+          <textarea id="p-system" rows="4" placeholder="e.g. You're the receptionist for King-Sod Lawn Care. Be friendly and helpful. Ask callers if they need a quote or want to schedule service."></textarea>
+
+          <label for="p-voice">Tone of voice</label>
+          <textarea id="p-voice" rows="2" placeholder="e.g. Warm and helpful, like a real person. Keep answers short and natural."></textarea>
+
+          <label for="p-policy">Things it should never do</label>
+          <textarea id="p-policy" rows="3" placeholder="e.g. Don't give out personal phone numbers. Don't promise specific prices. Always offer to take a message if unsure."></textarea>
+
+          <div class="row" style="margin-top: 6px;">
+            <button type="button" id="save-prompts">Save</button>
+            <button type="button" class="secondary" id="refresh-prompts">Reset</button>
+          </div>
+          <div id="prompt-status" class="help" style="margin-top: 8px; min-height: 16px;"></div>
+        </section>
+
+        <!-- Pricing -->
+        <section class="owner-panel">
+          <h2>Your pricing</h2>
+          <p class="help">Services and prices the receptionist can reference when quoting callers.</p>
+          <div class="row">
+            <input type="text" id="price-name" class="sm" placeholder="Service name" />
+            <input type="text" id="price-amount" class="sm" placeholder="$50" />
+            <input type="text" id="price-desc" style="flex:1; min-width:120px;" placeholder="Description" />
+            <button type="button" id="price-add">Add</button>
+          </div>
+          <ul id="price-list" class="owner-list"></ul>
+          <label for="price-notes" style="margin-top: 12px;">Pricing notes</label>
+          <textarea id="price-notes" rows="2" placeholder="e.g. All prices are estimates. Final price depends on lawn size."></textarea>
+          <button type="button" id="price-save" style="margin-top: 6px;">Save pricing</button>
+        </section>
+
+        <!-- Analytics -->
+        <section class="owner-panel">
+          <h2>Call activity</h2>
+          <p class="help">How your receptionist is performing.</p>
+          <div class="stat-row" id="analytics-stats">
+            <div class="stat">Total calls: <strong id="stat-calls">—</strong></div>
+            <div class="stat">Messages: <strong id="stat-messages">—</strong></div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="owner-footer">
+        Powered by <a href="https://veralux.ai" target="_blank">VeraLux AI</a>
+      </footer>
+    </div>
+
+    <!-- ═══════════════ SCRIPT ═══════════════ -->
+    <script>
+      const $ = (id) => document.getElementById(id);
+      let authToken = "";
+      let tenantId = "";
+      let tenantName = "";
+      let forwardingProfiles = [];
+      let pricingItems = [];
+
+      function escapeHtml(s) {
+        const d = document.createElement("div");
+        d.textContent = s;
+        return d.innerHTML;
+      }
+
+      async function apiFetch(url, opts = {}) {
+        const headers = new Headers(opts.headers || {});
+        if (tenantId) headers.set("X-Tenant-ID", tenantId);
+        if (authToken) headers.set("X-Admin-Key", authToken);
+        const res = await fetch(url, { ...opts, headers });
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      }
+
+      // ── Login ──
+      async function doLogin() {
+        const phone = $("login-phone").value.trim();
+        const passcode = $("login-passcode").value.trim();
+        $("login-error").textContent = "";
+
+        if (!phone) { $("login-error").textContent = "Enter your phone number"; return; }
+        if (!passcode) { $("login-error").textContent = "Enter your passcode"; return; }
+
+        $("login-btn").disabled = true;
+        $("login-btn").textContent = "Signing in…";
+
+        try {
+          const res = await fetch("/api/owner/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phone, passcode }),
+          });
+          const data = await res.json();
+
+          if (!res.ok || !data.success) {
+            $("login-error").textContent = data.error || "Invalid credentials";
+            return;
+          }
+
+          authToken = data.token;
+          tenantId = data.tenant.id;
+          tenantName = data.tenant.name;
+
+          // Save session
+          localStorage.setItem("portal_token", authToken);
+          localStorage.setItem("portal_tenant_id", tenantId);
+          localStorage.setItem("portal_tenant_name", tenantName);
+
+          showDashboard();
+        } catch (err) {
+          $("login-error").textContent = "Connection error. Please try again.";
+        } finally {
+          $("login-btn").disabled = false;
+          $("login-btn").textContent = "Sign in";
+        }
+      }
+
+      function showDashboard() {
+        $("login-screen").style.display = "none";
+        $("dashboard").classList.add("active");
+        $("dash-tenant-name").textContent = tenantName || "Your receptionist";
+        loadAll();
+      }
+
+      function logout() {
+        authToken = "";
+        tenantId = "";
+        tenantName = "";
+        localStorage.removeItem("portal_token");
+        localStorage.removeItem("portal_tenant_id");
+        localStorage.removeItem("portal_tenant_name");
+        $("dashboard").classList.remove("active");
+        $("login-screen").style.display = "flex";
+        $("login-phone").value = "";
+        $("login-passcode").value = "";
+        $("login-error").textContent = "";
+      }
+
+      // ── Try restoring session ──
+      async function tryRestoreSession() {
+        const savedToken = localStorage.getItem("portal_token");
+        const savedTenant = localStorage.getItem("portal_tenant_id");
+        const savedName = localStorage.getItem("portal_tenant_name");
+        if (!savedToken || !savedTenant) return;
+
+        // Validate token still works
+        try {
+          const res = await fetch("/api/admin/health", {
+            headers: { "X-Admin-Key": savedToken, "X-Tenant-ID": savedTenant },
+          });
+          if (!res.ok) throw new Error("expired");
+
+          authToken = savedToken;
+          tenantId = savedTenant;
+          tenantName = savedName || savedTenant;
+          showDashboard();
+        } catch {
+          localStorage.removeItem("portal_token");
+          localStorage.removeItem("portal_tenant_id");
+          localStorage.removeItem("portal_tenant_name");
+        }
+      }
+
+      // ── Data loading ──
+      async function loadAll() {
+        await Promise.all([
+          loadForwarding(),
+          loadPrompts(),
+          loadPricing(),
+          loadAnalytics(),
+        ]);
+      }
+
+      async function loadForwarding() {
+        try {
+          const data = await apiFetch("/api/admin/forwarding-profiles");
+          forwardingProfiles = data.profiles || [];
+          renderForwarding();
+        } catch (err) {
+          console.error("loadForwarding:", err);
+        }
+      }
+
+      function renderForwarding() {
+        const ul = $("fp-list");
+        if (!forwardingProfiles.length) { ul.innerHTML = "<li style='color:var(--muted)'>No team members yet</li>"; return; }
+        ul.innerHTML = forwardingProfiles.map((p, i) =>
+          `<li>
+            <span><strong>${escapeHtml(p.name)}</strong> — ${escapeHtml(p.number)} <span style="color:var(--muted)">(${escapeHtml(p.role || "—")})</span></span>
+            <button class="secondary remove" onclick="removeForwarding(${i})">Remove</button>
+          </li>`
+        ).join("");
+      }
+
+      async function addForwarding() {
+        const name = $("fp-name").value.trim();
+        const number = $("fp-number").value.trim();
+        const role = $("fp-role").value.trim();
+        if (!name || !number) return;
+
+        forwardingProfiles.push({ id: crypto.randomUUID(), name, number, role });
+        await saveForwarding();
+        $("fp-name").value = "";
+        $("fp-number").value = "";
+        $("fp-role").value = "";
+      }
+
+      async function removeForwarding(idx) {
+        forwardingProfiles.splice(idx, 1);
+        await saveForwarding();
+      }
+
+      async function saveForwarding() {
+        try {
+          await apiFetch("/api/admin/forwarding-profiles", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ profiles: forwardingProfiles }),
+          });
+          renderForwarding();
+        } catch (err) {
+          console.error("saveForwarding:", err);
+        }
+      }
+
+      // ── Prompts ──
+      async function loadPrompts() {
+        try {
+          const data = await apiFetch("/api/admin/prompts");
+          $("p-system").value = data.systemPreamble || "";
+          $("p-voice").value = data.voicePrompt || "";
+          $("p-policy").value = data.policyPrompt || "";
+        } catch (err) {
+          console.error("loadPrompts:", err);
+        }
+      }
+
+      async function savePrompts() {
+        try {
+          await apiFetch("/api/admin/prompts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              systemPreamble: $("p-system").value,
+              voicePrompt: $("p-voice").value,
+              policyPrompt: $("p-policy").value,
+              schemaHint: "",
+            }),
+          });
+          $("prompt-status").textContent = "Saved!";
+          setTimeout(() => { $("prompt-status").textContent = ""; }, 3000);
+        } catch (err) {
+          $("prompt-status").textContent = "Save failed: " + err.message;
+        }
+      }
+
+      // ── Pricing ──
+      async function loadPricing() {
+        try {
+          const data = await apiFetch("/api/admin/pricing");
+          pricingItems = data.items || [];
+          $("price-notes").value = data.notes || "";
+          renderPricing();
+        } catch (err) {
+          console.error("loadPricing:", err);
+        }
+      }
+
+      function renderPricing() {
+        const ul = $("price-list");
+        if (!pricingItems.length) { ul.innerHTML = "<li style='color:var(--muted)'>No services added yet</li>"; return; }
+        ul.innerHTML = pricingItems.map((item, i) =>
+          `<li>
+            <span><strong>${escapeHtml(item.name)}</strong> — ${escapeHtml(item.price)} <span style="color:var(--muted)">${escapeHtml(item.description || "")}</span></span>
+            <button class="secondary remove" onclick="removePricing(${i})">Remove</button>
+          </li>`
+        ).join("");
+      }
+
+      function addPricing() {
+        const name = $("price-name").value.trim();
+        const price = $("price-amount").value.trim();
+        const description = $("price-desc").value.trim();
+        if (!name || !price) return;
+        pricingItems.push({ id: crypto.randomUUID(), name, price, description });
+        renderPricing();
+        $("price-name").value = "";
+        $("price-amount").value = "";
+        $("price-desc").value = "";
+      }
+
+      function removePricing(idx) {
+        pricingItems.splice(idx, 1);
+        renderPricing();
+      }
+
+      async function savePricing() {
+        try {
+          await apiFetch("/api/admin/pricing", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ items: pricingItems, notes: $("price-notes").value }),
+          });
+        } catch (err) {
+          console.error("savePricing:", err);
+        }
+      }
+
+      // ── Analytics ──
+      async function loadAnalytics() {
+        try {
+          const data = await apiFetch("/api/admin/analytics");
+          $("stat-calls").textContent = data.callCount ?? "—";
+          $("stat-messages").textContent = data.callerMessageCount ?? "—";
+        } catch (err) {
+          console.error("loadAnalytics:", err);
+        }
+      }
+
+      // ── Init ──
+      document.addEventListener("DOMContentLoaded", () => {
+        $("login-btn").addEventListener("click", doLogin);
+        $("login-passcode").addEventListener("keydown", (e) => { if (e.key === "Enter") doLogin(); });
+        $("login-phone").addEventListener("keydown", (e) => { if (e.key === "Enter") $("login-passcode").focus(); });
+        $("logout-btn").addEventListener("click", logout);
+        $("fp-add").addEventListener("click", addForwarding);
+        $("save-prompts").addEventListener("click", savePrompts);
+        $("refresh-prompts").addEventListener("click", loadPrompts);
+        $("price-add").addEventListener("click", addPricing);
+        $("price-save").addEventListener("click", savePricing);
+
+        // Auto-refresh
+        setInterval(loadAnalytics, 30000);
+
+        // Try restoring session
+        tryRestoreSession();
+      });
+    </script>
+  </body>
+</html>

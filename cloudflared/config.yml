@@ -7,4 +7,6 @@ ingress:
     service: http://runtime:4001
   - hostname: panel.veraluxclients.com
     service: http://control:4000
+  - hostname: app.veraluxclients.com
+    service: http://control:4000
   - service: http_status:404
