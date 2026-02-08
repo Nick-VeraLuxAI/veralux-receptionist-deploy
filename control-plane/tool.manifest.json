@@ -1,0 +1,34 @@
+{
+  "id": "veralux-receptionist",
+  "name": "VeraLux Receptionist",
+  "description": "On-prem AI receptionist orchestrator with LLM configuration, audio utilities, analytics, and call-handling APIs.",
+  "version": "0.1.0",
+  "category": "customer-support",
+  "api": {
+    "basePath": "/api",
+    "healthEndpoint": "/health",
+    "capabilities": [
+      "dev-echo-audio",
+      "dev-receptionist-audio",
+      "health-check",
+      "admin-read-config",
+      "admin-write-config",
+      "admin-read-prompts",
+      "admin-write-prompts",
+      "admin-tenants",
+      "tts-read-config",
+      "tts-write-config",
+      "tts-preview",
+      "admin-health",
+      "admin-analytics",
+      "admin-calls",
+      "admin-api-keys",
+      "call-start",
+      "call-message"
+    ]
+  },
+  "adminUi": {
+    "routePath": "/admin",
+    "displayGroup": "Operations"
+  }
+}

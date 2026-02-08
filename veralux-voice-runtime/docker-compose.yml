@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  runtime:
+    build:
+      context: .
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      REDIS_URL: redis://redis:6379
+      AUDIO_STORAGE_DIR: /var/lib/veralux/audio
+    depends_on:
+      - redis
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    volumes:
+      - ./audio:/var/lib/veralux/audio
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "", "--appendonly", "no"]

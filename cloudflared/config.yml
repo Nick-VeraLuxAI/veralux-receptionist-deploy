@@ -1,0 +1,10 @@
+tunnel: d8ef04e1-e810-42d9-a28a-5b6d7b4cac91
+credentials-file: /etc/cloudflared/credentials.json
+no-autoupdate: true
+
+ingress:
+  - hostname: api.veraluxclients.com
+    service: http://runtime:4001
+  - hostname: panel.veraluxclients.com
+    service: http://control:4000
+  - service: http_status:404

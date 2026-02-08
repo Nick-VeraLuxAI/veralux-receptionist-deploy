@@ -356,6 +356,10 @@ API_KEY=${api_key}
 TELNYX_API_KEY=${telnyx_api_key}
 TELNYX_PUBLIC_KEY=${telnyx_public_key}
 TELNYX_PHONE_NUMBER=${telnyx_number}
+TELNYX_VERIFY_SIGNATURES=true
+TELNYX_ACCEPT_CODECS=PCMU,AMR-WB
+TELNYX_AMRWB_DECODE=true
+PLAYBACK_PSTN_SAMPLE_RATE=24000
 
 # OpenAI
 OPENAI_API_KEY=${openai_api_key}
@@ -600,8 +604,14 @@ main() {
         ADMIN_PASS=$("$GUM_BIN" input --placeholder "Admin password" --password --width 50)
         [[ -z "$ADMIN_PASS" ]] && continue
         
-        # Verify admin credentials
-        if [[ "$ADMIN_USER" != "VeraLux" || "$ADMIN_PASS" != "fuzzyone" ]]; then
+        # Verify admin credentials via API
+        ADMIN_RESPONSE=$(curl -s -X POST "$API_URL/admin-auth" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\": \"$ADMIN_USER\", \"password\": \"$ADMIN_PASS\"}" \
+            2>/dev/null) || ADMIN_RESPONSE=""
+        
+        ADMIN_OK=$(echo "$ADMIN_RESPONSE" | grep -o '"success":\s*true' || echo "")
+        if [[ -z "$ADMIN_OK" ]]; then
             echo ""
             echo -e "${RED}✗ Invalid admin credentials${NC}"
             echo ""

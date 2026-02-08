@@ -1,0 +1,2219 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>VeraLux Admin</title>
+    <style>
+      :root {
+        --bg: #050712;
+        --panel: rgba(255, 255, 255, 0.06);
+        --panel-strong: rgba(255, 255, 255, 0.12);
+        --text: #e8edf6;
+        --muted: #9fb4d2;
+        --primary: #7cf0ff;
+        --accent: #ffb86c;
+        --danger: #ff6b6b;
+        --shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+        font-family: "Space Grotesk", "Avenir Next", "Helvetica Neue", sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: radial-gradient(circle at 18% 22%, rgba(124, 240, 255, 0.18), transparent 28%),
+          radial-gradient(circle at 82% 18%, rgba(255, 184, 108, 0.18), transparent 30%),
+          radial-gradient(circle at 50% 85%, rgba(124, 240, 255, 0.08), transparent 35%),
+          linear-gradient(145deg, #050712 0%, #0a1226 55%, #0a1020 100%);
+      }
+      .glow {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        filter: blur(80px);
+        opacity: 0.3;
+        background: radial-gradient(circle at 28% 28%, #7cf0ff, transparent 26%),
+          radial-gradient(circle at 72% 22%, #ffb86c, transparent 24%);
+      }
+      header {
+        padding: 20px 28px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .logo {
+        width: 42px;
+        height: 42px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, #7cf0ff, #5d9dff 65%, #4b6cff);
+        box-shadow: 0 15px 35px rgba(124, 240, 255, 0.38);
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        color: #061021;
+      }
+      h1 {
+        margin: 0;
+        font-size: 20px;
+        letter-spacing: 0.02em;
+      }
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        background: rgba(255, 255, 255, 0.1);
+        color: var(--primary);
+        border: 1px solid rgba(124, 240, 255, 0.25);
+      }
+      main {
+        padding: 0 28px 32px;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 14px;
+        padding: 16px;
+        box-shadow: var(--shadow);
+        backdrop-filter: blur(12px);
+        position: relative;
+        overflow: hidden;
+      }
+      .panel::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(135deg, rgba(124, 240, 255, 0.08), rgba(255, 184, 108, 0.06));
+        opacity: 0.6;
+        pointer-events: none;
+      }
+      .hero {
+        grid-column: 1 / -1;
+        display: grid;
+        grid-template-columns: 1.2fr 1fr;
+        gap: 16px;
+      }
+      .hero .headline {
+        font-size: 26px;
+        line-height: 1.3;
+        margin: 0 0 8px;
+      }
+      .muted {
+        color: var(--muted);
+        font-size: 13px;
+      }
+      .summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 10px;
+      }
+      .summary-card {
+        background: rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        padding: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+      }
+      .summary-card h3 {
+        margin: 0 0 6px;
+        font-size: 14px;
+      }
+      .summary-card .value {
+        font-size: 22px;
+        font-weight: 700;
+      }
+      label {
+        display: block;
+        margin-bottom: 6px;
+        font-size: 12px;
+        letter-spacing: 0.01em;
+      }
+      input,
+      select,
+      textarea {
+        width: 100%;
+        padding: 10px 12px;
+        margin-bottom: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.05);
+        color: var(--text);
+        font-family: inherit;
+      }
+      input:focus,
+      select:focus,
+      textarea:focus {
+        outline: 1px solid var(--primary);
+      }
+      button {
+        background: linear-gradient(135deg, #7cf0ff, #5d9dff);
+        color: #081324;
+        border: none;
+        border-radius: 10px;
+        padding: 10px 12px;
+        cursor: pointer;
+        font-weight: 700;
+        letter-spacing: 0.01em;
+        box-shadow: 0 10px 30px rgba(124, 240, 255, 0.28);
+        transition: transform 0.08s ease, box-shadow 0.1s ease;
+      }
+      button.secondary {
+        background: rgba(255, 255, 255, 0.1);
+        color: var(--text);
+        box-shadow: none;
+      }
+      button.recording {
+        background: rgba(255, 80, 80, 0.8);
+        color: white;
+        animation: pulse-recording 1s ease-in-out infinite;
+      }
+      @keyframes pulse-recording {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+      }
+      button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 12px 36px rgba(124, 240, 255, 0.35);
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      .pill.ok {
+        background: rgba(124, 240, 255, 0.2);
+        color: #7cf0ff;
+      }
+      .pill.warn {
+        background: rgba(255, 169, 90, 0.2);
+        color: #ffbe7f;
+      }
+      .pill.err {
+        background: rgba(255, 107, 107, 0.2);
+        color: #ff9c9c;
+      }
+      ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .call {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        padding: 10px 0;
+      }
+      .call:last-child {
+        border-bottom: none;
+      }
+      .small {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .card {
+        background: rgba(255, 255, 255, 0.06);
+        border: 1px solid rgba(255, 255, 255, 0.09);
+        border-radius: 10px;
+        padding: 10px;
+        margin-bottom: 8px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 100px;
+      }
+      .flex-between {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .status-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 10px;
+        align-items: stretch;
+      }
+      .status-grid .card {
+        height: 100%;
+      }
+      .card .flex-between {
+        align-items: flex-start;
+        gap: 8px;
+      }
+      .health-card {
+        padding: 14px;
+        gap: 10px;
+      }
+      .health-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: center;
+      }
+      .health-title {
+        font-weight: 700;
+        font-size: 14px;
+      }
+      .health-body {
+        display: grid;
+        gap: 4px;
+        margin-top: 6px;
+      }
+      .health-line {
+        font-size: 12px;
+        color: var(--muted);
+        word-break: break-word;
+      }
+      .tabs {
+        display: flex;
+        gap: 8px;
+        padding: 0 28px 12px;
+        flex-wrap: wrap;
+      }
+      .tab {
+        padding: 10px 14px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        cursor: pointer;
+        font-weight: 600;
+        transition: transform 0.08s ease, box-shadow 0.1s ease, background 0.1s ease;
+      }
+      .tab.active {
+        background: linear-gradient(135deg, #7cf0ff, #5d9dff);
+        color: #081324;
+        box-shadow: 0 12px 30px rgba(124, 240, 255, 0.35);
+        transform: translateY(-1px);
+      }
+      .tab-content {
+        display: none;
+        gap: 16px;
+      }
+      .tab-content.active {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+        gap: 16px;
+      }
+      .status-bar {
+        margin: 0 28px 12px;
+        padding: 10px 12px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--text);
+        font-size: 13px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .status-bar.ok {
+        border-color: rgba(124, 240, 255, 0.4);
+        background: rgba(124, 240, 255, 0.08);
+      }
+      .status-bar.err {
+        border-color: rgba(255, 107, 107, 0.4);
+        background: rgba(255, 107, 107, 0.12);
+      }
+      .debug-block {
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 10px;
+        padding: 10px;
+        color: #cdd6e8;
+        font-size: 12px;
+        overflow: auto;
+        max-height: 200px;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .modal {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(4px);
+        z-index: 1000;
+      }
+      .modal.active {
+        display: flex;
+      }
+      .modal-card {
+        background: #0c1324;
+        border: 1px solid rgba(124, 240, 255, 0.3);
+        border-radius: 12px;
+        padding: 16px;
+        width: min(400px, 90vw);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+      }
+      .modal-card h3 {
+        margin: 0 0 8px;
+      }
+      .modal-actions {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        margin-top: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="glow"></div>
+    <header>
+      <div class="brand">
+        <div class="logo">V</div>
+        <div>
+          <h1>VeraLux Receptionist</h1>
+          <div class="muted">Precision control, live insight.</div>
+        </div>
+      </div>
+      <div class="tag">Live • Admin Console</div>
+    </header>
+
+    <div class="tabs">
+      <button type="button" class="tab active" data-tab="overview">Overview</button>
+      <button type="button" class="tab" data-tab="models">Models &amp; Prompts</button>
+      <button type="button" class="tab" data-tab="forwarding">Forwarding &amp; Pricing</button>
+      <button type="button" class="tab" data-tab="analytics">Analytics</button>
+      <button type="button" class="tab" data-tab="calls">Calls</button>
+      <button type="button" class="tab" data-tab="audit">Audit Logs</button>
+      <button type="button" class="tab" data-tab="settings">Settings</button>
+      <button type="button" class="tab" id="refresh-all" style="margin-left: auto">Refresh All</button>
+    </div>
+    <div class="status-bar" id="tenant-bar" style="flex-wrap: wrap; gap: 8px">
+      <div class="row" style="gap: 6px">
+        <div class="small">Business</div>
+        <select id="tenant-select" title="Each business has its own receptionist, prompts, and phone numbers"></select>
+        <button type="button" class="secondary" id="tenant-reload">Refresh list</button>
+      </div>
+      <div class="row" style="gap: 6px; flex-wrap: wrap">
+        <input id="tenant-new-id" type="text" placeholder="e.g. acme-corp or main-office" style="min-width: 160px" title="Short ID for this business (used in config and URLs)" />
+        <input
+          id="tenant-new-numbers"
+          type="text"
+          placeholder="Phone numbers that ring this receptionist (comma-separated, e.g. +15551234567)"
+          style="min-width: 260px"
+        />
+        <button type="button" id="tenant-create">Save business</button>
+      </div>
+      <div id="tenant-meta" class="small" style="width: 100%"></div>
+    </div>
+    <div id="status-bar" class="status-bar">Ready</div>
+
+    <main>
+      <div class="tab-content active" data-tab="overview">
+        <section class="panel hero">
+          <div>
+            <p class="headline">Command your receptionist brain with real-time controls, health, and insight.</p>
+            <div class="muted">
+              Switch models, watch health signals, and track caller intent without leaving this pane.
+            </div>
+            <div class="summary" style="margin-top: 14px">
+              <div class="summary-card">
+                <h3>Provider</h3>
+                <div id="summary-provider" class="value">—</div>
+                <div id="summary-model" class="small"></div>
+              </div>
+              <div class="summary-card">
+                <h3>Calls</h3>
+                <div id="summary-calls" class="value">0</div>
+                <div class="small">Total handled</div>
+              </div>
+              <div class="summary-card">
+                <h3>Messages</h3>
+                <div id="summary-messages" class="value">0</div>
+                <div class="small">Caller utterances</div>
+              </div>
+            </div>
+          </div>
+          <div class="panel" style="background: rgba(255, 255, 255, 0.06)">
+            <h2>Pipeline Health</h2>
+            <div id="health-status" class="status-grid" style="margin-top: 10px"></div>
+            <div class="row" style="margin-top: 8px">
+              <button type="button" class="secondary" id="refresh-health">Refresh</button>
+            </div>
+          </div>
+        </section>
+        <section class="panel">
+          <div class="flex-between" style="margin-bottom: 8px">
+            <h2>Diagnostics</h2>
+            <button type="button" class="secondary" id="refresh-debug">Refresh</button>
+          </div>
+          <div class="small">Config (safe)</div>
+          <div id="debug-config" class="debug-block">—</div>
+          <div class="small" style="margin-top: 8px">Health (raw)</div>
+          <div id="debug-health" class="debug-block">—</div>
+        </section>
+      </div>
+
+      <div class="tab-content" data-tab="models">
+        <section class="panel">
+          <h2>Model Selection</h2>
+          <form id="config-form">
+            <label for="provider">Provider</label>
+            <select id="provider" name="provider">
+              <option value="local">Local</option>
+              <option value="openai">OpenAI</option>
+            </select>
+
+            <label for="localUrl">Local URL</label>
+            <input id="localUrl" name="localUrl" type="text" placeholder="http://127.0.0.1:8080/completion" />
+
+            <label for="openaiModel">OpenAI model</label>
+            <input id="openaiModel" name="openaiModel" type="text" placeholder="gpt-4o-mini" />
+
+            <label for="openaiApiKey">OpenAI API key (kept server-side, never shown)</label>
+            <input id="openaiApiKey" name="openaiApiKey" type="password" autocomplete="off" placeholder="sk-..." />
+            <div class="small" id="api-key-status">API key not set</div>
+
+            <div class="row" style="margin-top: 6px">
+              <button type="submit">Apply</button>
+              <button type="button" class="secondary" id="refresh-config">Refresh</button>
+            </div>
+            <div id="config-status" class="small" style="margin-top: 6px"></div>
+          </form>
+        </section>
+
+        <section class="panel">
+          <h2>Prompt Controls</h2>
+          <form id="prompt-form">
+            <label for="systemPreamble">System preamble (role, scope, goals, stages)</label>
+            <textarea id="systemPreamble" name="systemPreamble" rows="4"></textarea>
+
+            <label for="policyPrompt">Policy prompt (hard guardrails / never-do list)</label>
+            <textarea id="policyPrompt" name="policyPrompt" rows="4"></textarea>
+
+            <label for="voicePrompt">Voice prompt (phone tone)</label>
+            <textarea id="voicePrompt" name="voicePrompt" rows="3"></textarea>
+
+            <label for="schemaHint">Schema hint</label>
+            <textarea id="schemaHint" name="schemaHint" rows="6"></textarea>
+
+            <div class="row" style="margin-top: 6px">
+              <button type="submit">Save Prompts</button>
+              <button type="button" class="secondary" id="refresh-prompts">Reset View</button>
+            </div>
+            <div id="prompt-status" class="small" style="margin-top: 6px"></div>
+          </form>
+        </section>
+
+        <!-- Voice & TTS Panel (Kokoro / XTTS) -->
+        <section class="panel">
+          <h2>Voice &amp; TTS (Kokoro / XTTS)</h2>
+          <form id="tts-form">
+            <label for="ttsMode">TTS Mode</label>
+            <select id="ttsMode" name="ttsMode">
+              <option value="coqui_xtts" selected>Coqui XTTS (Voice Cloning)</option>
+              <option value="kokoro_http">Kokoro HTTP</option>
+            </select>
+            <div class="small" style="margin-top: -8px; margin-bottom: 12px">
+              <strong>Coqui XTTS:</strong> Advanced voice cloning with hot-swap support (recommended). <strong>Kokoro:</strong> Fast, lightweight TTS.
+            </div>
+
+            <label for="ttsUrl">TTS server URL</label>
+            <input id="ttsUrl" name="xttsUrl" type="url" placeholder="e.g. http://127.0.0.1:8020/tts or https://your-xtts.example.com/tts" style="width: 100%; max-width: 420px;" />
+
+            <label for="ttsVoiceId">Preset Voice ID</label>
+            <input id="ttsVoiceId" name="voiceId" type="text" placeholder="e.g. en_sample (XTTS default)" />
+
+            <label for="ttsLanguage">Language code</label>
+            <input id="ttsLanguage" name="language" type="text" placeholder="e.g. en (English), es (Spanish), fr (French)" />
+            <div class="small" style="margin-top: -8px; margin-bottom: 12px">
+              ISO 639-1 language codes: <code>en</code> (English), <code>es</code> (Spanish), <code>fr</code> (French), <code>de</code> (German), etc.
+            </div>
+
+            <!-- Voice Cloning Section (XTTS only) -->
+            <div id="voice-cloning-section" style="display: block; margin-top: 16px; padding: 16px; border-radius: 12px; background: rgba(124, 240, 255, 0.06); border: 1px solid rgba(124, 240, 255, 0.2);">
+              <h3 style="margin: 0 0 12px; font-size: 15px; color: var(--primary);">Voice Cloning (XTTS)</h3>
+              
+              <label for="defaultVoiceMode">Default Voice Mode</label>
+              <select id="defaultVoiceMode" name="defaultVoiceMode">
+                <option value="preset">Preset Voice (built-in)</option>
+                <option value="cloned">Cloned Voice (custom)</option>
+              </select>
+              <div class="small" style="margin-top: -8px; margin-bottom: 12px">
+                Choose which voice to use at the start of calls. Can be hot-swapped during active calls.
+              </div>
+
+              <label>Reference Audio for Voice Cloning</label>
+              <div class="small" style="margin-bottom: 12px">
+                Record 3-15 seconds of clear speech with no background noise. Speak naturally in the tone you want the AI to use.
+              </div>
+              
+              <!-- Audio Recording Controls -->
+              <div id="audio-recorder" style="margin-bottom: 16px; padding: 12px; border-radius: 8px; background: rgba(0,0,0,0.2);">
+                <div style="display: flex; gap: 8px; align-items: center; margin-bottom: 12px;">
+                  <button type="button" id="record-btn" class="secondary" style="min-width: 100px;">
+                    <span id="record-btn-text">Record</span>
+                  </button>
+                  <span id="recording-status" style="font-size: 13px; color: var(--muted);"></span>
+                  <span id="recording-timer" style="font-size: 13px; font-family: monospace; color: var(--primary);"></span>
+                </div>
+                
+                <!-- Audio Preview -->
+                <div id="audio-preview-container" style="display: none; margin-bottom: 12px;">
+                  <audio id="audio-preview" controls style="width: 100%; height: 40px;"></audio>
+                  <div style="display: flex; gap: 8px; margin-top: 8px;">
+                    <button type="button" id="use-recording-btn" class="secondary" style="flex: 1;">Use This Recording</button>
+                    <button type="button" id="discard-recording-btn" class="secondary" style="flex: 1; background: rgba(255,100,100,0.2);">Discard</button>
+                  </div>
+                </div>
+                
+                <!-- Upload Status -->
+                <div id="upload-status" style="display: none; font-size: 13px; padding: 8px; border-radius: 6px; background: rgba(124, 240, 255, 0.1);"></div>
+              </div>
+              
+              <label for="clonedVoiceUrl">Reference Audio URL (WAV)</label>
+              <input id="clonedVoiceUrl" name="clonedVoiceUrl" type="url" placeholder="Auto-filled after recording, or paste URL manually" />
+              <div class="small" style="margin-top: -8px; margin-bottom: 12px">
+                This URL is auto-filled when you record and save audio above, or you can paste a URL to an existing WAV file.
+              </div>
+
+              <label for="clonedVoiceLabel">Voice Label (optional)</label>
+              <input id="clonedVoiceLabel" name="clonedVoiceLabel" type="text" placeholder="e.g. Sarah's Voice, Business Owner" />
+              <div class="small" style="margin-top: -8px; margin-bottom: 12px">
+                A friendly name for this cloned voice profile.
+              </div>
+
+              <div id="voice-cloning-warning" style="display: none; padding: 10px; border-radius: 8px; background: rgba(255, 184, 108, 0.15); border: 1px solid rgba(255, 184, 108, 0.3); margin-bottom: 12px;">
+                <span class="small" style="color: var(--accent);">⚠️ Cloned voice mode requires a reference audio URL to be set.</span>
+              </div>
+            </div>
+
+            <label for="ttsPreset" style="margin-top: 12px">Voice preset</label>
+            <select id="ttsPreset" name="preset">
+              <option value="neutral">Neutral (default)</option>
+              <option value="warm">Warm</option>
+              <option value="energetic">Energetic</option>
+              <option value="calm">Calm</option>
+            </select>
+
+            <label for="ttsRate">
+              Speed (rate)
+              <span id="ttsRateValue" class="small" style="float: right">0.95</span>
+            </label>
+            <input id="ttsRate" name="rate" type="range" min="0.80" max="1.20" step="0.01" value="0.95" />
+            <div class="small" style="margin-top: -8px; margin-bottom: 12px">1.0 = normal; lower = slower, higher = faster. Works with Kokoro and XTTS.</div>
+
+            <div class="row" style="margin-top: 6px">
+              <button type="submit">Save Voice Settings</button>
+            </div>
+            <div id="tts-status" class="small" style="margin-top: 6px">TTS config saved here. Preview runs in the voice runtime.</div>
+          </form>
+        </section>
+
+        <!-- Active Call Voice Control (XTTS only) -->
+        <section class="panel" id="active-call-voice-panel" style="display: block;">
+          <h2>Active Call Voice Control</h2>
+          <p class="small muted">Hot-swap voice mode during an active call. Only available when using XTTS mode.</p>
+          
+          <div class="row" style="gap: 8px; flex-wrap: wrap; margin: 12px 0">
+            <input id="call-control-id" type="text" placeholder="Call Control ID" style="min-width: 240px" />
+            <button type="button" id="get-call-voice" class="secondary">Get Voice Mode</button>
+          </div>
+
+          <div id="call-voice-info" style="display: none; margin: 12px 0; padding: 14px; border-radius: 10px; background: rgba(255, 255, 255, 0.04); border: 1px solid var(--border);">
+            <div class="row" style="gap: 16px; flex-wrap: wrap;">
+              <div>
+                <div class="small">Current Mode</div>
+                <div id="call-voice-mode" class="value" style="font-size: 16px; font-weight: 600;">—</div>
+              </div>
+              <div>
+                <div class="small">Cloning Available</div>
+                <div id="call-voice-cloning-available" style="font-size: 14px;">—</div>
+              </div>
+              <div>
+                <div class="small">Cloned Voice Label</div>
+                <div id="call-voice-label" style="font-size: 14px;">—</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="row" style="gap: 8px; flex-wrap: wrap; margin: 12px 0">
+            <select id="set-call-voice-mode" style="min-width: 160px;">
+              <option value="preset">Preset Voice</option>
+              <option value="cloned">Cloned Voice</option>
+            </select>
+            <input id="set-call-voice-url" type="url" placeholder="One-time override URL (optional)" style="min-width: 240px" />
+            <button type="button" id="set-call-voice">Set Voice Mode</button>
+          </div>
+
+          <div id="call-voice-status" class="small" style="margin-top: 6px; min-height: 16px;"></div>
+        </section>
+      </div>
+
+      <div class="tab-content" data-tab="forwarding">
+        <section class="panel">
+          <h2>Call forwarding profiles</h2>
+          <p class="small muted">Who to transfer callers to (number, name, role). The receptionist uses this to offer the right contact.</p>
+          <div class="row" style="gap: 8px; flex-wrap: wrap; margin: 10px 0">
+            <input id="fp-name" type="text" placeholder="Name (e.g. Sales)" style="min-width: 120px" />
+            <input id="fp-number" type="text" placeholder="Number (e.g. +15551234567)" style="min-width: 140px" />
+            <input id="fp-role" type="text" placeholder="Role / what they do" style="min-width: 160px" />
+            <button type="button" id="fp-add">Add profile</button>
+          </div>
+          <ul id="forwarding-profiles-list" style="list-style: none; padding: 0; margin: 8px 0"></ul>
+          <button type="button" class="secondary" id="fp-save">Save forwarding profiles</button>
+          <div id="fp-status" class="small" style="margin-top: 6px; min-height: 16px"></div>
+        </section>
+        <section class="panel">
+          <h2>Pricing information</h2>
+          <p class="small muted">Services and prices the receptionist can reference. Kept short for voice.</p>
+          <div class="row" style="gap: 8px; flex-wrap: wrap; margin: 10px 0">
+            <input id="price-name" type="text" placeholder="Service name" style="min-width: 120px" />
+            <input id="price-amount" type="text" placeholder="Price (e.g. $50)" style="min-width: 80px" />
+            <input id="price-desc" type="text" placeholder="Short description" style="min-width: 140px" />
+            <button type="button" id="price-add">Add item</button>
+          </div>
+          <ul id="pricing-items-list" style="list-style: none; padding: 0; margin: 8px 0"></ul>
+          <label for="pricing-notes" class="small">Notes (optional, e.g. &quot;Rates may vary&quot;)</label>
+          <textarea id="pricing-notes" rows="2" style="width: 100%; margin-top: 4px; resize: vertical"></textarea>
+          <button type="button" class="secondary" id="price-save" style="margin-top: 8px">Save pricing</button>
+          <div id="price-status" class="small" style="margin-top: 6px; min-height: 16px"></div>
+        </section>
+      </div>
+
+      <div class="tab-content" data-tab="analytics">
+        <section class="panel">
+          <div class="flex-between">
+            <h2>Analytics</h2>
+            <button type="button" class="secondary" id="refresh-analytics">Refresh</button>
+          </div>
+          <div id="analytics-summary" class="card" style="margin-top: 8px"></div>
+          <div class="list-title">Top questions</div>
+          <ul id="top-questions" style="margin-top: 8px"></ul>
+        </section>
+      </div>
+
+      <div class="tab-content" data-tab="calls">
+        <section class="panel">
+          <div class="flex-between">
+            <h2>Chat History</h2>
+            <button type="button" class="secondary" id="refresh-calls">Refresh</button>
+          </div>
+          <div id="calls" class="call-grid" style="margin-top: 10px"></div>
+        </section>
+      </div>
+
+      <div class="tab-content" data-tab="audit">
+        <section class="panel">
+          <div class="flex-between">
+            <h2>Audit Logs</h2>
+            <button type="button" class="secondary" id="refresh-audit">Refresh</button>
+          </div>
+          <div id="audit-logs" class="debug-block" style="margin-top: 8px; max-height: 320px"></div>
+        </section>
+        <section class="panel">
+          <div class="flex-between">
+            <h2>Admin Access</h2>
+            <button type="button" class="secondary" id="refresh-keys">Refresh</button>
+          </div>
+          <div class="row" style="gap: 8px; flex-wrap: wrap; margin-bottom: 8px">
+            <input id="admin-key-name" type="text" placeholder="Key name (e.g. OpsUser)" style="min-width: 180px" />
+            <select id="admin-key-role">
+              <option value="admin">Admin</option>
+              <option value="viewer">Viewer</option>
+            </select>
+            <button type="button" id="create-admin-key">Create Key</button>
+          </div>
+          <div id="admin-key-token" class="small" style="color: #7cf0ff; min-height: 16px"></div>
+          <div class="list-title" style="margin-top: 6px">Existing keys</div>
+          <div id="admin-keys" class="debug-block" style="max-height: 260px; overflow: auto"></div>
+        </section>
+      </div>
+
+      <div class="tab-content" data-tab="settings">
+        <section class="panel">
+          <h2>Cloudflare Tunnel</h2>
+          <p class="small" style="margin: 0 0 12px">Configure a Cloudflare Tunnel token to expose this instance to the internet securely.</p>
+          <div class="row" style="gap: 8px; align-items: flex-end">
+            <div style="flex: 1">
+              <label for="cf-tunnel-token">Tunnel Token</label>
+              <input id="cf-tunnel-token" type="password" placeholder="Paste your Cloudflare Tunnel token" style="margin-bottom: 0" />
+            </div>
+            <button type="button" id="cf-toggle-visibility" class="secondary" style="min-width: 70px">Show</button>
+            <button type="button" id="cf-save-token">Save</button>
+          </div>
+          <div id="cf-token-status" class="small" style="margin-top: 8px; min-height: 16px"></div>
+        </section>
+      </div>
+    </main>
+
+    <div id="admin-modal" class="modal">
+      <div class="modal-card">
+        <h3>Admin Access Required</h3>
+        <div class="small">Enter an admin token (API key or JWT) to access settings.</div>
+        <input id="admin-pass-input" type="password" placeholder="Admin token (API key or JWT)" />
+        <div id="admin-pass-error" class="small" style="color: #ff9c9c; min-height: 16px"></div>
+        <div class="modal-actions">
+          <button type="button" class="secondary" id="admin-pass-cancel">Cancel</button>
+          <button type="button" id="admin-pass-confirm">Confirm</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      let adminAuthToken = "";
+      let currentTenantId = "default";
+      let tenantsList = [];
+      let adminAuthorized = false;
+      let pendingAction = null;
+      let adminKeysCache = [];
+      let forwardingProfilesCache = [];
+      let pricingCache = { items: [], notes: "" };
+
+      function escapeHtml(str) {
+        if (str == null) return "";
+        const s = String(str);
+        return s
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function setStatus(message, type = "ok") {
+        const bar = $("status-bar");
+        bar.textContent = message;
+        bar.classList.remove("ok", "err");
+        bar.classList.add(type);
+      }
+
+      async function fetchJSON(url, options = {}) {
+        try {
+          const opts = { ...options };
+          const headers = new Headers(opts.headers || {});
+          if (!opts.skipTenantHeader && currentTenantId) {
+            headers.set("X-Tenant-ID", currentTenantId);
+          }
+          if (adminAuthToken) {
+            headers.set("X-Admin-Key", adminAuthToken);
+          }
+          opts.headers = headers;
+          delete opts.skipTenantHeader;
+
+          const res = await fetch(url, opts);
+          if (!res.ok) throw new Error(await res.text());
+          return res.json();
+        } catch (err) {
+          setStatus(`Request failed for ${url}: ${err}`, "err");
+          throw err;
+        }
+      }
+
+      function renderTenantMeta() {
+        const meta = tenantsList.find((t) => t.id === currentTenantId);
+        if (!meta) {
+          $("tenant-meta").textContent = "Choose a business above.";
+          return;
+        }
+        const numbers =
+          meta.numbers && meta.numbers.length
+            ? `Reception lines: ${meta.numbers.join(", ")}`
+            : "No phone numbers yet — add numbers so callers can reach this receptionist.";
+        $("tenant-meta").textContent = `${meta.name || meta.id} • ${numbers}`;
+      }
+
+      async function loadTenants(preferId) {
+        try {
+          const data = await fetchJSON("/api/admin/tenants", { skipTenantHeader: true });
+          tenantsList = data.tenants || [];
+          const select = $("tenant-select");
+          if (select) {
+            select.innerHTML = "";
+            tenantsList.forEach((t) => {
+              const opt = document.createElement("option");
+              opt.value = t.id;
+              opt.textContent = t.name ? `${t.name} (${t.id})` : t.id;
+              select.appendChild(opt);
+            });
+          }
+
+          const preferred =
+            (preferId && tenantsList.some((t) => t.id === preferId) && preferId) ||
+            (tenantsList.some((t) => t.id === currentTenantId) && currentTenantId) ||
+            tenantsList[0]?.id ||
+            "default";
+
+          currentTenantId = preferred;
+          if (select) select.value = preferred;
+          renderTenantMeta();
+          setStatus(`Now editing: ${currentTenantId}`, "ok");
+        } catch (err) {
+          setStatus("Couldn't load businesses: " + err.message, "err");
+        }
+      }
+
+      async function saveTenantFromForm() {
+        const idInput = $("tenant-new-id");
+        const numbersInput = $("tenant-new-numbers");
+        const id = (idInput?.value || "").trim();
+        const numbersRaw = (numbersInput?.value || "").trim();
+        if (!id) {
+          setStatus("Enter a short ID for this business (e.g. acme-corp).", "err");
+          return;
+        }
+        const numbers =
+          numbersRaw.length === 0
+            ? []
+            : numbersRaw
+                .split(/[, \n]+/)
+                .map((n) => n.trim())
+                .filter(Boolean);
+        try {
+          await fetchJSON("/api/admin/tenants", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id, name: id, numbers }),
+            skipTenantHeader: true,
+          });
+          await loadTenants(id);
+          refreshAll();
+          setStatus("Business saved.", "ok");
+        } catch (err) {
+          setStatus("Couldn't save business: " + err.message, "err");
+        }
+      }
+
+      async function loadAudit() {
+        try {
+          const data = await fetchJSON("/api/admin/audit");
+          const logs = data.entries || [];
+          const lines = logs
+            .map(
+              (l) =>
+                `${l.created_at} | ${l.action} | tenant=${l.tenant_id || "-"} | status=${
+                  l.status || "-"
+                }`
+            )
+            .join("\n");
+          $("audit-logs").textContent = lines || "No audit entries.";
+          setStatus("Audit logs loaded", "ok");
+        } catch (err) {
+          $("audit-logs").textContent = "Failed to load audit logs: " + err.message;
+          setStatus("Audit load failed", "err");
+        }
+      }
+
+      async function loadAdminKeys() {
+        try {
+          const data = await fetchJSON("/api/admin/auth/keys");
+          adminKeysCache = data.keys || [];
+          renderAdminKeys();
+          setStatus("Admin keys loaded", "ok");
+        } catch (err) {
+          $("admin-keys").textContent = "Failed to load admin keys: " + err.message;
+          setStatus("Admin keys load failed", "err");
+        }
+      }
+
+      function renderAdminKeys() {
+        const container = $("admin-keys");
+        if (!container) return;
+        if (!adminKeysCache.length) {
+          container.textContent = "No admin keys yet.";
+          return;
+        }
+        container.innerHTML = adminKeysCache
+          .map(
+            (k) =>
+              `${escapeHtml(k.name)} [${escapeHtml(k.role)}] • created ${escapeHtml(k.createdAt || "-")} • last used ${
+                escapeHtml(k.lastUsedAt || "-")
+              } • id=${escapeHtml(k.id)}`
+          )
+          .join("\n");
+      }
+
+      async function createAdminKey() {
+        const name = ($("admin-key-name")?.value || "").trim();
+        const role = $("admin-key-role")?.value || "admin";
+        if (!name) {
+          setStatus("Key name required", "err");
+          return;
+        }
+        try {
+          const result = await fetchJSON("/api/admin/auth/keys", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name, role }),
+          });
+          $("admin-key-token").textContent = `New token (copy now): ${result.token}`;
+          setStatus("Admin key created", "ok");
+          await loadAdminKeys();
+        } catch (err) {
+          $("admin-key-token").textContent = "";
+          setStatus("Admin key creation failed: " + err.message, "err");
+        }
+      }
+
+      async function deleteAdminKey(id) {
+        if (!id) return;
+        try {
+          await fetchJSON(`/api/admin/auth/keys/${id}`, { method: "DELETE" });
+          setStatus("Admin key deleted", "ok");
+          await loadAdminKeys();
+        } catch (err) {
+          setStatus("Admin key delete failed: " + err.message, "err");
+        }
+      }
+
+      function renderConfig(cfg) {
+        $("provider").value = cfg.provider;
+        $("localUrl").value = cfg.localUrl || "";
+        $("openaiModel").value = cfg.openaiModel || "";
+        $("summary-provider").textContent = cfg.provider.toUpperCase();
+        $("summary-model").textContent = cfg.openaiModel ? `Model: ${cfg.openaiModel}` : "";
+        $("api-key-status").textContent = cfg.hasOpenAIApiKey ? "API key set" : "API key not set";
+        $("debug-config").textContent = JSON.stringify(cfg, null, 2);
+      }
+
+      async function loadConfig(showStatus = false) {
+        try {
+          const cfg = await fetchJSON("/api/admin/config");
+          renderConfig(cfg);
+          if (showStatus) $("config-status").textContent = "Config loaded.";
+          setStatus("Config loaded", "ok");
+        } catch (err) {
+          $("config-status").textContent = "Failed to load config: " + err.message;
+          setStatus("Config load failed", "err");
+        }
+      }
+
+      async function loadPrompts(showStatus = false) {
+        try {
+          const prompts = await fetchJSON("/api/admin/prompts");
+          $("systemPreamble").value = prompts.systemPreamble || "";
+          $("policyPrompt").value = prompts.policyPrompt || "";
+          $("voicePrompt").value = prompts.voicePrompt || "";
+          $("schemaHint").value = prompts.schemaHint || "";
+          if (showStatus) $("prompt-status").textContent = "Prompts loaded.";
+          setStatus("Prompts loaded", "ok");
+        } catch (err) {
+          $("prompt-status").textContent = "Failed to load prompts: " + err.message;
+          setStatus("Prompt load failed", "err");
+        }
+      }
+
+      function showAdminModal() {
+        $("admin-pass-input").value = "";
+        $("admin-pass-error").textContent = "";
+        $("admin-modal").classList.add("active");
+        $("admin-pass-input").focus();
+      }
+
+      function hideAdminModal() {
+        $("admin-modal").classList.remove("active");
+      }
+
+      function requestAdminPasscode(actionIfAuthorized) {
+        if (adminAuthorized) return true;
+        pendingAction = actionIfAuthorized || null;
+        showAdminModal();
+        return false;
+      }
+
+      async function validateAdminToken(token) {
+        try {
+          const res = await fetch("/api/admin/tenants", {
+            headers: { "X-Admin-Key": token }
+          });
+          return res.ok;
+        } catch {
+          return false;
+        }
+      }
+
+      async function handleAdminConfirm() {
+        const pass = $("admin-pass-input").value.trim();
+        if (!pass) {
+          $("admin-pass-error").textContent = "Admin token is required.";
+          return;
+        }
+        $("admin-pass-error").textContent = "Validating...";
+        $("admin-pass-confirm").disabled = true;
+        const valid = await validateAdminToken(pass);
+        $("admin-pass-confirm").disabled = false;
+        if (!valid) {
+          $("admin-pass-error").textContent = "Invalid admin token. Please try again.";
+          return;
+        }
+        adminAuthToken = pass;
+        adminAuthorized = true;
+        hideAdminModal();
+        setStatus("Admin confirmed", "ok");
+        if (typeof pendingAction === "function") {
+          const action = pendingAction;
+          pendingAction = null;
+          action();
+        }
+      }
+
+      async function saveConfig(event) {
+        event.preventDefault();
+        if (!adminAuthorized) {
+          requestAdminPasscode(() => saveConfig(event));
+          return;
+        }
+        const apiKey = ($("openaiApiKey").value || "").trim();
+        const payload = {
+          provider: $("provider").value,
+          localUrl: $("localUrl").value,
+          openaiModel: $("openaiModel").value,
+          openaiApiKey: apiKey.length ? apiKey : undefined,
+        };
+        try {
+          const cfg = await fetchJSON("/api/admin/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          renderConfig(cfg);
+          $("config-status").textContent = cfg.hasOpenAIApiKey ? "Saved. API key stored." : "Saved.";
+          loadHealth();
+          setStatus("Config saved", "ok");
+        } catch (err) {
+          $("config-status").textContent = "Save failed: " + err.message;
+          setStatus("Config save failed", "err");
+        }
+      }
+
+      async function savePrompts(event) {
+        event.preventDefault();
+        if (!adminAuthorized) {
+          requestAdminPasscode(() => savePrompts(event));
+          return;
+        }
+        const payload = {
+          systemPreamble: $("systemPreamble").value,
+          policyPrompt: $("policyPrompt").value,
+          voicePrompt: $("voicePrompt").value,
+          schemaHint: $("schemaHint").value,
+        };
+        try {
+          await fetchJSON("/api/admin/prompts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          $("prompt-status").textContent = "Prompts saved.";
+          setStatus("Prompts saved", "ok");
+          await loadPrompts();
+        } catch (err) {
+          $("prompt-status").textContent = "Save failed: " + err.message;
+          setStatus("Prompt save failed", "err");
+        }
+      }
+
+      function pill(text, kind = "ok") {
+        const span = document.createElement("span");
+        span.className = `pill ${kind}`;
+        span.textContent = text;
+        return span;
+      }
+
+      function pillKind(status) {
+        if (status === "ready" || status === "configured" || status === "ok") return "ok";
+        if (status === "warn" || status === "missing_api_key" || status === "defaulting") return "warn";
+        return "err";
+      }
+
+      function renderHealth(data) {
+        const container = $("health-status");
+        container.innerHTML = "";
+
+        const healthCard = (title, status, lines) => {
+          const card = document.createElement("div");
+          card.className = "card health-card";
+          const header = document.createElement("div");
+          header.className = "health-header";
+          const name = document.createElement("div");
+          name.className = "health-title";
+          name.textContent = title;
+          const statusPill = pill(status, pillKind(status));
+          header.appendChild(name);
+          header.appendChild(statusPill);
+
+          const body = document.createElement("div");
+          body.className = "health-body";
+          lines.forEach((line) => {
+            const div = document.createElement("div");
+            div.className = "health-line";
+            div.textContent = line;
+            body.appendChild(div);
+          });
+
+          card.appendChild(header);
+          card.appendChild(body);
+          return card;
+        };
+
+        container.appendChild(
+          healthCard("LLM", data.llm.status, [
+            `Provider: ${data.llm.provider}`,
+            `Model: ${data.llm.model || "-"}`,
+            `URL: ${data.llm.localUrl || "-"}`,
+          ])
+        );
+
+        container.appendChild(healthCard("STT", data.stt.status, [`Status: ${data.stt.status}`]));
+
+        // TTS (Kokoro/XTTS) tuning fields
+        container.appendChild(
+          healthCard("TTS", data.tts.status, [
+            `Status: ${data.tts.status}`,
+            `URL: ${data.tts.xttsUrl || "-"}`,
+            `Voice: ${data.tts.voiceId || "-"}`,
+            `Lang: ${data.tts.language || "-"}`,
+            `Rate: ${typeof data.tts.rate === "number" ? data.tts.rate.toFixed(2) : "-"}`,
+          ])
+        );
+      }
+
+      async function loadHealth() {
+        try {
+          const data = await fetchJSON("/api/admin/health");
+          renderHealth(data);
+          setStatus("Health loaded", "ok");
+          $("debug-health").textContent = JSON.stringify(data, null, 2);
+        } catch (err) {
+          $("health-status").textContent = "Failed to load health: " + err.message;
+          setStatus("Health load failed", "err");
+        }
+      }
+
+      function renderAnalytics(data) {
+        $("summary-calls").textContent = data.totalCalls;
+        $("summary-messages").textContent = data.totalCallerMessages;
+        $("analytics-summary").innerHTML = `
+          <div class="flex-between">
+            <div><div class="small">Total calls</div><div class="value">${escapeHtml(data.totalCalls)}</div></div>
+            <div><div class="small">Caller messages</div><div class="value">${escapeHtml(data.totalCallerMessages)}</div></div>
+          </div>
+        `;
+        const list = $("top-questions");
+        list.innerHTML = "";
+        if (!data.topQuestions || data.topQuestions.length === 0) {
+          const li = document.createElement("li");
+          li.className = "small";
+          li.textContent = "No data yet.";
+          list.appendChild(li);
+          return;
+        }
+        data.topQuestions.forEach((q) => {
+          const li = document.createElement("li");
+          li.className = "card";
+          li.innerHTML = `<div class="flex-between"><span>${escapeHtml(q.text)}</span><span class="small">x${escapeHtml(q.count)}</span></div>`;
+          list.appendChild(li);
+        });
+      }
+
+      async function loadAnalytics() {
+        try {
+          const data = await fetchJSON("/api/admin/analytics");
+          renderAnalytics(data);
+          setStatus("Analytics loaded", "ok");
+        } catch (err) {
+          $("analytics-summary").textContent = "Failed to load analytics: " + err.message;
+          setStatus("Analytics load failed", "err");
+        }
+      }
+
+      function renderCalls(data) {
+        const container = $("calls");
+        container.innerHTML = "";
+        const callsList = data.calls || [];
+        if (callsList.length === 0) {
+          container.textContent = "No calls yet.";
+          return;
+        }
+        callsList
+          .slice()
+          .reverse()
+          .forEach((c) => {
+            const div = document.createElement("div");
+            div.className = "card";
+            const lastMessage = c.history?.[c.history.length - 1];
+            div.innerHTML = `
+              <div class="flex-between">
+                <div><strong>${escapeHtml(c.id)}</strong></div>
+                <span class="pill ok">${escapeHtml(c.stage)}</span>
+              </div>
+              <div class="small" style="margin-top: 4px">Caller: ${escapeHtml(c.callerId || "unknown")}</div>
+              <div class="small">Lead: ${
+                escapeHtml(Object.keys(c.lead || {}).length ? JSON.stringify(c.lead) : "none")
+              }</div>
+              <div class="small">Last: ${
+                lastMessage ? escapeHtml(`${lastMessage.from}: ${lastMessage.message}`) : "n/a"
+              }</div>
+            `;
+            container.appendChild(div);
+          });
+      }
+
+      async function loadCalls() {
+        try {
+          const data = await fetchJSON("/api/admin/calls");
+          renderCalls(data);
+          setStatus("Calls loaded", "ok");
+        } catch (err) {
+          $("calls").textContent = "Failed to load calls: " + err.message;
+          setStatus("Calls load failed", "err");
+        }
+      }
+
+      // ───────────────────────────────────────────────
+      // TTS CONFIG & PREVIEW (Kokoro / XTTS)
+      // ───────────────────────────────────────────────
+
+      let currentTtsMode = "coqui_xtts";
+
+      function renderTtsConfig(cfg) {
+        const modeEl = $("ttsMode");
+        const urlEl = $("ttsUrl");
+        const presetEl = $("ttsPreset");
+        const voiceEl = $("ttsVoiceId");
+        const langEl = $("ttsLanguage");
+        const rateEl = $("ttsRate");
+        const defaultVoiceModeEl = $("defaultVoiceMode");
+        const clonedVoiceUrlEl = $("clonedVoiceUrl");
+        const clonedVoiceLabelEl = $("clonedVoiceLabel");
+
+        if (!presetEl || !rateEl) return;
+
+        // Determine TTS mode from config
+        currentTtsMode = cfg.mode || cfg.ttsMode || "coqui_xtts";
+        if (modeEl) modeEl.value = currentTtsMode;
+
+        // Set URL based on mode
+        if (urlEl) {
+          urlEl.value = cfg.coquiXttsUrl || cfg.kokoroUrl || cfg.xttsUrl || "";
+        }
+        presetEl.value = cfg.preset || "neutral";
+        
+        // Set voice and language from config first
+        if (voiceEl) voiceEl.value = cfg.voice || cfg.voiceId || "";
+        if (langEl) langEl.value = cfg.language || "";
+        
+        // If XTTS mode, apply XTTS-appropriate defaults for Kokoro-style values
+        if (currentTtsMode === "coqui_xtts") {
+          applyXttsDefaults();
+        }
+
+        rateEl.value = (typeof cfg.rate === "number" ? cfg.rate : (typeof cfg.coquiSpeed === "number" ? cfg.coquiSpeed : 0.95)).toFixed(2);
+
+        // Voice cloning fields (XTTS only)
+        if (defaultVoiceModeEl) {
+          defaultVoiceModeEl.value = cfg.defaultVoiceMode || "preset";
+        }
+        if (clonedVoiceUrlEl) {
+          clonedVoiceUrlEl.value = cfg.clonedVoice?.speakerWavUrl || "";
+        }
+        if (clonedVoiceLabelEl) {
+          clonedVoiceLabelEl.value = cfg.clonedVoice?.label || "";
+        }
+
+        updateTtsLabels();
+        updateVoiceCloningVisibility();
+        $("tts-status").textContent = "TTS config loaded.";
+      }
+
+      function updateTtsLabels() {
+        const rateEl = $("ttsRate");
+        const rateVal = $("ttsRateValue");
+        if (rateEl && rateVal) rateVal.textContent = Number(rateEl.value).toFixed(2);
+      }
+
+      // Kokoro voice IDs typically have patterns like af_alloy, am_echo, bf_emma, etc.
+      const KOKORO_VOICE_PATTERN = /^[ab][fm]_/;
+      const KOKORO_LANG_VALUES = ["a", "b"];
+      const XTTS_DEFAULT_VOICE = "en_sample";
+      const XTTS_DEFAULT_LANG = "en";
+
+      function applyXttsDefaults() {
+        const voiceEl = $("ttsVoiceId");
+        const langEl = $("ttsLanguage");
+        
+        if (voiceEl) {
+          const currentVoice = voiceEl.value.trim();
+          // If voice looks like Kokoro format or is empty, apply XTTS default
+          if (!currentVoice || KOKORO_VOICE_PATTERN.test(currentVoice)) {
+            voiceEl.value = XTTS_DEFAULT_VOICE;
+          }
+        }
+        
+        if (langEl) {
+          const currentLang = langEl.value.trim();
+          // If language is Kokoro-style (a/b) or empty, apply XTTS default
+          if (!currentLang || KOKORO_LANG_VALUES.includes(currentLang)) {
+            langEl.value = XTTS_DEFAULT_LANG;
+          }
+        }
+      }
+
+      function updateVoiceCloningVisibility() {
+        const modeEl = $("ttsMode");
+        const voiceCloningSection = $("voice-cloning-section");
+        const activeCallPanel = $("active-call-voice-panel");
+        const warningEl = $("voice-cloning-warning");
+        const defaultVoiceModeEl = $("defaultVoiceMode");
+        const clonedVoiceUrlEl = $("clonedVoiceUrl");
+
+        if (!modeEl || !voiceCloningSection) return;
+
+        const isXtts = modeEl.value === "coqui_xtts";
+        voiceCloningSection.style.display = isXtts ? "block" : "none";
+        if (activeCallPanel) activeCallPanel.style.display = isXtts ? "block" : "none";
+
+        // When XTTS mode is selected, auto-apply XTTS-appropriate defaults
+        if (isXtts) {
+          applyXttsDefaults();
+        }
+
+        // Show warning if cloned mode selected but no URL
+        if (warningEl && defaultVoiceModeEl && clonedVoiceUrlEl) {
+          const isClonedMode = defaultVoiceModeEl.value === "cloned";
+          const hasUrl = clonedVoiceUrlEl.value.trim().length > 0;
+          warningEl.style.display = (isClonedMode && !hasUrl) ? "block" : "none";
+        }
+
+        currentTtsMode = modeEl.value;
+      }
+
+      function validateVoiceCloningConfig() {
+        const modeEl = $("ttsMode");
+        const defaultVoiceModeEl = $("defaultVoiceMode");
+        const clonedVoiceUrlEl = $("clonedVoiceUrl");
+
+        if (!modeEl || modeEl.value !== "coqui_xtts") return true;
+        if (!defaultVoiceModeEl || defaultVoiceModeEl.value !== "cloned") return true;
+        if (!clonedVoiceUrlEl || clonedVoiceUrlEl.value.trim().length === 0) {
+          $("tts-status").textContent = "Error: Cloned voice mode requires a reference audio URL.";
+          setStatus("Validation failed: cloned voice URL required", "err");
+          return false;
+        }
+        return true;
+      }
+
+      // ========== Audio Recording for Voice Cloning ==========
+      let mediaRecorder = null;
+      let audioChunks = [];
+      let recordingStartTime = null;
+      let recordingTimerInterval = null;
+      let recordedBlob = null;
+
+      async function startRecording() {
+        const recordBtn = $("record-btn");
+        const recordBtnText = $("record-btn-text");
+        const recordingStatus = $("recording-status");
+        const recordingTimer = $("recording-timer");
+        const previewContainer = $("audio-preview-container");
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ 
+            audio: { 
+              channelCount: 1,
+              sampleRate: 22050,
+              echoCancellation: true,
+              noiseSuppression: true
+            } 
+          });
+
+          // Hide any previous preview
+          if (previewContainer) previewContainer.style.display = "none";
+          
+          audioChunks = [];
+          mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+
+          mediaRecorder.ondataavailable = (e) => {
+            if (e.data.size > 0) audioChunks.push(e.data);
+          };
+
+          mediaRecorder.onstop = async () => {
+            stream.getTracks().forEach(track => track.stop());
+            clearInterval(recordingTimerInterval);
+            
+            const webmBlob = new Blob(audioChunks, { type: "audio/webm" });
+            
+            // Convert to WAV
+            recordingStatus.textContent = "Converting to WAV...";
+            try {
+              recordedBlob = await convertToWav(webmBlob);
+              showAudioPreview(recordedBlob);
+              recordingStatus.textContent = "Recording ready";
+            } catch (err) {
+              recordingStatus.textContent = "Conversion failed: " + err.message;
+              console.error("WAV conversion error:", err);
+            }
+            
+            recordBtnText.textContent = "Record";
+            recordBtn.classList.remove("recording");
+          };
+
+          mediaRecorder.start(100);
+          recordingStartTime = Date.now();
+          
+          recordBtnText.textContent = "Stop";
+          recordBtn.classList.add("recording");
+          recordingStatus.textContent = "Recording...";
+          
+          // Start timer
+          recordingTimerInterval = setInterval(() => {
+            const elapsed = Math.floor((Date.now() - recordingStartTime) / 1000);
+            const mins = Math.floor(elapsed / 60).toString().padStart(2, "0");
+            const secs = (elapsed % 60).toString().padStart(2, "0");
+            recordingTimer.textContent = `${mins}:${secs}`;
+            
+            // Auto-stop at 30 seconds
+            if (elapsed >= 30) {
+              stopRecording();
+              recordingStatus.textContent = "Auto-stopped at 30s limit";
+            }
+          }, 100);
+
+        } catch (err) {
+          console.error("Microphone access error:", err);
+          recordingStatus.textContent = "Microphone access denied";
+          setStatus("Microphone access denied - check browser permissions", "err");
+        }
+      }
+
+      function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state !== "inactive") {
+          mediaRecorder.stop();
+        }
+      }
+
+      function toggleRecording() {
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+          stopRecording();
+        } else {
+          startRecording();
+        }
+      }
+
+      async function convertToWav(webmBlob) {
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 22050 });
+        const arrayBuffer = await webmBlob.arrayBuffer();
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+        
+        // Get audio data (mono)
+        const channelData = audioBuffer.getChannelData(0);
+        const sampleRate = audioBuffer.sampleRate;
+        
+        // Create WAV file
+        const wavBuffer = encodeWav(channelData, sampleRate);
+        return new Blob([wavBuffer], { type: "audio/wav" });
+      }
+
+      function encodeWav(samples, sampleRate) {
+        const buffer = new ArrayBuffer(44 + samples.length * 2);
+        const view = new DataView(buffer);
+        
+        // WAV header
+        writeString(view, 0, "RIFF");
+        view.setUint32(4, 36 + samples.length * 2, true);
+        writeString(view, 8, "WAVE");
+        writeString(view, 12, "fmt ");
+        view.setUint32(16, 16, true); // Subchunk1Size
+        view.setUint16(20, 1, true);  // AudioFormat (PCM)
+        view.setUint16(22, 1, true);  // NumChannels (Mono)
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true); // ByteRate
+        view.setUint16(32, 2, true);  // BlockAlign
+        view.setUint16(34, 16, true); // BitsPerSample
+        writeString(view, 36, "data");
+        view.setUint32(40, samples.length * 2, true);
+        
+        // Write audio data
+        let offset = 44;
+        for (let i = 0; i < samples.length; i++) {
+          const s = Math.max(-1, Math.min(1, samples[i]));
+          view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+          offset += 2;
+        }
+        
+        return buffer;
+      }
+
+      function writeString(view, offset, string) {
+        for (let i = 0; i < string.length; i++) {
+          view.setUint8(offset + i, string.charCodeAt(i));
+        }
+      }
+
+      function showAudioPreview(blob) {
+        const previewContainer = $("audio-preview-container");
+        const audioPreview = $("audio-preview");
+        
+        if (previewContainer && audioPreview) {
+          const url = URL.createObjectURL(blob);
+          audioPreview.src = url;
+          previewContainer.style.display = "block";
+        }
+      }
+
+      async function useRecording() {
+        if (!recordedBlob) {
+          setStatus("No recording to upload", "err");
+          return;
+        }
+
+        const uploadStatus = $("upload-status");
+        const clonedVoiceUrlEl = $("clonedVoiceUrl");
+        
+        if (uploadStatus) {
+          uploadStatus.style.display = "block";
+          uploadStatus.textContent = "Uploading recording...";
+        }
+
+        try {
+          const formData = new FormData();
+          const filename = `voice-clone-${Date.now()}.wav`;
+          formData.append("audio", recordedBlob, filename);
+
+          const response = await fetch("/api/admin/voice-recordings", {
+            method: "POST",
+            body: formData,
+          });
+
+          if (!response.ok) {
+            const err = await response.json().catch(() => ({ message: "Upload failed" }));
+            throw new Error(err.message || "Upload failed");
+          }
+
+          const result = await response.json();
+          
+          if (clonedVoiceUrlEl && result.url) {
+            clonedVoiceUrlEl.value = result.url;
+            updateVoiceCloningVisibility();
+          }
+
+          if (uploadStatus) {
+            uploadStatus.textContent = "Recording uploaded successfully!";
+            uploadStatus.style.background = "rgba(100, 255, 100, 0.1)";
+          }
+          
+          setStatus("Voice recording uploaded", "ok");
+          
+          // Clear the preview after successful upload
+          setTimeout(() => {
+            discardRecording();
+            if (uploadStatus) uploadStatus.style.display = "none";
+          }, 2000);
+
+        } catch (err) {
+          console.error("Upload error:", err);
+          if (uploadStatus) {
+            uploadStatus.textContent = "Upload failed: " + err.message;
+            uploadStatus.style.background = "rgba(255, 100, 100, 0.1)";
+          }
+          setStatus("Voice recording upload failed", "err");
+        }
+      }
+
+      function discardRecording() {
+        recordedBlob = null;
+        audioChunks = [];
+        
+        const previewContainer = $("audio-preview-container");
+        const audioPreview = $("audio-preview");
+        const recordingStatus = $("recording-status");
+        const recordingTimer = $("recording-timer");
+        
+        if (audioPreview) {
+          URL.revokeObjectURL(audioPreview.src);
+          audioPreview.src = "";
+        }
+        if (previewContainer) previewContainer.style.display = "none";
+        if (recordingStatus) recordingStatus.textContent = "";
+        if (recordingTimer) recordingTimer.textContent = "";
+      }
+
+      async function loadTtsConfig(showStatus = false) {
+        try {
+          const cfg = await fetchJSON("/api/tts/config");
+          renderTtsConfig(cfg);
+          if (showStatus && $("tts-status")) $("tts-status").textContent = "TTS config loaded.";
+          setStatus("TTS config loaded", "ok");
+        } catch (err) {
+          console.error(err);
+          if ($("tts-status")) $("tts-status").textContent = "Failed to load TTS config: " + err.message;
+          setStatus("TTS config load failed", "err");
+        }
+      }
+
+      async function saveTtsConfig(event) {
+        event.preventDefault();
+        if (!adminAuthorized) {
+          requestAdminPasscode(() => saveTtsConfig(event));
+          return;
+        }
+
+        if (!validateVoiceCloningConfig()) return;
+
+        const modeEl = $("ttsMode");
+        const urlEl = $("ttsUrl");
+        const presetEl = $("ttsPreset");
+        const voiceEl = $("ttsVoiceId");
+        const langEl = $("ttsLanguage");
+        const rateEl = $("ttsRate");
+        const defaultVoiceModeEl = $("defaultVoiceMode");
+        const clonedVoiceUrlEl = $("clonedVoiceUrl");
+        const clonedVoiceLabelEl = $("clonedVoiceLabel");
+
+        if (!presetEl || !rateEl) return;
+
+        const ttsMode = modeEl ? modeEl.value : "coqui_xtts";
+        const url = urlEl ? urlEl.value.trim() : undefined;
+
+        const payload = {
+          ttsMode,
+          preset: presetEl.value,
+          voiceId: voiceEl ? voiceEl.value.trim() || undefined : undefined,
+          language: langEl ? langEl.value.trim() || undefined : undefined,
+          rate: parseFloat(rateEl.value),
+        };
+
+        // Set URL based on mode
+        if (ttsMode === "coqui_xtts") {
+          payload.coquiXttsUrl = url || undefined;
+          // Include voice cloning config
+          if (defaultVoiceModeEl) {
+            payload.defaultVoiceMode = defaultVoiceModeEl.value;
+          }
+          const clonedUrl = clonedVoiceUrlEl ? clonedVoiceUrlEl.value.trim() : "";
+          const clonedLabel = clonedVoiceLabelEl ? clonedVoiceLabelEl.value.trim() : "";
+          if (clonedUrl) {
+            payload.clonedVoice = {
+              speakerWavUrl: clonedUrl,
+              label: clonedLabel || undefined,
+            };
+          }
+        } else {
+          payload.kokoroUrl = url || undefined;
+          payload.xttsUrl = url || undefined; // Legacy compatibility
+        }
+
+        try {
+          const cfg = await fetchJSON("/api/tts/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          renderTtsConfig(cfg);
+          $("tts-status").textContent = "Voice settings saved.";
+          setStatus("TTS config saved", "ok");
+        } catch (err) {
+          console.error(err);
+          $("tts-status").textContent = "Failed to save TTS config: " + err.message;
+          setStatus("TTS config save failed", "err");
+        }
+      }
+
+      async function previewTts() {
+        // TTS preview is not available - it runs in the voice runtime
+        $("tts-status").textContent = "Preview not available. TTS is handled by the voice runtime.";
+        setStatus("TTS preview runs in voice runtime", "ok");
+      }
+
+      // ───────────────────────────────────────────────
+      // ACTIVE CALL VOICE CONTROL (Hot-Swap)
+      // ───────────────────────────────────────────────
+
+      async function getCallVoiceMode() {
+        const callIdEl = $("call-control-id");
+        const infoEl = $("call-voice-info");
+        const statusEl = $("call-voice-status");
+
+        if (!callIdEl || !infoEl || !statusEl) return;
+
+        const callControlId = callIdEl.value.trim();
+        if (!callControlId) {
+          statusEl.textContent = "Please enter a Call Control ID.";
+          statusEl.style.color = "var(--accent)";
+          return;
+        }
+
+        statusEl.textContent = "Fetching voice mode...";
+        statusEl.style.color = "var(--muted)";
+
+        try {
+          const data = await fetchJSON(`/v1/calls/${encodeURIComponent(callControlId)}/voice`);
+          
+          $("call-voice-mode").textContent = data.voiceMode === "cloned" ? "Cloned Voice" : "Preset Voice";
+          $("call-voice-cloning-available").textContent = data.voiceCloningAvailable ? "Yes" : "No";
+          $("call-voice-label").textContent = data.clonedVoiceLabel || "—";
+          
+          infoEl.style.display = "block";
+          statusEl.textContent = "Voice mode retrieved.";
+          statusEl.style.color = "var(--primary)";
+          setStatus("Call voice mode loaded", "ok");
+        } catch (err) {
+          console.error(err);
+          infoEl.style.display = "none";
+          statusEl.textContent = "Failed: " + (err.message || "Call not found or ended");
+          statusEl.style.color = "var(--danger)";
+          setStatus("Call voice mode fetch failed", "err");
+        }
+      }
+
+      async function setCallVoiceMode() {
+        const callIdEl = $("call-control-id");
+        const modeEl = $("set-call-voice-mode");
+        const urlEl = $("set-call-voice-url");
+        const statusEl = $("call-voice-status");
+
+        if (!callIdEl || !modeEl || !statusEl) return;
+
+        const callControlId = callIdEl.value.trim();
+        if (!callControlId) {
+          statusEl.textContent = "Please enter a Call Control ID.";
+          statusEl.style.color = "var(--accent)";
+          return;
+        }
+
+        const mode = modeEl.value;
+        const speakerWavUrl = urlEl ? urlEl.value.trim() : "";
+
+        statusEl.textContent = "Setting voice mode...";
+        statusEl.style.color = "var(--muted)";
+
+        const payload = { mode };
+        if (speakerWavUrl) payload.speakerWavUrl = speakerWavUrl;
+
+        try {
+          const data = await fetchJSON(`/v1/calls/${encodeURIComponent(callControlId)}/voice`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+
+          $("call-voice-mode").textContent = data.voiceMode === "cloned" ? "Cloned Voice" : "Preset Voice";
+          $("call-voice-cloning-available").textContent = data.voiceCloningAvailable ? "Yes" : "No";
+          $("call-voice-label").textContent = data.clonedVoiceLabel || "—";
+          $("call-voice-info").style.display = "block";
+
+          statusEl.textContent = data.updated ? "Voice mode updated!" : "Voice mode set.";
+          statusEl.style.color = "var(--primary)";
+          setStatus("Call voice mode updated", "ok");
+        } catch (err) {
+          console.error(err);
+          statusEl.textContent = "Failed: " + (err.message || "Invalid mode or call not found");
+          statusEl.style.color = "var(--danger)";
+          setStatus("Call voice mode update failed", "err");
+        }
+      }
+
+      function refreshAll() {
+        setStatus("Refreshing…", "ok");
+        loadConfig();
+        loadPrompts();
+        loadForwardingAndPricing();
+        loadTtsConfig();
+        loadHealth();
+        loadAnalytics();
+        loadCalls();
+        loadAudit();
+        loadAdminKeys();
+        loadCloudflareStatus();
+      }
+
+      async function loadForwardingAndPricing() {
+        try {
+          const [profilesRes, pricingRes] = await Promise.all([
+            fetchJSON("/api/admin/forwarding-profiles"),
+            fetchJSON("/api/admin/pricing"),
+          ]);
+          forwardingProfilesCache = Array.isArray(profilesRes?.profiles) ? profilesRes.profiles : [];
+          pricingCache = pricingRes && typeof pricingRes === "object"
+            ? { items: Array.isArray(pricingRes.items) ? pricingRes.items : [], notes: pricingRes.notes || "" }
+            : { items: [], notes: "" };
+          renderForwardingProfiles();
+          renderPricing();
+        } catch (err) {
+          setStatus("Forwarding/pricing load failed: " + err.message, "err");
+        }
+      }
+
+      function renderForwardingProfiles() {
+        const list = $("forwarding-profiles-list");
+        if (!list) return;
+        list.innerHTML = "";
+        if (forwardingProfilesCache.length === 0) {
+          list.appendChild(Object.assign(document.createElement("li"), { className: "small", textContent: "No profiles yet. Add one above." }));
+          return;
+        }
+        forwardingProfilesCache.forEach((p, i) => {
+          const li = document.createElement("li");
+          li.className = "card";
+          li.style.marginBottom = "6px";
+          li.innerHTML = `
+            <div class="flex-between">
+              <div>
+                <strong>${escapeHtml(p.name)}</strong> ${escapeHtml(p.number)} <span class="small">${escapeHtml(p.role)}</span>
+              </div>
+              <button type="button" class="secondary" data-fp-index="${i}">Remove</button>
+            </div>
+          `;
+          li.querySelector("button").addEventListener("click", () => {
+            forwardingProfilesCache.splice(i, 1);
+            renderForwardingProfiles();
+          });
+          list.appendChild(li);
+        });
+      }
+
+      function renderPricing() {
+        const list = $("pricing-items-list");
+        const notesEl = $("pricing-notes");
+        if (!list) return;
+        if (notesEl) notesEl.value = pricingCache.notes || "";
+        list.innerHTML = "";
+        if (!pricingCache.items || pricingCache.items.length === 0) {
+          list.appendChild(Object.assign(document.createElement("li"), { className: "small", textContent: "No pricing items yet. Add one above." }));
+          return;
+        }
+        pricingCache.items.forEach((item, i) => {
+          const li = document.createElement("li");
+          li.className = "card";
+          li.style.marginBottom = "6px";
+          li.innerHTML = `
+            <div class="flex-between">
+              <div><strong>${escapeHtml(item.name)}</strong> ${escapeHtml(item.price)} ${item.description ? `<span class="small">${escapeHtml(item.description)}</span>` : ""}</div>
+              <button type="button" class="secondary" data-price-index="${i}">Remove</button>
+            </div>
+          `;
+          li.querySelector("button").addEventListener("click", () => {
+            pricingCache.items.splice(i, 1);
+            renderPricing();
+          });
+          list.appendChild(li);
+        });
+      }
+
+      async function saveForwardingProfiles() {
+        const status = $("fp-status");
+        try {
+          await fetchJSON("/api/admin/forwarding-profiles", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ profiles: forwardingProfilesCache }),
+          });
+          if (status) status.textContent = "Saved.";
+          setStatus("Forwarding profiles saved", "ok");
+        } catch (err) {
+          if (status) status.textContent = "Save failed: " + err.message;
+          setStatus("Forwarding save failed", "err");
+        }
+      }
+
+      async function savePricing() {
+        const notesEl = $("pricing-notes");
+        if (notesEl) pricingCache.notes = notesEl.value.trim();
+        const status = $("price-status");
+        try {
+          await fetchJSON("/api/admin/pricing", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(pricingCache),
+          });
+          if (status) status.textContent = "Saved.";
+          setStatus("Pricing saved", "ok");
+        } catch (err) {
+          if (status) status.textContent = "Save failed: " + err.message;
+          setStatus("Pricing save failed", "err");
+        }
+      }
+
+      /* ── Cloudflare Tunnel ─────────────────────── */
+      async function loadCloudflareStatus() {
+        try {
+          const data = await fetchJSON("/api/admin/cloudflare/token");
+          const status = $("cf-token-status");
+          if (data.hasToken) {
+            status.innerHTML = '<span style="color: var(--primary);">&#10003; Tunnel token is configured.</span>';
+          } else {
+            status.textContent = "No tunnel token set.";
+          }
+        } catch {
+          $("cf-token-status").textContent = "Could not load Cloudflare status.";
+        }
+      }
+
+      async function saveCloudflareToken() {
+        const token = $("cf-tunnel-token").value.trim();
+        if (!token) {
+          $("cf-token-status").textContent = "Please enter a tunnel token.";
+          return;
+        }
+        try {
+          await fetchJSON("/api/admin/cloudflare/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ token }),
+          });
+          $("cf-tunnel-token").value = "";
+          $("cf-token-status").innerHTML = '<span style="color: var(--primary);">&#10003; Tunnel token saved successfully.</span>';
+          setStatus("Cloudflare token saved", "ok");
+        } catch (err) {
+          $("cf-token-status").textContent = "Save failed: " + err.message;
+          setStatus("Cloudflare token save failed", "err");
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        document.querySelectorAll(".tab").forEach((tab) => {
+          tab.addEventListener("click", () => {
+            const target = tab.dataset.tab;
+            if (target) {
+              document.querySelectorAll(".tab").forEach((t) => {
+                t.classList.toggle("active", t.dataset.tab === target);
+              });
+              document.querySelectorAll(".tab-content").forEach((content) => {
+                content.classList.toggle("active", content.dataset.tab === target);
+              });
+            }
+            if (tab.id === "refresh-all") refreshAll();
+          });
+        });
+
+        const tenantSelect = $("tenant-select");
+        if (tenantSelect) {
+          tenantSelect.addEventListener("change", () => {
+            currentTenantId = tenantSelect.value;
+            renderTenantMeta();
+            refreshAll();
+          });
+        }
+
+        const tenantReload = $("tenant-reload");
+        if (tenantReload) tenantReload.addEventListener("click", () => loadTenants());
+
+        const tenantCreate = $("tenant-create");
+        if (tenantCreate) tenantCreate.addEventListener("click", saveTenantFromForm);
+
+        $("config-form").addEventListener("submit", saveConfig);
+        $("refresh-config").addEventListener("click", () => loadConfig(true));
+        $("prompt-form").addEventListener("submit", savePrompts);
+        $("refresh-prompts").addEventListener("click", () => loadPrompts(true));
+
+        const refreshHealthBtn = $("refresh-health");
+        if (refreshHealthBtn) {
+          refreshHealthBtn.addEventListener("click", () => {
+            setStatus("Refreshing health…", "ok");
+            loadHealth();
+          });
+        }
+
+        const refreshAnalyticsBtn = $("refresh-analytics");
+        if (refreshAnalyticsBtn) {
+          refreshAnalyticsBtn.addEventListener("click", () => {
+            setStatus("Refreshing analytics…", "ok");
+            loadAnalytics();
+          });
+        }
+
+        const refreshCallsBtn = $("refresh-calls");
+        if (refreshCallsBtn) {
+          refreshCallsBtn.addEventListener("click", () => {
+            setStatus("Refreshing calls…", "ok");
+            loadCalls();
+          });
+        }
+
+        const refreshAuditBtn = $("refresh-audit");
+        if (refreshAuditBtn) {
+          refreshAuditBtn.addEventListener("click", () => {
+            setStatus("Refreshing audit logs…", "ok");
+            loadAudit();
+          });
+        }
+
+        const refreshKeysBtn = $("refresh-keys");
+        if (refreshKeysBtn) {
+          refreshKeysBtn.addEventListener("click", () => {
+            setStatus("Refreshing admin keys…", "ok");
+            loadAdminKeys();
+          });
+        }
+
+        // Cloudflare Tunnel
+        const cfSave = $("cf-save-token");
+        if (cfSave) cfSave.addEventListener("click", () => requireAuth(saveCloudflareToken));
+
+        const cfToggle = $("cf-toggle-visibility");
+        if (cfToggle) {
+          cfToggle.addEventListener("click", () => {
+            const input = $("cf-tunnel-token");
+            if (input.type === "password") {
+              input.type = "text";
+              cfToggle.textContent = "Hide";
+            } else {
+              input.type = "password";
+              cfToggle.textContent = "Show";
+            }
+          });
+        }
+
+        const fpAdd = $("fp-add");
+        if (fpAdd) {
+          fpAdd.addEventListener("click", () => {
+            const name = ($("fp-name")?.value || "").trim();
+            const number = ($("fp-number")?.value || "").trim();
+            const role = ($("fp-role")?.value || "").trim();
+            if (!name) return;
+            forwardingProfilesCache.push({ id: "id_" + Date.now(), name, number, role });
+            if ($("fp-name")) $("fp-name").value = "";
+            if ($("fp-number")) $("fp-number").value = "";
+            if ($("fp-role")) $("fp-role").value = "";
+            renderForwardingProfiles();
+          });
+        }
+        const fpSave = $("fp-save");
+        if (fpSave) fpSave.addEventListener("click", () => saveForwardingProfiles());
+
+        const priceAdd = $("price-add");
+        if (priceAdd) {
+          priceAdd.addEventListener("click", () => {
+            const name = ($("price-name")?.value || "").trim();
+            const price = ($("price-amount")?.value || "").trim();
+            const desc = ($("price-desc")?.value || "").trim();
+            if (!name) return;
+            if (!pricingCache.items) pricingCache.items = [];
+            pricingCache.items.push({ id: "id_" + Date.now(), name, price, description: desc || undefined });
+            if ($("price-name")) $("price-name").value = "";
+            if ($("price-amount")) $("price-amount").value = "";
+            if ($("price-desc")) $("price-desc").value = "";
+            renderPricing();
+          });
+        }
+        const priceSave = $("price-save");
+        if (priceSave) priceSave.addEventListener("click", () => savePricing());
+
+        const createKeyBtn = $("create-admin-key");
+        if (createKeyBtn) {
+          createKeyBtn.addEventListener("click", () => {
+            createAdminKey();
+          });
+        }
+
+        const refreshDebugBtn = $("refresh-debug");
+        if (refreshDebugBtn) {
+          refreshDebugBtn.addEventListener("click", () => {
+            setStatus("Refreshing diagnostics…", "ok");
+            loadConfig(true);
+            loadHealth();
+          });
+        }
+
+        $("admin-pass-confirm").addEventListener("click", handleAdminConfirm);
+        $("admin-pass-cancel").addEventListener("click", () => {
+          hideAdminModal();
+          setStatus("Admin action canceled", "err");
+        });
+
+        $("admin-pass-input").addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            handleAdminConfirm();
+          }
+        });
+
+        $("openaiApiKey").addEventListener("focus", () => {
+          if (!adminAuthorized) {
+            requestAdminPasscode();
+            $("openaiApiKey").blur();
+          }
+        });
+
+        // TTS slider label
+        if ($("ttsRate")) {
+          $("ttsRate").addEventListener("input", updateTtsLabels);
+          updateTtsLabels();
+        }
+
+        // TTS mode change handler
+        const ttsModeEl = $("ttsMode");
+        if (ttsModeEl) {
+          ttsModeEl.addEventListener("change", updateVoiceCloningVisibility);
+        }
+
+        // Voice cloning validation triggers
+        const defaultVoiceModeEl = $("defaultVoiceMode");
+        if (defaultVoiceModeEl) {
+          defaultVoiceModeEl.addEventListener("change", updateVoiceCloningVisibility);
+        }
+        const clonedVoiceUrlEl = $("clonedVoiceUrl");
+        if (clonedVoiceUrlEl) {
+          clonedVoiceUrlEl.addEventListener("input", updateVoiceCloningVisibility);
+        }
+
+        // Audio recording controls
+        const recordBtn = $("record-btn");
+        if (recordBtn) {
+          recordBtn.addEventListener("click", toggleRecording);
+        }
+        const useRecordingBtn = $("use-recording-btn");
+        if (useRecordingBtn) {
+          useRecordingBtn.addEventListener("click", useRecording);
+        }
+        const discardRecordingBtn = $("discard-recording-btn");
+        if (discardRecordingBtn) {
+          discardRecordingBtn.addEventListener("click", discardRecording);
+        }
+
+        // Active call voice control
+        const getCallVoiceBtn = $("get-call-voice");
+        if (getCallVoiceBtn) {
+          getCallVoiceBtn.addEventListener("click", getCallVoiceMode);
+        }
+        const setCallVoiceBtn = $("set-call-voice");
+        if (setCallVoiceBtn) {
+          setCallVoiceBtn.addEventListener("click", setCallVoiceMode);
+        }
+
+        // TTS form
+        const ttsForm = $("tts-form");
+        if (ttsForm) ttsForm.addEventListener("submit", saveTtsConfig);
+
+        const startApp = () => {
+          loadTenants().then(() => {
+            refreshAll();
+            setInterval(loadHealth, 15000);
+            setInterval(loadAnalytics, 20000);
+            setInterval(loadCalls, 20000);
+            setInterval(loadAudit, 30000);
+            setInterval(loadAdminKeys, 45000);
+          });
+        };
+
+        if (adminAuthToken) {
+          startApp();
+        } else {
+          requestAdminPasscode(startApp);
+        }
+      });
+    </script>
+  </body>
+</html>

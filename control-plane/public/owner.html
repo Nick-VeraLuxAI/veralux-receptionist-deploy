@@ -1,0 +1,1254 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Your Receptionist — VeraLux</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        --bg: #06090f;
+        --surface: rgba(255, 255, 255, 0.03);
+        --surface-hover: rgba(255, 255, 255, 0.06);
+        --border: rgba(255, 255, 255, 0.07);
+        --border-focus: rgba(124, 240, 255, 0.4);
+        --text: #f0f4fc;
+        --text-soft: #a8b8d4;
+        --muted: #6b7fa0;
+        --primary: #0ea5e9;
+        --primary-glow: rgba(14, 165, 233, 0.35);
+        --accent: #22d3ee;
+        --accent-warm: #f59e0b;
+        --success: #34d399;
+        --success-glow: rgba(52, 211, 153, 0.25);
+        --danger: #f87171;
+        font-family: "Outfit", system-ui, sans-serif;
+        color: var(--text);
+        background: var(--bg);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--bg);
+        position: relative;
+        overflow-x: hidden;
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background:
+          radial-gradient(ellipse 100% 80% at 20% -10%, rgba(14, 165, 233, 0.15), transparent 50%),
+          radial-gradient(ellipse 80% 60% at 90% 20%, rgba(34, 211, 238, 0.08), transparent 45%),
+          radial-gradient(ellipse 60% 80% at 50% 100%, rgba(245, 158, 11, 0.06), transparent 50%);
+        pointer-events: none;
+        z-index: 0;
+      }
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+        pointer-events: none;
+        z-index: 0;
+      }
+      .owner-header {
+        position: relative;
+        z-index: 1;
+        padding: 28px 32px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 16px;
+        border-bottom: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255,255,255,0.02) 0%, transparent 100%);
+      }
+      .owner-brand {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .owner-logo {
+        width: 52px;
+        height: 52px;
+        border-radius: 16px;
+        background: linear-gradient(145deg, var(--accent) 0%, var(--primary) 50%, #6366f1 100%);
+        box-shadow: 0 0 40px var(--primary-glow), 0 8px 32px rgba(0,0,0,0.3);
+        display: grid;
+        place-items: center;
+        font-weight: 700;
+        color: #fff;
+        font-size: 22px;
+        letter-spacing: -0.02em;
+        border: 1px solid rgba(255,255,255,0.2);
+      }
+      .owner-brand h1 {
+        margin: 0;
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        background: linear-gradient(135deg, var(--text) 0%, var(--text-soft) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      .owner-brand .tagline {
+        font-size: 14px;
+        color: var(--muted);
+        margin-top: 4px;
+        font-weight: 400;
+      }
+      .owner-actions { display: flex; align-items: center; gap: 12px; }
+      .owner-status {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px 18px;
+        border-radius: 12px;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        background: rgba(52, 211, 153, 0.12);
+        color: var(--success);
+        border: 1px solid rgba(52, 211, 153, 0.25);
+        box-shadow: 0 0 24px var(--success-glow);
+      }
+      .owner-status::before {
+        content: "";
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--success);
+        box-shadow: 0 0 12px var(--success);
+        animation: pulse 2s ease-in-out infinite;
+      }
+      .owner-status.owner-status--error::before { background: var(--danger); box-shadow: 0 0 12px var(--danger); }
+      .owner-status.owner-status--error {
+        background: rgba(248, 113, 113, 0.12);
+        color: var(--danger);
+        border-color: rgba(248, 113, 113, 0.25);
+        box-shadow: 0 0 24px rgba(248, 113, 113, 0.15);
+      }
+      .owner-status.owner-status--checking::before { background: var(--muted); box-shadow: none; animation: none; }
+      .owner-status.owner-status--checking { color: var(--muted); border-color: var(--border); box-shadow: none; }
+      @keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.7; transform: scale(1.05); } }
+      .owner-main {
+        position: relative;
+        z-index: 1;
+        padding: 32px;
+        max-width: 680px;
+        margin: 0 auto;
+      }
+      .owner-panel {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        padding: 24px;
+        margin-bottom: 24px;
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+        animation: panelIn 0.5s ease backwards;
+      }
+      .owner-panel:nth-child(1) { animation-delay: 0.05s; }
+      .owner-panel:nth-child(2) { animation-delay: 0.1s; }
+      .owner-panel:nth-child(3) { animation-delay: 0.15s; }
+      .owner-panel:nth-child(4) { animation-delay: 0.2s; }
+      .owner-panel:nth-child(5) { animation-delay: 0.25s; }
+      .owner-panel:nth-child(6) { animation-delay: 0.3s; }
+      .owner-panel:nth-child(7) { animation-delay: 0.35s; }
+      @keyframes panelIn {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .owner-panel:hover {
+        border-color: rgba(255,255,255,0.1);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+      }
+      .owner-panel h2 {
+        margin: 0 0 8px;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        color: var(--text);
+      }
+      .owner-panel .help {
+        font-size: 13px;
+        color: var(--text-soft);
+        margin-bottom: 16px;
+        line-height: 1.5;
+      }
+      label {
+        display: block;
+        margin-bottom: 8px;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--text-soft);
+      }
+      input, textarea, select {
+        width: 100%;
+        padding: 12px 14px;
+        margin-bottom: 14px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: rgba(255,255,255,0.03);
+        color: var(--text);
+        font-family: "Outfit", system-ui, sans-serif;
+        font-size: 14px;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+      select {
+        cursor: pointer;
+        appearance: none;
+        background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7fa0' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 14px center;
+        padding-right: 40px;
+      }
+      select option {
+        background: #0a0f1a;
+        color: var(--text);
+      }
+      input::placeholder, textarea::placeholder { color: var(--muted); }
+      input:focus, textarea:focus, select:focus {
+        outline: none;
+        border-color: var(--border-focus);
+        box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.12);
+      }
+      button {
+        background: linear-gradient(135deg, var(--primary) 0%, #0284c7 100%);
+        color: #fff;
+        border: none;
+        border-radius: 12px;
+        padding: 12px 20px;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 14px;
+        font-family: inherit;
+        letter-spacing: 0.01em;
+        box-shadow: 0 4px 20px var(--primary-glow);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+      }
+      button:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 6px 28px var(--primary-glow);
+      }
+      button:active { transform: translateY(0); }
+      button.secondary {
+        background: var(--surface-hover);
+        color: var(--text);
+        border: 1px solid var(--border);
+        box-shadow: none;
+      }
+      button.secondary:hover {
+        background: rgba(255,255,255,0.08);
+        border-color: rgba(255,255,255,0.12);
+      }
+      .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+      .row input { margin-bottom: 0; }
+      .row input.sm { max-width: 140px; }
+      .row input.mid { max-width: 180px; }
+      ul.owner-list { list-style: none; padding: 0; margin: 12px 0 0; }
+      ul.owner-list li {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 12px 14px;
+        margin-bottom: 8px;
+        background: rgba(255,255,255,0.03);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        transition: background 0.2s ease, border-color 0.2s ease;
+      }
+      ul.owner-list li:hover {
+        background: rgba(255,255,255,0.05);
+        border-color: rgba(255,255,255,0.08);
+      }
+      ul.owner-list li .remove { font-size: 12px; padding: 6px 12px; }
+      .owner-footer {
+        position: relative;
+        z-index: 1;
+        text-align: center;
+        padding: 28px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+      .owner-footer a {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 500;
+        transition: color 0.2s ease;
+      }
+      .owner-footer a:hover { color: var(--primary); }
+      .modal {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(6, 9, 15, 0.85);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        align-items: center;
+        justify-content: center;
+        z-index: 1000;
+      }
+      .modal.active { display: flex; }
+      .modal-card {
+        background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%);
+        border: 1px solid var(--border);
+        border-radius: 24px;
+        padding: 32px;
+        max-width: 400px;
+        width: 90%;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.4);
+      }
+      .modal-card h3 { margin: 0 0 8px; font-size: 20px; font-weight: 600; }
+      .modal-card .help { margin-bottom: 16px; }
+      .modal-card input { margin-bottom: 16px; }
+      .modal-actions { display: flex; gap: 12px; justify-content: flex-end; margin-top: 20px; }
+      .stat-row { display: flex; gap: 24px; margin-top: 14px; flex-wrap: wrap; }
+      .stat {
+        font-size: 14px;
+        color: var(--text-soft);
+        padding: 12px 16px;
+        background: rgba(255,255,255,0.03);
+        border-radius: 12px;
+        border: 1px solid var(--border);
+      }
+      .stat strong { color: var(--text); font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <header class="owner-header">
+      <div class="owner-brand">
+        <div class="owner-logo">V</div>
+        <div>
+          <h1>Your receptionist</h1>
+          <div class="tagline">One place to set up calls, transfers, and pricing.</div>
+        </div>
+      </div>
+      <div class="owner-actions">
+        <span id="owner-status-pill" class="owner-status owner-status--checking">Checking…</span>
+      </div>
+    </header>
+
+    <main class="owner-main">
+      <section class="owner-panel">
+        <h2>Your business line</h2>
+        <p class="help">Enter the phone number callers dial to reach your business. We'll set up your AI receptionist to answer it.</p>
+
+        <div class="row" style="margin-top: 12px;">
+          <input type="text" id="owner-numbers" placeholder="e.g. +15551234567" style="flex: 1; min-width: 200px" />
+          <button type="button" id="owner-save-numbers">Connect</button>
+        </div>
+        <div id="owner-numbers-status" class="help" style="margin-top: 8px; min-height: 20px;"></div>
+
+        <!-- Number not found prompt -->
+        <div id="number-not-found" style="display: none; margin-top: 16px; padding: 20px; border-radius: 12px; background: var(--surface-hover); border: 1px solid var(--border);">
+          <p style="margin: 0 0 16px; font-size: 14px;"><strong>That number isn't set up for your AI receptionist yet.</strong></p>
+          <p class="help" style="margin: 0 0 8px;">Choose how to connect your business line:</p>
+
+          <!-- Option 1: Get new number + forwarding -->
+          <div style="margin: 16px 0; padding: 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border);">
+            <p style="margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--accent);">Option 1: Get a new number + forward calls (Recommended)</p>
+            <p class="help" style="margin: 0 0 10px;">Get a new number now, then set up call forwarding on your existing line. Works in minutes.</p>
+            <div class="row" style="flex-wrap: wrap; gap: 8px;">
+              <select id="telnyx-country" style="width: 80px;">
+                <option value="US">US</option>
+                <option value="CA">CA</option>
+                <option value="GB">UK</option>
+              </select>
+              <input type="text" id="telnyx-area" class="sm" placeholder="Area code" style="width: 100px;" />
+              <button type="button" id="telnyx-get-number">Find numbers</button>
+            </div>
+            <ul id="telnyx-available-list" class="owner-list" style="max-height: 140px; overflow-y: auto; margin-top: 10px;"></ul>
+            <div id="telnyx-purchase-status" class="help" style="margin-top: 6px; min-height: 18px;"></div>
+          </div>
+
+          <!-- Option 2: Port number -->
+          <div style="padding: 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border);">
+            <p style="margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--text-soft);">Option 2: Port your number (3-10 days)</p>
+            <p class="help" style="margin: 0;">Transfer ownership of your number to Telnyx. Once complete, calls go directly to your receptionist without forwarding. <a href="https://portal.telnyx.com/#/numbers/porting" target="_blank" style="color: var(--accent);">Start port request →</a></p>
+          </div>
+        </div>
+
+        <!-- Success state -->
+        <div id="number-provisioned" style="display: none; margin-top: 16px; padding: 16px; border-radius: 12px; background: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.25);">
+          <p style="margin: 0; color: var(--success);"><strong>✓ Your receptionist is ready!</strong></p>
+          <p class="help" style="margin: 8px 0 0;">Calls to <strong id="provisioned-number"></strong> will be answered by your AI receptionist.</p>
+          <div id="forwarding-instructions" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(52, 211, 153, 0.2);">
+            <p class="help" style="margin: 0 0 6px;"><strong>Next step:</strong> Set up call forwarding from <strong id="business-number-display"></strong> to <strong id="telnyx-number-display"></strong></p>
+            <p class="help" style="margin: 0;">On most phones, dial <code style="background: var(--surface); padding: 2px 6px; border-radius: 4px;">*72<span id="forward-to-number"></span></code> or configure forwarding in your carrier's app/website.</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="owner-panel">
+        <h2>When to transfer calls</h2>
+        <p class="help">Who should the receptionist transfer callers to? Add yourself or your team (name, number, role).</p>
+        <div class="row">
+          <input type="text" id="fp-name" class="sm" placeholder="Name" />
+          <input type="text" id="fp-number" class="mid" placeholder="+15551234567" />
+          <input type="text" id="fp-role" class="mid" placeholder="Role (e.g. Owner)" />
+          <button type="button" id="fp-add">Add</button>
+        </div>
+        <ul id="forwarding-profiles-list" class="owner-list"></ul>
+        <button type="button" class="secondary" id="fp-save" style="margin-top: 10px">Save list</button>
+        <div id="fp-status" class="help" style="margin-top: 6px; min-height: 18px;"></div>
+      </section>
+
+      <section class="owner-panel">
+        <h2>Services & pricing</h2>
+        <p class="help">What your receptionist can tell callers about your services and rates. Keep it short.</p>
+        <div class="row">
+          <input type="text" id="price-name" class="sm" placeholder="Service" />
+          <input type="text" id="price-amount" class="sm" placeholder="Price" />
+          <input type="text" id="price-desc" class="mid" placeholder="Short description" />
+          <button type="button" id="price-add">Add</button>
+        </div>
+        <ul id="pricing-items-list" class="owner-list"></ul>
+        <label for="pricing-notes" style="margin-top: 10px;">Notes (optional)</label>
+        <textarea id="pricing-notes" rows="2" placeholder="e.g. Rates may vary"></textarea>
+        <button type="button" class="secondary" id="price-save" style="margin-top: 8px">Save pricing</button>
+        <div id="price-status" class="help" style="margin-top: 6px; min-height: 18px;"></div>
+      </section>
+
+      <section class="owner-panel">
+        <h2>Receptionist personality</h2>
+        <p class="help">Customize how your AI receptionist introduces itself and interacts with callers.</p>
+        
+        <label for="owner-systemPreamble">Who is your receptionist?</label>
+        <textarea id="owner-systemPreamble" rows="4" placeholder="e.g. You're the friendly receptionist for Sunny Day Plumbing. Greet callers warmly, ask how you can help, and offer to schedule an appointment or connect them with the right person."></textarea>
+        
+        <label for="owner-voicePrompt">How should it sound?</label>
+        <textarea id="owner-voicePrompt" rows="2" placeholder="e.g. Warm and helpful, like a real person. Keep answers short and natural. Use the caller's name when you know it."></textarea>
+        
+        <label for="owner-policyPrompt">What should it never do?</label>
+        <textarea id="owner-policyPrompt" rows="3" placeholder="e.g. Don't give out personal phone numbers. Don't promise specific prices. Always offer to take a message if unsure."></textarea>
+        
+        <!-- Hidden: schemaHint is technical, kept for API compatibility -->
+        <input type="hidden" id="owner-schemaHint" value="" />
+        
+        <button type="button" id="owner-save-prompts" style="margin-top: 12px">Save changes</button>
+        <div id="owner-prompts-status" class="help" style="margin-top: 6px; min-height: 18px;"></div>
+      </section>
+
+      <section class="owner-panel">
+        <h2>Receptionist voice</h2>
+        <p class="help">Choose how your receptionist sounds. Use a preset voice or clone your own voice for a personal touch.</p>
+        
+        <label for="voice-selector">Active voice</label>
+        <select id="voice-selector" style="width: 100%; padding: 12px 14px; margin-bottom: 14px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,0.03); color: var(--text); font-family: inherit; font-size: 14px;">
+          <option value="preset:default">Default Voice (Preset)</option>
+        </select>
+        <div id="voice-selector-status" class="help" style="margin-bottom: 16px; min-height: 18px;"></div>
+
+        <!-- Saved cloned voices -->
+        <div id="cloned-voices-section">
+          <label style="margin-top: 8px;">Your saved voices</label>
+          <ul id="cloned-voices-list" class="owner-list"></ul>
+        </div>
+
+        <button type="button" id="save-voice-settings" style="margin-top: 16px;">Save voice settings</button>
+        <div id="voice-settings-status" class="help" style="margin-top: 6px; min-height: 18px;"></div>
+      </section>
+
+      <section class="owner-panel">
+        <h2>Recent activity</h2>
+        <p class="help">Calls and messages your receptionist has handled.</p>
+        <div class="stat-row">
+          <span class="stat">Calls: <strong id="stat-calls">—</strong></span>
+          <span class="stat">Messages: <strong id="stat-messages">—</strong></span>
+        </div>
+        <button type="button" class="secondary" id="owner-refresh" style="margin-top: 10px">Refresh</button>
+      </section>
+    </main>
+
+    <footer class="owner-footer">
+      Need to change AI model or voice settings? <a href="/admin">Open full admin dashboard</a>.
+    </footer>
+
+    <div id="owner-modal" class="modal">
+      <div class="modal-card">
+        <h3>Sign in</h3>
+        <p class="help">Enter your access token to manage your receptionist.</p>
+        <input id="owner-pass-input" type="password" placeholder="Your access token" autocomplete="off" />
+        <div id="owner-pass-error" class="help" style="color: var(--danger); min-height: 18px;"></div>
+        <div class="modal-actions">
+          <button type="button" class="secondary" id="owner-pass-cancel">Cancel</button>
+          <button type="button" id="owner-pass-confirm">Continue</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const OWNER_TENANT_ID = "default";
+      let ownerAuthToken = "";
+      let ownerAuthorized = false;
+      let forwardingProfilesCache = [];
+      let pricingCache = { items: [], notes: "" };
+      
+      // Voice configuration cache
+      let voiceConfig = {
+        ttsMode: "kokoro_http",
+        defaultVoiceMode: "preset",
+        presetVoice: "default",
+        clonedVoices: [], // Array of { id, label, speakerWavUrl }
+        activeVoiceId: "preset:default",
+      };
+
+      function escapeHtml(str) {
+        if (str == null) return "";
+        const s = String(str);
+        return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      }
+
+      function setOwnerStatus(msg, isErr = false, checking = false) {
+        const pill = $("owner-status-pill");
+        if (!pill) return;
+        pill.textContent = msg;
+        pill.classList.toggle("owner-status--error", isErr);
+        pill.classList.toggle("owner-status--checking", checking);
+      }
+
+      async function refreshReadyStatus() {
+        setOwnerStatus("Checking…", false, true);
+        try {
+          const res = await fetch("/ready");
+          const data = await res.json().catch(() => ({}));
+          if (res.ok && data.status === "ok") {
+            setOwnerStatus("Ready", false, false);
+            return;
+          }
+          const c = data.checks || {};
+          if (c.db === false && c.redis === false) setOwnerStatus("DB & Redis down", true, false);
+          else if (c.db === false) setOwnerStatus("DB unavailable", true, false);
+          else if (c.redis === false) setOwnerStatus("Redis unavailable", true, false);
+          else setOwnerStatus("Unavailable", true, false);
+        } catch {
+          setOwnerStatus("Unavailable", true, false);
+        }
+      }
+
+      async function ownerFetch(url, options = {}) {
+        const headers = new Headers(options.headers || {});
+        if (!options.skipTenantHeader) headers.set("X-Tenant-ID", OWNER_TENANT_ID);
+        if (ownerAuthToken) headers.set("X-Admin-Key", ownerAuthToken);
+        const { skipTenantHeader, ...rest } = options;
+        const res = await fetch(url, { ...rest, headers });
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      }
+
+      function showOwnerModal() {
+        $("owner-pass-input").value = "";
+        $("owner-pass-error").textContent = "";
+        $("owner-modal").classList.add("active");
+        $("owner-pass-input").focus();
+      }
+
+      function hideOwnerModal() {
+        $("owner-modal").classList.remove("active");
+      }
+
+      async function validateToken(token) {
+        try {
+          const res = await fetch("/api/admin/tenants", {
+            headers: { "X-Admin-Key": token }
+          });
+          return res.ok;
+        } catch {
+          return false;
+        }
+      }
+
+      function requireAuth(cb) {
+        if (ownerAuthorized) { cb(); return; }
+        $("owner-pass-confirm").onclick = async () => {
+          const pass = $("owner-pass-input").value.trim();
+          if (!pass) {
+            $("owner-pass-error").textContent = "Please enter your access token.";
+            return;
+          }
+          $("owner-pass-error").textContent = "Validating...";
+          $("owner-pass-confirm").disabled = true;
+          const valid = await validateToken(pass);
+          $("owner-pass-confirm").disabled = false;
+          if (!valid) {
+            $("owner-pass-error").textContent = "Invalid access token. Please try again.";
+            return;
+          }
+          ownerAuthToken = pass;
+          ownerAuthorized = true;
+          hideOwnerModal();
+          refreshReadyStatus();
+          cb();
+        };
+        showOwnerModal();
+      }
+
+      async function loadOwnerData() {
+        try {
+          const [tenantsRes, profilesRes, pricingRes, promptsRes, analyticsRes] = await Promise.all([
+            ownerFetch("/api/admin/tenants", { skipTenantHeader: true }),
+            ownerFetch("/api/admin/forwarding-profiles"),
+            ownerFetch("/api/admin/pricing"),
+            ownerFetch("/api/admin/prompts").catch(() => null),
+            ownerFetch("/api/admin/analytics").catch(() => null),
+          ]);
+          
+          // Also load voice config
+          loadVoiceConfig().catch(() => {});
+          const tenantsList = tenantsRes.tenants || [];
+          const me = tenantsList.find((t) => t.id === OWNER_TENANT_ID) || { id: OWNER_TENANT_ID, name: "My business", numbers: [] };
+          const myTelnyxNumbers = me.numbers || [];
+          const myBusinessNumber = me.businessNumber || "";
+
+          // Show the business number in the input (what customers dial)
+          $("owner-numbers").value = myBusinessNumber || myTelnyxNumbers.join(", ");
+
+          // Also set pendingBusinessNumber so it's available if they proceed to purchase
+          if (myBusinessNumber) {
+            pendingBusinessNumber = myBusinessNumber;
+          }
+
+          // Check if we have a complete setup (Telnyx number linked)
+          if (myTelnyxNumbers.length > 0) {
+            if (telnyxConfigured) {
+              const match = findTelnyxNumber(myTelnyxNumbers[0]);
+              if (match && match.provisioned) {
+                showProvisionedState(myTelnyxNumbers[0], myBusinessNumber || null);
+              } else if (match) {
+                // Number exists but not provisioned yet - show status
+                $("owner-numbers-status").innerHTML = `<span class="help">Telnyx number found but not yet provisioned. Click Connect to complete setup.</span>`;
+              }
+            } else {
+              // Telnyx not configured but we have a number saved - show provisioned
+              showProvisionedState(myTelnyxNumbers[0], myBusinessNumber || null);
+            }
+          } else if (myBusinessNumber && telnyxConfigured) {
+            // Business number saved but no Telnyx number yet - incomplete setup
+            $("owner-numbers-status").innerHTML = `<span class="help" style="color: var(--accent-warm);">Business number saved. Click Connect to get a Telnyx number for call forwarding.</span>`;
+          }
+
+          forwardingProfilesCache = Array.isArray(profilesRes?.profiles) ? profilesRes.profiles : [];
+          pricingCache = pricingRes && typeof pricingRes === "object"
+            ? { items: Array.isArray(pricingRes.items) ? pricingRes.items : [], notes: pricingRes.notes || "" }
+            : { items: [], notes: "" };
+          renderForwarding();
+          renderPricing();
+          if (promptsRes) {
+            $("owner-systemPreamble").value = promptsRes.systemPreamble || "";
+            $("owner-policyPrompt").value = promptsRes.policyPrompt || "";
+            $("owner-voicePrompt").value = promptsRes.voicePrompt || "";
+            $("owner-schemaHint").value = promptsRes.schemaHint || "";
+          }
+          if (analyticsRes) {
+            $("stat-calls").textContent = analyticsRes.callCount ?? "—";
+            $("stat-messages").textContent = analyticsRes.callerMessageCount ?? "—";
+          }
+        } catch (err) {
+          $("owner-numbers-status").textContent = "";
+        }
+      }
+
+      function renderForwarding() {
+        const list = $("forwarding-profiles-list");
+        list.innerHTML = "";
+        if (forwardingProfilesCache.length === 0) {
+          list.innerHTML = "<li class=\"help\">No contacts yet. Add someone above.</li>";
+          return;
+        }
+        forwardingProfilesCache.forEach((p, i) => {
+          const li = document.createElement("li");
+          li.innerHTML = `
+            <span><strong>${escapeHtml(p.name)}</strong> ${escapeHtml(p.number)} <span class=\"help\">${escapeHtml(p.role || "")}</span></span>
+            <button type="button" class="secondary remove" data-i="${i}">Remove</button>
+          `;
+          li.querySelector("button").onclick = () => {
+            forwardingProfilesCache.splice(i, 1);
+            renderForwarding();
+          };
+          list.appendChild(li);
+        });
+      }
+
+      function renderPricing() {
+        const list = $("pricing-items-list");
+        const notesEl = $("pricing-notes");
+        if (notesEl) notesEl.value = pricingCache.notes || "";
+        list.innerHTML = "";
+        if (!pricingCache.items || pricingCache.items.length === 0) {
+          list.innerHTML = "<li class=\"help\">No items yet. Add one above.</li>";
+          return;
+        }
+        pricingCache.items.forEach((item, i) => {
+          const li = document.createElement("li");
+          li.innerHTML = `
+            <span><strong>${escapeHtml(item.name)}</strong> ${escapeHtml(item.price)} ${item.description ? `<span class=\"help\">${escapeHtml(item.description)}</span>` : ""}</span>
+            <button type="button" class="secondary remove" data-i="${i}">Remove</button>
+          `;
+          li.querySelector("button").onclick = () => {
+            pricingCache.items.splice(i, 1);
+            renderPricing();
+          };
+          list.appendChild(li);
+        });
+      }
+
+      async function saveForwarding() {
+        try {
+          await ownerFetch("/api/admin/forwarding-profiles", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ profiles: forwardingProfilesCache }),
+          });
+          $("fp-status").textContent = "Saved.";
+        } catch (err) {
+          $("fp-status").textContent = "Failed: " + err.message;
+        }
+      }
+
+      async function savePricing() {
+        const notesEl = $("pricing-notes");
+        if (notesEl) pricingCache.notes = notesEl.value.trim();
+        try {
+          await ownerFetch("/api/admin/pricing", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(pricingCache),
+          });
+          $("price-status").textContent = "Saved.";
+        } catch (err) {
+          $("price-status").textContent = "Failed: " + err.message;
+        }
+      }
+
+      async function saveOwnerPrompts() {
+        const statusEl = $("owner-prompts-status");
+        try {
+          await ownerFetch("/api/admin/prompts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              systemPreamble: $("owner-systemPreamble").value,
+              policyPrompt: $("owner-policyPrompt").value,
+              voicePrompt: $("owner-voicePrompt").value,
+              schemaHint: $("owner-schemaHint").value,
+            }),
+          });
+          if (statusEl) statusEl.textContent = "Saved.";
+          refreshReadyStatus();
+        } catch (err) {
+          if (statusEl) statusEl.textContent = "Failed: " + err.message;
+        }
+      }
+
+      /* ── Voice Settings ─────────────────────────── */
+
+      async function loadVoiceConfig() {
+        try {
+          const cfg = await ownerFetch("/api/tts/config");
+          
+          // Parse the config into our local format
+          voiceConfig.ttsMode = cfg.ttsMode || cfg.mode || "kokoro_http";
+          voiceConfig.presetVoice = cfg.voiceId || cfg.voice || "default";
+          voiceConfig.defaultVoiceMode = cfg.defaultVoiceMode || "preset";
+          
+          // Handle cloned voice (single) from server
+          if (cfg.clonedVoice && cfg.clonedVoice.speakerWavUrl) {
+            // Check if we already have this voice saved
+            const existingIdx = voiceConfig.clonedVoices.findIndex(
+              v => v.speakerWavUrl === cfg.clonedVoice.speakerWavUrl
+            );
+            if (existingIdx === -1) {
+              voiceConfig.clonedVoices.push({
+                id: "cloned_" + Date.now(),
+                label: cfg.clonedVoice.label || "Custom Voice",
+                speakerWavUrl: cfg.clonedVoice.speakerWavUrl,
+              });
+            }
+          }
+          
+          // Determine active voice ID
+          if (voiceConfig.defaultVoiceMode === "cloned" && voiceConfig.clonedVoices.length > 0) {
+            // Find the active cloned voice
+            const activeCloned = voiceConfig.clonedVoices.find(
+              v => cfg.clonedVoice && v.speakerWavUrl === cfg.clonedVoice.speakerWavUrl
+            );
+            voiceConfig.activeVoiceId = activeCloned ? `cloned:${activeCloned.id}` : "preset:default";
+          } else {
+            voiceConfig.activeVoiceId = `preset:${voiceConfig.presetVoice}`;
+          }
+          
+          renderVoiceSelector();
+          renderClonedVoicesList();
+        } catch (err) {
+          console.error("Failed to load voice config:", err);
+          $("voice-selector-status").textContent = "Failed to load voice settings.";
+        }
+      }
+
+      function renderVoiceSelector() {
+        const selector = $("voice-selector");
+        if (!selector) return;
+        
+        selector.innerHTML = "";
+        
+        // Add preset voice option
+        const presetOpt = document.createElement("option");
+        presetOpt.value = `preset:${voiceConfig.presetVoice}`;
+        presetOpt.textContent = `Default Voice (Preset)`;
+        selector.appendChild(presetOpt);
+        
+        // Add cloned voice options
+        voiceConfig.clonedVoices.forEach((voice) => {
+          const opt = document.createElement("option");
+          opt.value = `cloned:${voice.id}`;
+          opt.textContent = `${voice.label} (Custom)`;
+          selector.appendChild(opt);
+        });
+        
+        // Set the active selection
+        selector.value = voiceConfig.activeVoiceId;
+        
+        // Update status
+        const statusEl = $("voice-selector-status");
+        if (voiceConfig.ttsMode !== "coqui_xtts" && voiceConfig.clonedVoices.length > 0) {
+          statusEl.innerHTML = `<span style="color: var(--accent-warm);">Note: Voice cloning requires XTTS mode. Ask your admin to enable it.</span>`;
+        } else {
+          statusEl.textContent = "";
+        }
+      }
+
+      function renderClonedVoicesList() {
+        const list = $("cloned-voices-list");
+        if (!list) return;
+        
+        list.innerHTML = "";
+        
+        if (voiceConfig.clonedVoices.length === 0) {
+          list.innerHTML = '<li class="help">No custom voices configured. Contact your administrator to add custom voices.</li>';
+          return;
+        }
+        
+        voiceConfig.clonedVoices.forEach((voice) => {
+          const li = document.createElement("li");
+          const isActive = voiceConfig.activeVoiceId === `cloned:${voice.id}`;
+          li.innerHTML = `
+            <span>
+              <strong>${escapeHtml(voice.label)}</strong>
+              ${isActive ? '<span style="color: var(--success); margin-left: 8px;">● Active</span>' : ''}
+            </span>
+          `;
+          list.appendChild(li);
+        });
+      }
+
+      // Voice management (add/remove) is handled in the admin dashboard
+      // Owner dashboard only allows selecting from available voices
+
+      async function saveVoiceSettings() {
+        const statusEl = $("voice-settings-status");
+        const selector = $("voice-selector");
+        
+        try {
+          const selectedValue = selector?.value || "preset:default";
+          voiceConfig.activeVoiceId = selectedValue;
+          
+          const [type, id] = selectedValue.split(":");
+          const isCloned = type === "cloned";
+          
+          // Build the payload
+          const payload = {
+            ttsMode: voiceConfig.clonedVoices.length > 0 ? "coqui_xtts" : voiceConfig.ttsMode,
+            defaultVoiceMode: isCloned ? "cloned" : "preset",
+            voiceId: voiceConfig.presetVoice,
+          };
+          
+          // If cloned voice selected, find it and set the URL
+          if (isCloned) {
+            const voice = voiceConfig.clonedVoices.find(v => v.id === id);
+            if (voice) {
+              payload.clonedVoice = {
+                speakerWavUrl: voice.speakerWavUrl,
+                label: voice.label,
+              };
+            } else {
+              // Fallback to preset if voice not found
+              payload.defaultVoiceMode = "preset";
+            }
+          } else if (voiceConfig.clonedVoices.length > 0) {
+            // Keep the first cloned voice stored even if using preset
+            payload.clonedVoice = {
+              speakerWavUrl: voiceConfig.clonedVoices[0].speakerWavUrl,
+              label: voiceConfig.clonedVoices[0].label,
+            };
+          }
+          
+          await ownerFetch("/api/tts/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          
+          statusEl.textContent = "Voice settings saved!";
+          statusEl.style.color = "var(--success)";
+          
+          // Clear after a moment
+          setTimeout(() => {
+            if (statusEl.textContent === "Voice settings saved!") {
+              statusEl.textContent = "";
+            }
+          }, 3000);
+        } catch (err) {
+          statusEl.textContent = "Failed to save: " + err.message;
+          statusEl.style.color = "var(--danger)";
+        }
+      }
+
+      /* ── Telnyx Integration ─────────────────────────── */
+
+      let telnyxConfigured = false;
+      let telnyxNumbers = [];
+
+      async function checkTelnyxStatus() {
+        try {
+          // Use ownerFetch for authenticated request
+          const data = await ownerFetch("/api/admin/telnyx/status", { skipTenantHeader: true });
+          telnyxConfigured = data.configured;
+          if (telnyxConfigured) {
+            // Pre-load Telnyx numbers for lookup
+            const numData = await ownerFetch("/api/admin/telnyx/numbers", { skipTenantHeader: true });
+            telnyxNumbers = numData.numbers || [];
+          }
+        } catch {
+          telnyxConfigured = false;
+        }
+      }
+
+      function normalizePhone(num) {
+        // Strip everything except digits and leading +
+        let n = (num || "").trim();
+        if (n.startsWith("+")) return "+" + n.slice(1).replace(/\D/g, "");
+        return n.replace(/\D/g, "");
+      }
+
+      function findTelnyxNumber(phoneNumber) {
+        const normalized = normalizePhone(phoneNumber);
+        const withPlus = normalized.startsWith("+") ? normalized : "+" + normalized;
+        const withoutPlus = normalized.replace(/^\+/, "");
+        return telnyxNumbers.find((n) => {
+          const tn = normalizePhone(n.phone_number);
+          return tn === withPlus || tn === withoutPlus || tn === normalized;
+        });
+      }
+
+      async function saveAndProvisionNumber() {
+        const statusEl = $("owner-numbers-status");
+        const notFoundEl = $("number-not-found");
+        const provisionedEl = $("number-provisioned");
+        const raw = ($("owner-numbers").value || "").trim();
+
+        if (!raw) {
+          statusEl.textContent = "Please enter a phone number.";
+          return;
+        }
+
+        // Remember this as the business number for later
+        pendingBusinessNumber = raw;
+
+        statusEl.innerHTML = `<span style="color: var(--muted);">Checking number…</span>`;
+        notFoundEl.style.display = "none";
+        provisionedEl.style.display = "none";
+
+        // Re-check Telnyx numbers
+        if (telnyxConfigured) {
+          try {
+            const numData = await ownerFetch("/api/admin/telnyx/numbers", { skipTenantHeader: true });
+            telnyxNumbers = numData.numbers || [];
+          } catch {}
+        }
+
+        const match = telnyxConfigured ? findTelnyxNumber(raw) : null;
+
+        if (match) {
+          // Number found in Telnyx — auto-provision it (it's already a Telnyx number)
+          statusEl.innerHTML = `<span style="color: var(--muted);">Setting up ${escapeHtml(match.phone_number)}…</span>`;
+
+          try {
+            // Provision (assign webhook)
+            if (!match.provisioned) {
+              const provRes = await fetch("/api/admin/telnyx/provision", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Admin-Key": ownerAuthToken },
+                body: JSON.stringify({ phone_number: match.phone_number }),
+              });
+              if (!provRes.ok) {
+                const err = await provRes.json();
+                throw new Error(err.message || err.error);
+              }
+            }
+
+            // Save to tenant (no businessNumber needed since they entered their Telnyx number directly)
+            await ownerFetch("/api/admin/tenants", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: OWNER_TENANT_ID, name: "My business", numbers: [match.phone_number] }),
+            });
+
+            $("owner-numbers").value = match.phone_number;
+            statusEl.innerHTML = "";
+            showProvisionedState(match.phone_number, null);
+            refreshReadyStatus();
+          } catch (err) {
+            statusEl.innerHTML = `<span style="color: var(--danger);">Setup failed: ${escapeHtml(err.message)}</span>`;
+          }
+        } else if (telnyxConfigured) {
+          // Number NOT in Telnyx — show options to get a Telnyx number
+          statusEl.innerHTML = "";
+          notFoundEl.style.display = "block";
+          $("telnyx-available-list").innerHTML = "";
+          $("telnyx-purchase-status").textContent = "";
+
+          // Extract area code from business number and pre-fill search
+          const digits = raw.replace(/\D/g, "");
+          let areaCode = "";
+          if (digits.length === 10) {
+            areaCode = digits.substring(0, 3);
+          } else if (digits.length === 11 && digits.startsWith("1")) {
+            areaCode = digits.substring(1, 4);
+          }
+          if (areaCode) {
+            $("telnyx-area").value = areaCode;
+            // Auto-search for numbers in their area
+            searchAndShowNumbers();
+          }
+        } else {
+          // Telnyx not configured — save business number only, they'll need to set up manually
+          try {
+            await ownerFetch("/api/admin/tenants", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: OWNER_TENANT_ID, name: "My business", businessNumber: raw }),
+            });
+            statusEl.innerHTML = `<span style="color: var(--accent-warm);">Business number saved.</span> <span class="help">To complete setup, add <code>TELNYX_API_KEY</code> to enable automatic provisioning, or manually configure call forwarding.</span>`;
+          } catch (err) {
+            statusEl.innerHTML = `<span style="color: var(--danger);">Failed: ${escapeHtml(err.message)}</span>`;
+          }
+        }
+      }
+
+      async function searchAndShowNumbers() {
+        const list = $("telnyx-available-list");
+        const statusEl = $("telnyx-purchase-status");
+        const country = $("telnyx-country").value;
+        const areaCode = ($("telnyx-area").value || "").trim();
+
+        list.innerHTML = "<li class=\"help\">Searching…</li>";
+        statusEl.textContent = "";
+
+        try {
+          const params = new URLSearchParams({ country, limit: "5" });
+          if (areaCode) params.set("contains", areaCode);
+
+          const res = await fetch(`/api/admin/telnyx/available?${params.toString()}`, {
+            headers: { "X-Admin-Key": ownerAuthToken },
+          });
+          const data = await res.json();
+
+          if (!res.ok) throw new Error(data.message || data.error);
+
+          const numbers = data.numbers || [];
+          if (numbers.length === 0) {
+            list.innerHTML = "<li class=\"help\">No numbers found. Try a different area code.</li>";
+            return;
+          }
+
+          list.innerHTML = "";
+          numbers.forEach((n) => {
+            const li = document.createElement("li");
+            const rawMonthlyCost = parseFloat(n.cost_information?.monthly_cost) || 0;
+            const rawUpfrontCost = parseFloat(n.cost_information?.upfront_cost) || 0;
+            const currency = n.cost_information?.currency || "USD";
+            const displayMonthly = (rawMonthlyCost * PRICE_MARKUP).toFixed(2);
+            const region = n.region_information?.map(r => r.region_name).join(", ") || "";
+            li.innerHTML = `
+              <span>
+                <strong>${escapeHtml(n.phone_number)}</strong>
+                <span class="help">${escapeHtml(region)} $${displayMonthly}/mo</span>
+              </span>
+              <button type="button" class="secondary" style="font-size: 12px; padding: 4px 10px;">Get this number</button>
+            `;
+            li.querySelector("button").onclick = () => confirmPurchase(n.phone_number, rawMonthlyCost, rawUpfrontCost, currency);
+            list.appendChild(li);
+          });
+        } catch (err) {
+          list.innerHTML = `<li class=\"help\" style="color: var(--danger);">Search failed: ${escapeHtml(err.message)}</li>`;
+        }
+      }
+
+      const PRICE_MARKUP = 2.0; // 100% markup (2x the Telnyx cost)
+
+      function confirmPurchase(phoneNumber, monthlyCost, upfrontCost, currency) {
+        const upfront = (parseFloat(upfrontCost) || 0) * PRICE_MARKUP;
+        const monthly = (parseFloat(monthlyCost) || 0) * PRICE_MARKUP;
+        
+        let costMessage = `Monthly: $${monthly.toFixed(2)}`;
+        if (upfront > 0) {
+          costMessage = `One-time: $${upfront.toFixed(2)} + ${costMessage}`;
+        }
+
+        const confirmed = confirm(
+          `Purchase ${phoneNumber}?\n\n` +
+          `Cost: ${costMessage}\n\n` +
+          `This will be added to your VeraLux account. Continue?`
+        );
+
+        if (confirmed) {
+          purchaseAndSetup(phoneNumber);
+        }
+      }
+
+      async function purchaseAndSetup(telnyxNumber) {
+        const statusEl = $("telnyx-purchase-status");
+        const businessNum = pendingBusinessNumber || "";
+
+        statusEl.innerHTML = `<span style="color: var(--muted);">Purchasing and setting up ${escapeHtml(telnyxNumber)}…</span>`;
+
+        try {
+          // Purchase
+          const res = await fetch("/api/admin/telnyx/purchase", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Admin-Key": ownerAuthToken },
+            body: JSON.stringify({ phone_number: telnyxNumber }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || data.error);
+
+          // Save to tenant with both business number and Telnyx number
+          await ownerFetch("/api/admin/tenants", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              id: OWNER_TENANT_ID,
+              name: "My business",
+              numbers: [telnyxNumber],
+              businessNumber: businessNum,
+            }),
+          });
+
+          // Keep business number in the input (that's what they entered)
+          $("owner-numbers-status").innerHTML = "";
+          statusEl.textContent = "";
+          showProvisionedState(telnyxNumber, businessNum);
+          refreshReadyStatus();
+        } catch (err) {
+          statusEl.innerHTML = `<span style="color: var(--danger);">Failed: ${escapeHtml(err.message)}</span>`;
+        }
+      }
+
+      let pendingBusinessNumber = ""; // Tracks the business number user entered
+
+      function showProvisionedState(telnyxNumber, businessNumber = null) {
+        if (!telnyxNumber) return;
+        $("number-not-found").style.display = "none";
+        $("number-provisioned").style.display = "block";
+
+        if (businessNumber && businessNumber !== telnyxNumber) {
+          // Show both numbers with forwarding instructions
+          $("provisioned-number").textContent = businessNumber;
+          $("business-number-display").textContent = businessNumber;
+          $("telnyx-number-display").textContent = telnyxNumber;
+          $("forward-to-number").textContent = telnyxNumber;
+          $("forwarding-instructions").style.display = "block";
+        } else {
+          // Direct Telnyx number, no forwarding needed
+          $("provisioned-number").textContent = telnyxNumber;
+          $("forwarding-instructions").style.display = "none";
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", () => {
+        $("owner-pass-confirm").addEventListener("click", async () => {
+          const pass = $("owner-pass-input").value.trim();
+          if (!pass) {
+            $("owner-pass-error").textContent = "Please enter your access token.";
+            return;
+          }
+          $("owner-pass-error").textContent = "Validating...";
+          $("owner-pass-confirm").disabled = true;
+          const valid = await validateToken(pass);
+          $("owner-pass-confirm").disabled = false;
+          if (!valid) {
+            $("owner-pass-error").textContent = "Invalid access token. Please try again.";
+            return;
+          }
+          ownerAuthToken = pass;
+          ownerAuthorized = true;
+          hideOwnerModal();
+          refreshReadyStatus();
+          checkTelnyxStatus().then(() => loadOwnerData());
+        });
+        $("owner-pass-cancel").addEventListener("click", hideOwnerModal);
+        $("owner-pass-input").addEventListener("keydown", (e) => {
+          if (e.key === "Enter") $("owner-pass-confirm").click();
+        });
+
+        $("owner-save-numbers").addEventListener("click", () => requireAuth(() => saveAndProvisionNumber()));
+        $("owner-numbers").addEventListener("keydown", (e) => {
+          if (e.key === "Enter") requireAuth(() => saveAndProvisionNumber());
+        });
+        $("owner-numbers").addEventListener("input", () => {
+          // Hide success/error states when user edits the number
+          $("number-provisioned").style.display = "none";
+          $("number-not-found").style.display = "none";
+          $("owner-numbers-status").textContent = "";
+        });
+        $("fp-add").addEventListener("click", () => {
+          const name = ($("fp-name").value || "").trim();
+          const number = ($("fp-number").value || "").trim();
+          const role = ($("fp-role").value || "").trim();
+          if (!name) return;
+          forwardingProfilesCache.push({ id: "id_" + Date.now(), name, number, role });
+          $("fp-name").value = $("fp-number").value = $("fp-role").value = "";
+          renderForwarding();
+        });
+        $("fp-save").addEventListener("click", () => requireAuth(() => saveForwarding()));
+        $("price-add").addEventListener("click", () => {
+          const name = ($("price-name").value || "").trim();
+          const price = ($("price-amount").value || "").trim();
+          const desc = ($("price-desc").value || "").trim();
+          if (!name) return;
+          if (!pricingCache.items) pricingCache.items = [];
+          pricingCache.items.push({ id: "id_" + Date.now(), name, price, description: desc || undefined });
+          $("price-name").value = $("price-amount").value = $("price-desc").value = "";
+          renderPricing();
+        });
+        $("price-save").addEventListener("click", () => requireAuth(() => savePricing()));
+        $("owner-save-prompts").addEventListener("click", () => requireAuth(() => saveOwnerPrompts()));
+        $("owner-refresh").addEventListener("click", () => requireAuth(() => loadOwnerData()));
+        
+        // Voice settings event listeners
+        $("save-voice-settings").addEventListener("click", () => requireAuth(() => saveVoiceSettings()));
+
+        // Telnyx event listeners
+        $("telnyx-get-number").addEventListener("click", () => searchAndShowNumbers());
+        $("telnyx-area").addEventListener("keydown", (e) => {
+          if (e.key === "Enter") searchAndShowNumbers();
+        });
+
+        refreshReadyStatus();
+        setInterval(refreshReadyStatus, 30000);
+
+        showOwnerModal();
+      });
+    </script>
+  </body>
+</html>

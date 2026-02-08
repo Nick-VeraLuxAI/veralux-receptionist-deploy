@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtual environments
+*-env/
+.venv/
+venv/
+
+# Audio artifacts
+*.wav
+
+# Model / voice binaries
+*.onnx
+*.bin
+models/
+voices/

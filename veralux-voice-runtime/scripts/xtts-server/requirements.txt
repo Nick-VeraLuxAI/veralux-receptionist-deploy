@@ -1,0 +1,7 @@
+# XTTS server for veralux-voice-runtime (matches src/tts/coquiXtts.ts)
+torch
+TTS
+fastapi
+uvicorn
+soundfile
+numpy

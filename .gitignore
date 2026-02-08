@@ -1,13 +1,23 @@
 # =============================================================================
-# Veralux Receptionist - Git Ignore
+# Veralux Receptionist Monorepo - Git Ignore
 # =============================================================================
 
-# Environment file (contains secrets)
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+
+# Environment files (contain secrets)
 .env
+**/.env
+
+# Cloudflare tunnel credentials
+cloudflared/credentials.json
 
 # Build artifacts
-build/
 dist/
+build/
+*.tsbuildinfo
 
 # Installer binary cache
 .bin/
@@ -15,6 +25,10 @@ dist/
 # Docker image archives (offline bundles)
 images.tar.zst
 *.tar.zst
+
+# Logs & debug output
+*.log
+*.txt.log
 
 # Editor/IDE
 .idea/
@@ -25,6 +39,14 @@ images.tar.zst
 
 # macOS
 .DS_Store
+**/.DS_Store
 
-# Logs
-*.log
+# Audio artifacts (dev recordings, test files)
+*.wav
+*.mp3
+
+# Database backups (contain production data)
+backups/
+
+# Misc dev artifacts
+oldenv.txt

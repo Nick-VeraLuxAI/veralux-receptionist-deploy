@@ -1,0 +1,42 @@
+# Kokoro TTS server (port 7001)
+# Production-ready: non-root user, health check, gunicorn
+FROM python:3.10-slim-bookworm
+
+WORKDIR /app
+
+# Install curl for health check
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash appuser
+
+# Install Python deps
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir fastapi uvicorn gunicorn slowapi kokoro-onnx soundfile numpy
+
+# Download model files at build time
+RUN mkdir -p /app/models \
+    && curl -fSL -o /app/models/kokoro-v1.0.onnx \
+       https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx \
+    && curl -fSL -o /app/models/voices-v1.0.bin \
+       https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin \
+    && chown -R appuser:appuser /app/models
+
+# Copy app files
+COPY --chown=appuser:appuser kokoro_server.py .
+
+USER appuser
+
+ENV KOKORO_MODEL_PATH=/app/models/kokoro-v1.0.onnx
+ENV KOKORO_VOICES_PATH=/app/models/voices-v1.0.bin
+
+EXPOSE 7001
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:7001/health || exit 1
+
+STOPSIGNAL SIGTERM
+CMD ["gunicorn", "kokoro_server:app", "-k", "uvicorn.workers.UvicornWorker", \
+     "--bind", "0.0.0.0:7001", "--workers", "1", "--timeout", "60", \
+     "--graceful-timeout", "30"]

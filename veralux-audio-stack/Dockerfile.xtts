@@ -1,0 +1,48 @@
+# Coqui XTTS TTS server (port 7002)
+# Production-ready: non-root user, health check, graceful shutdown, gunicorn
+FROM python:3.10-slim-bookworm
+
+WORKDIR /app
+
+# Install system deps + build tools for TTS compilation
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libsndfile1 \
+    curl \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/* \
+    && curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash appuser
+
+# Install Python deps (as root, before switching user)
+COPY xtts-requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r xtts-requirements.txt
+
+# Copy app files
+COPY --chown=appuser:appuser xtts_server.py download_xtts_voices.py ./
+
+# Download default voices at build time (as root for network; chown after)
+RUN python download_xtts_voices.py \
+    && chown -R appuser:appuser /app/xtts_voices
+
+# Switch to non-root user
+USER appuser
+
+ENV XTTS_VOICES_DIR=/app/xtts_voices
+ENV XTTS_LOG_LEVEL=INFO
+ENV COQUI_TOS_AGREED=1
+
+EXPOSE 7002
+
+# Health check: hit /health endpoint
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:7002/health || exit 1
+
+# Graceful shutdown with gunicorn
+STOPSIGNAL SIGTERM
+CMD ["gunicorn", "xtts_server:app", "-k", "uvicorn.workers.UvicornWorker", \
+     "--bind", "0.0.0.0:7002", "--workers", "1", "--timeout", "120", \
+     "--graceful-timeout", "30"]

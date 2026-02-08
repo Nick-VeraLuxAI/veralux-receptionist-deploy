@@ -1,0 +1,176 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Cancel redundant runs on the same branch
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Detect which packages changed (skip unchanged services)
+  # ---------------------------------------------------------------------------
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      shared: ${{ steps.filter.outputs.shared }}
+      control: ${{ steps.filter.outputs.control }}
+      runtime: ${{ steps.filter.outputs.runtime }}
+      audio: ${{ steps.filter.outputs.audio }}
+      deploy: ${{ steps.filter.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            shared:
+              - 'shared/**'
+              - 'package.json'
+              - 'package-lock.json'
+            control:
+              - 'control-plane/**'
+              - 'shared/**'
+            runtime:
+              - 'veralux-voice-runtime/**'
+              - 'shared/**'
+            audio:
+              - 'veralux-audio-stack/**'
+            deploy:
+              - 'docker-compose.yml'
+              - 'deploy.sh'
+              - 'install.sh'
+              - '.env.example'
+
+  # ---------------------------------------------------------------------------
+  # Shared package
+  # ---------------------------------------------------------------------------
+  shared:
+    needs: changes
+    if: needs.changes.outputs.shared == 'true' || needs.changes.outputs.control == 'true' || needs.changes.outputs.runtime == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @veralux/shared
+
+  # ---------------------------------------------------------------------------
+  # Control plane
+  # ---------------------------------------------------------------------------
+  control-plane:
+    needs: [changes, shared]
+    if: needs.changes.outputs.control == 'true' || needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @veralux/shared
+      - name: Build control plane
+        run: npm run build -w control-plane
+      - name: Run tests
+        run: npm test -w control-plane
+
+  # ---------------------------------------------------------------------------
+  # Voice runtime
+  # ---------------------------------------------------------------------------
+  voice-runtime:
+    needs: [changes, shared]
+    if: needs.changes.outputs.runtime == 'true' || needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build -w @veralux/shared
+      - name: Typecheck
+        run: npm run typecheck -w veralux-voice-runtime
+      - name: Build
+        run: npm run build -w veralux-voice-runtime
+      - name: Run tests
+        run: |
+          cd veralux-voice-runtime
+          npx tsx --test tests/*.test.ts
+
+  # ---------------------------------------------------------------------------
+  # Docker build validation (ensures Dockerfiles still build)
+  # ---------------------------------------------------------------------------
+  docker-build:
+    needs: changes
+    if: >-
+      needs.changes.outputs.control == 'true' ||
+      needs.changes.outputs.runtime == 'true' ||
+      needs.changes.outputs.shared == 'true' ||
+      needs.changes.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Validate docker-compose config
+        run: docker compose config --quiet
+      - name: Build control plane image
+        if: needs.changes.outputs.control == 'true' || needs.changes.outputs.shared == 'true'
+        run: docker compose build control
+      - name: Build runtime image
+        if: needs.changes.outputs.runtime == 'true' || needs.changes.outputs.shared == 'true'
+        run: docker compose build runtime
+
+  # ---------------------------------------------------------------------------
+  # Deploy config validation
+  # ---------------------------------------------------------------------------
+  deploy-validation:
+    needs: changes
+    if: needs.changes.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate docker-compose.yml
+        run: docker compose config --quiet
+      - name: Lint shell scripts
+        run: |
+          if command -v shellcheck &>/dev/null; then
+            shellcheck deploy.sh install.sh scripts/*.sh || true
+          else
+            echo "shellcheck not installed, skipping"
+          fi

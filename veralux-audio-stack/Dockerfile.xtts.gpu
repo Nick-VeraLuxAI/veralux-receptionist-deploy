@@ -1,0 +1,48 @@
+# Coqui XTTS TTS server with GPU support (port 7002)
+FROM nvidia/cuda:12.1-runtime-ubuntu22.04
+
+WORKDIR /app
+
+# Install Python and system deps
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.10 \
+    python3-pip \
+    python3.10-venv \
+    libsndfile1 \
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -s /usr/bin/python3.10 /usr/bin/python
+
+# Create non-root user
+RUN useradd --create-home --shell /bin/bash appuser
+
+# Install Python deps
+COPY xtts-requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r xtts-requirements.txt \
+    && pip install --no-cache-dir gunicorn slowapi
+
+# Copy app files
+COPY --chown=appuser:appuser xtts_server.py download_xtts_voices.py ./
+
+# Download default voices
+RUN python download_xtts_voices.py \
+    && chown -R appuser:appuser /app/xtts_voices
+
+USER appuser
+
+ENV XTTS_VOICES_DIR=/app/xtts_voices
+ENV XTTS_USE_GPU=true
+ENV XTTS_LOG_LEVEL=INFO
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+EXPOSE 7002
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:7002/health || exit 1
+
+STOPSIGNAL SIGTERM
+CMD ["gunicorn", "xtts_server:app", "-k", "uvicorn.workers.UvicornWorker", \
+     "--bind", "0.0.0.0:7002", "--workers", "1", "--timeout", "120", \
+     "--graceful-timeout", "30"]

@@ -1,0 +1,24 @@
+# Virtual envs and caches
+**/venv/
+**/*-env/
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+
+# Git and IDE
+.git/
+.gitignore
+.cursor/
+.vscode/
+*.swp
+.DS_Store
+
+# Optional local assets (mount at runtime instead)
+# kokoro-v1.0.onnx
+# voices-v1.0.bin
+
+# Docs (keep README for context; exclude if you want smaller images)
+# README.md
+LICENSE

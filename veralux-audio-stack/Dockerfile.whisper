@@ -1,0 +1,40 @@
+# Faster-Whisper transcription server (port 9000)
+# Production-ready: non-root user, health check, gunicorn, model cache volume
+FROM python:3.10-slim-bookworm
+
+WORKDIR /app
+
+# Install system deps (ffmpeg for audio formats)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user and model cache dir
+RUN useradd --create-home --shell /bin/bash appuser \
+    && mkdir -p /home/appuser/.cache/huggingface \
+    && chown -R appuser:appuser /home/appuser/.cache
+
+# Install Python deps
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir fastapi uvicorn gunicorn slowapi faster-whisper python-multipart
+
+# Copy app files
+COPY --chown=appuser:appuser whisper_server.py .
+
+USER appuser
+
+# Model cache: mount a volume at /home/appuser/.cache/huggingface to persist models
+ENV HF_HOME=/home/appuser/.cache/huggingface
+ENV WHISPER_MODEL=small
+ENV WHISPER_DEVICE=cpu
+
+EXPOSE 9000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:9000/health || exit 1
+
+STOPSIGNAL SIGTERM
+CMD ["gunicorn", "whisper_server:app", "-k", "uvicorn.workers.UvicornWorker", \
+     "--bind", "0.0.0.0:9000", "--workers", "1", "--timeout", "120", \
+     "--graceful-timeout", "30"]

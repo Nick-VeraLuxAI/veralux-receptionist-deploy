@@ -1,5 +1,17 @@
 # Veralux Receptionist - Docker Compose Configuration
-# See .env.example for required environment variables
+#
+# Build locally:  docker compose build
+# Run:            docker compose up -d
+# Pull pre-built: docker compose pull && docker compose up -d
+#
+# When both `image` and `build` are set, `docker compose build` builds locally
+# and tags with the image name. `docker compose up` uses whichever image exists.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
 
 services:
   # =============================================================================
@@ -8,11 +20,31 @@ services:
 
   control:
     image: ${REGISTRY:-ghcr.io/nick-veraluxai}/veralux-control-plane:${VERSION:-latest}
+    build:
+      context: .
+      dockerfile: control-plane/Dockerfile
     container_name: veralux-control
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
-      - redis
-      - postgres
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 256M
     environment:
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379
@@ -20,10 +52,23 @@ services:
       - API_KEY=${API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - TELNYX_PHONE_NUMBER=${TELNYX_PHONE_NUMBER}
+      - TELNYX_API_KEY=${TELNYX_API_KEY}
       - BASE_URL=${BASE_URL:-http://localhost:4000}
       - SECRET_ENCRYPTION_KEY=${SECRET_ENCRYPTION_KEY}
       - SECRET_MANAGER=${SECRET_MANAGER:-db}
       - ADMIN_ALLOWED_ORIGINS=${ADMIN_ALLOWED_ORIGINS:-http://localhost:4000}
+      # ── Redis sync env vars (used by redisSync.ts) ──
+      - TTS_MODE=${TTS_MODE:-coqui_xtts}
+      - KOKORO_URL=${KOKORO_URL:-http://kokoro:7001}
+      - COQUI_XTTS_URL=${COQUI_XTTS_URL:-http://xtts:7002/tts}
+      - WHISPER_URL=${WHISPER_URL:-http://whisper:9000}
+      - AUDIO_PUBLIC_BASE_URL=${AUDIO_PUBLIC_BASE_URL}
+      - AUDIO_STORAGE_DIR=${AUDIO_STORAGE_DIR:-/app/audio}
+      - STT_CHUNK_MS=${STT_CHUNK_MS:-100}
+      - STT_LANGUAGE=${STT_LANGUAGE:-en}
+      - GLOBAL_CONCURRENCY_CAP=${GLOBAL_CONCURRENCY_CAP:-100}
+      - TENANT_CONCURRENCY_CAP_DEFAULT=${TENANT_CONCURRENCY_CAP_DEFAULT:-10}
+      - TENANT_CALLS_PER_MIN_CAP_DEFAULT=${TENANT_CALLS_PER_MIN_CAP_DEFAULT:-60}
     ports:
       - "${CONTROL_PORT:-4000}:4000"
     networks:
@@ -31,11 +76,31 @@ services:
 
   runtime:
     image: ${REGISTRY:-ghcr.io/nick-veraluxai}/veralux-voice-runtime:${VERSION:-latest}
+    build:
+      context: .
+      dockerfile: veralux-voice-runtime/Dockerfile
     container_name: veralux-runtime
     restart: unless-stopped
+    logging: *default-logging
     depends_on:
-      - redis
-      - control
+      redis:
+        condition: service_healthy
+      control:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4001/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 2G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
     environment:
       - PORT=4001
       - REDIS_URL=redis://redis:6379
@@ -47,6 +112,10 @@ services:
       - TELNYX_API_KEY=${TELNYX_API_KEY}
       - TELNYX_PUBLIC_KEY=${TELNYX_PUBLIC_KEY}
       - TELNYX_PHONE_NUMBER=${TELNYX_PHONE_NUMBER}
+      - TELNYX_VERIFY_SIGNATURES=${TELNYX_VERIFY_SIGNATURES:-true}
+      - TELNYX_ACCEPT_CODECS=${TELNYX_ACCEPT_CODECS:-PCMU,AMR-WB}
+      - TELNYX_AMRWB_DECODE=${TELNYX_AMRWB_DECODE:-true}
+      - PLAYBACK_PSTN_SAMPLE_RATE=${PLAYBACK_PSTN_SAMPLE_RATE:-24000}
       # URLs
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
       - AUDIO_PUBLIC_BASE_URL=${AUDIO_PUBLIC_BASE_URL}
@@ -83,6 +152,22 @@ services:
     image: redis:7-alpine
     container_name: veralux-redis
     restart: unless-stopped
+    logging: *default-logging
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
     volumes:
       - redis-data:/data
     networks:
@@ -92,6 +177,21 @@ services:
     image: postgres:16-alpine
     container_name: veralux-postgres
     restart: unless-stopped
+    logging: *default-logging
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-veralux} -d ${POSTGRES_DB:-veralux}"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 1G
+        reservations:
+          cpus: "0.25"
+          memory: 128M
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
@@ -108,37 +208,53 @@ services:
   # =============================================================================
 
   # Option A: Cloudflare Tunnel (recommended for production)
-  # Get token from: Cloudflare Zero Trust → Networks → Tunnels → Create
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: veralux-cloudflared
     restart: unless-stopped
+    logging: *default-logging
     profiles:
       - tunnel
       - cloudflare
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel --config /etc/cloudflared/config.yml run
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+    volumes:
+      - ./cloudflared:/etc/cloudflared:ro
     networks:
       - veralux-network
     depends_on:
-      - runtime
-      - control
+      runtime:
+        condition: service_healthy
+      control:
+        condition: service_healthy
 
   # Option B: ngrok (for quick testing)
   ngrok:
     image: ngrok/ngrok:latest
     container_name: veralux-ngrok
     restart: unless-stopped
+    logging: *default-logging
     profiles:
       - ngrok
     environment:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
     command: http runtime:4001 --log stdout
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
     ports:
       - "4040:4040"  # ngrok web interface
     networks:
       - veralux-network
     depends_on:
-      - runtime
+      runtime:
+        condition: service_healthy
 
   # =============================================================================
   # GPU Services (NVIDIA GPU required - auto-selected by deploy.sh)
@@ -146,12 +262,25 @@ services:
 
   whisper-gpu:
     image: ${REGISTRY:-ghcr.io/nick-veraluxai}/whisper:${VERSION:-latest}
+    build:
+      context: ./veralux-audio-stack
+      dockerfile: Dockerfile.whisper
     container_name: veralux-whisper
     restart: unless-stopped
+    logging: *default-logging
     profiles:
       - gpu
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     deploy:
       resources:
+        limits:
+          cpus: "4.0"
+          memory: 4G
         reservations:
           devices:
             - driver: nvidia
@@ -168,12 +297,25 @@ services:
 
   kokoro-gpu:
     image: ${REGISTRY:-ghcr.io/nick-veraluxai}/kokoro:${VERSION:-latest}
+    build:
+      context: ./veralux-audio-stack
+      dockerfile: Dockerfile.kokoro
     container_name: veralux-kokoro
     restart: unless-stopped
+    logging: *default-logging
     profiles:
       - gpu
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     deploy:
       resources:
+        limits:
+          cpus: "4.0"
+          memory: 4G
         reservations:
           devices:
             - driver: nvidia
@@ -190,12 +332,25 @@ services:
 
   xtts-gpu:
     image: ${REGISTRY:-ghcr.io/nick-veraluxai}/xtts:${VERSION:-latest}
+    build:
+      context: ./veralux-audio-stack
+      dockerfile: Dockerfile.xtts
     container_name: veralux-xtts
     restart: unless-stopped
+    logging: *default-logging
     profiles:
       - gpu
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
     deploy:
       resources:
+        limits:
+          cpus: "4.0"
+          memory: 6G
         reservations:
           devices:
             - driver: nvidia
@@ -218,10 +373,28 @@ services:
 
   whisper-cpu:
     image: ${REGISTRY:-ghcr.io/nick-veraluxai}/whisper:${VERSION:-latest}
+    build:
+      context: ./veralux-audio-stack
+      dockerfile: Dockerfile.whisper
     container_name: veralux-whisper
     restart: unless-stopped
+    logging: *default-logging
     profiles:
       - cpu
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4G
+        reservations:
+          cpus: "1.0"
+          memory: 1G
     environment:
       - MODEL_SIZE=${WHISPER_MODEL_SIZE:-base}
       - CUDA_VISIBLE_DEVICES=""
@@ -234,10 +407,28 @@ services:
 
   kokoro-cpu:
     image: ${REGISTRY:-ghcr.io/nick-veraluxai}/kokoro:${VERSION:-latest}
+    build:
+      context: ./veralux-audio-stack
+      dockerfile: Dockerfile.kokoro
     container_name: veralux-kokoro
     restart: unless-stopped
+    logging: *default-logging
     profiles:
       - cpu
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 4G
+        reservations:
+          cpus: "1.0"
+          memory: 1G
     environment:
       - VOICE_ID=${KOKORO_VOICE_ID:-default}
       - CUDA_VISIBLE_DEVICES=""
@@ -250,10 +441,28 @@ services:
 
   xtts-cpu:
     image: ${REGISTRY:-ghcr.io/nick-veraluxai}/xtts:${VERSION:-latest}
+    build:
+      context: ./veralux-audio-stack
+      dockerfile: Dockerfile.xtts
     container_name: veralux-xtts
     restart: unless-stopped
+    logging: *default-logging
     profiles:
       - cpu
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 6G
+        reservations:
+          cpus: "1.0"
+          memory: 2G
     environment:
       - LANGUAGE=${XTTS_LANGUAGE:-en}
       - CUDA_VISIBLE_DEVICES=""

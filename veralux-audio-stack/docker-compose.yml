@@ -1,0 +1,160 @@
+# veralux-audio-stack: Kokoro TTS, Coqui XTTS, Faster-Whisper
+# Production-ready: TLS, rate limiting, health checks, resource limits, logging
+#
+# Usage:
+#   cp .env.example .env && edit .env
+#   docker compose up -d                    # all services
+#   docker compose up -d xtts whisper       # skip Kokoro
+#
+# For Kokoro, put kokoro-v1.0.onnx and voices-v1.0.bin in ./kokoro-models/
+# For GPU, use: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+
+services:
+  # Reverse proxy with TLS
+  traefik:
+    image: traefik:v3.0
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml:ro
+      - traefik-certs:/letsencrypt
+      - traefik-logs:/var/log/traefik
+    environment:
+      - ACME_EMAIL=${ACME_EMAIL:-admin@example.com}
+    labels:
+      - "traefik.enable=true"
+      # Dashboard (optional, comment out for production)
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.tls.certresolver=letsencrypt"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    restart: unless-stopped
+    networks:
+      - audio-stack
+
+  kokoro:
+    image: ghcr.io/nick-veraluxai/kokoro:${VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.kokoro
+    volumes:
+      - ./kokoro-models:/models:ro
+    environment:
+      - KOKORO_MODEL_PATH=/models/kokoro-v1.0.onnx
+      - KOKORO_VOICES_PATH=/models/voices-v1.0.bin
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-30}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kokoro.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/kokoro`)"
+      - "traefik.http.routers.kokoro.entrypoints=websecure"
+      - "traefik.http.routers.kokoro.tls.certresolver=letsencrypt"
+      - "traefik.http.services.kokoro.loadbalancer.server.port=7001"
+      - "traefik.http.middlewares.kokoro-strip.stripprefix.prefixes=/kokoro"
+      - "traefik.http.routers.kokoro.middlewares=kokoro-strip"
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    restart: unless-stopped
+    networks:
+      - audio-stack
+
+  xtts:
+    image: ghcr.io/nick-veraluxai/xtts:${VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.xtts
+    volumes:
+      - xtts-cache:/home/appuser/.local/share/tts
+    environment:
+      - XTTS_MODEL_NAME=tts_models/multilingual/multi-dataset/xtts_v2
+      - XTTS_OUTPUT_SAMPLE_RATE=24000
+      - XTTS_LOG_LEVEL=INFO
+      - COQUI_TEMPERATURE=${COQUI_TEMPERATURE:-0.80}
+      - COQUI_SPEED=${COQUI_SPEED:-1.18}
+      - COQUI_TOP_P=${COQUI_TOP_P:-0.92}
+      - COQUI_LENGTH_PENALTY=${COQUI_LENGTH_PENALTY:-1.0}
+      - COQUI_REPETITION_PENALTY=${COQUI_REPETITION_PENALTY:-2.0}
+      - COQUI_TOP_K=${COQUI_TOP_K:-50}
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-30}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.xtts.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/xtts`)"
+      - "traefik.http.routers.xtts.entrypoints=websecure"
+      - "traefik.http.routers.xtts.tls.certresolver=letsencrypt"
+      - "traefik.http.services.xtts.loadbalancer.server.port=7002"
+      - "traefik.http.middlewares.xtts-strip.stripprefix.prefixes=/xtts"
+      - "traefik.http.routers.xtts.middlewares=xtts-strip"
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 1G
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    restart: unless-stopped
+    networks:
+      - audio-stack
+
+  whisper:
+    image: ghcr.io/nick-veraluxai/whisper:${VERSION:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile.whisper
+    volumes:
+      - whisper-cache:/home/appuser/.cache/huggingface
+    environment:
+      - WHISPER_MODEL=${WHISPER_MODEL:-small}
+      - WHISPER_DEVICE=${WHISPER_DEVICE:-cpu}
+      - WHISPER_COMPUTE_TYPE=int8
+      - RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE:-30}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.whisper.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/whisper`)"
+      - "traefik.http.routers.whisper.entrypoints=websecure"
+      - "traefik.http.routers.whisper.tls.certresolver=letsencrypt"
+      - "traefik.http.services.whisper.loadbalancer.server.port=9000"
+      - "traefik.http.middlewares.whisper-strip.stripprefix.prefixes=/whisper"
+      - "traefik.http.routers.whisper.middlewares=whisper-strip"
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 512M
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    restart: unless-stopped
+    networks:
+      - audio-stack
+
+networks:
+  audio-stack:
+    driver: bridge
+
+volumes:
+  xtts-cache:
+  whisper-cache:
+  traefik-certs:
+  traefik-logs:

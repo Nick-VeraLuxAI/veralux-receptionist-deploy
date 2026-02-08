@@ -1,0 +1,18 @@
+{
+  "name": "veralux-receptionist",
+  "private": true,
+  "workspaces": [
+    "shared",
+    "control-plane",
+    "veralux-voice-runtime",
+    "veralux-voice-runtime/brain-gpt4o"
+  ],
+  "scripts": {
+    "build:shared": "npm run build -w @veralux/shared",
+    "build:control": "npm run build:shared && npm run build -w control-plane",
+    "build:runtime": "npm run build:shared && npm run build -w veralux-voice-runtime",
+    "build": "npm run build:shared && npm run build -w control-plane && npm run build -w veralux-voice-runtime",
+    "dev:control": "npm run build:shared && npm run dev:server -w control-plane",
+    "dev:runtime": "npm run build:shared && npm run dev -w veralux-voice-runtime"
+  }
+}

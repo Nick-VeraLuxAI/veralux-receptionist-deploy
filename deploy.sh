@@ -87,23 +87,34 @@ check_env() {
     success ".env file found."
 }
 
+# Helper: detect audio profile based on TTS_MODE and hardware
+detect_audio_profile() {
+    local tts_mode
+    tts_mode=$(grep "^TTS_MODE=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2)
+    if [[ "$tts_mode" == "coqui_xtts" || "$tts_mode" == "kokoro_http" ]]; then
+        if docker info 2>/dev/null | grep -qi nvidia || command -v nvidia-smi &>/dev/null; then
+            echo "--profile gpu"
+            return
+        else
+            echo "--profile cpu"
+            return
+        fi
+    fi
+    echo ""
+}
+
 # -----------------------------------------------------------------------------
 # Commands
 # -----------------------------------------------------------------------------
 cmd_up() {
     info "Starting Veralux Receptionist..."
     
-    # Detect audio profile based on TTS_MODE and hardware
-    local audio_profile=""
-    local tts_mode=$(grep "^TTS_MODE=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2)
-    if [[ "$tts_mode" == "coqui_xtts" || "$tts_mode" == "kokoro_http" ]]; then
-        if docker info 2>/dev/null | grep -qi nvidia || command -v nvidia-smi &>/dev/null; then
-            audio_profile="--profile gpu"
-            info "NVIDIA GPU detected — running audio services with GPU acceleration"
-        else
-            audio_profile="--profile cpu"
-            info "No NVIDIA GPU detected — running audio services in CPU mode (slower but functional)"
-        fi
+    local audio_profile
+    audio_profile=$(detect_audio_profile)
+    if [[ "$audio_profile" == *gpu* ]]; then
+        info "NVIDIA GPU detected — running audio services with GPU acceleration"
+    elif [[ -n "$audio_profile" ]]; then
+        info "No NVIDIA GPU detected — running audio services in CPU mode (slower but functional)"
     fi
     
     # Remove any leftover containers to avoid name conflicts
@@ -152,32 +163,134 @@ cmd_logs() {
     fi
 }
 
+cmd_build() {
+    info "Building Veralux Receptionist from source..."
+    
+    local audio_profile
+    audio_profile=$(detect_audio_profile)
+    
+    $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" $audio_profile build "$@"
+    
+    success "Build complete!"
+}
+
 cmd_update() {
-    info "Updating Veralux Receptionist..."
+    info "Updating Veralux Receptionist (rolling restart)..."
     
+    local audio_profile
+    audio_profile=$(detect_audio_profile)
+    
+    # 1. Pull latest images
     info "Pulling latest images..."
-    $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" pull
+    $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" $audio_profile pull
     
-    info "Recreating containers with new images..."
-    $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d --force-recreate
+    # 2. Backup database before updating
+    if [[ -x "scripts/backup.sh" ]]; then
+        info "Creating pre-update database backup..."
+        bash scripts/backup.sh || warn "Backup failed — continuing with update."
+    fi
     
-    success "Update complete!"
+    # 3. Rolling restart: infrastructure first, then services one at a time
+    # Infrastructure (Redis/Postgres) — these hold state, restart only if image changed
+    info "Updating infrastructure services..."
+    $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d --no-deps redis postgres
+    
+    # Wait for infrastructure to be healthy
+    info "Waiting for infrastructure health checks..."
+    local retries=30
+    while [[ $retries -gt 0 ]]; do
+        local pg_healthy redis_healthy
+        pg_healthy=$(docker inspect --format='{{.State.Health.Status}}' veralux-postgres 2>/dev/null || echo "unknown")
+        redis_healthy=$(docker inspect --format='{{.State.Health.Status}}' veralux-redis 2>/dev/null || echo "unknown")
+        if [[ "$pg_healthy" == "healthy" && "$redis_healthy" == "healthy" ]]; then
+            break
+        fi
+        sleep 2
+        retries=$((retries - 1))
+    done
+    
+    if [[ $retries -eq 0 ]]; then
+        warn "Infrastructure health check timed out — proceeding anyway."
+    else
+        success "Infrastructure healthy."
+    fi
+    
+    # 4. Update control plane (runtime depends on it)
+    info "Updating control plane..."
+    $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d --no-deps control
+    
+    # Wait for control plane to be healthy before updating runtime
+    info "Waiting for control plane health check..."
+    retries=30
+    while [[ $retries -gt 0 ]]; do
+        local ctrl_healthy
+        ctrl_healthy=$(docker inspect --format='{{.State.Health.Status}}' veralux-control 2>/dev/null || echo "unknown")
+        if [[ "$ctrl_healthy" == "healthy" ]]; then
+            break
+        fi
+        sleep 3
+        retries=$((retries - 1))
+    done
+    
+    if [[ $retries -eq 0 ]]; then
+        warn "Control plane health check timed out — proceeding anyway."
+    else
+        success "Control plane healthy."
+    fi
+    
+    # 5. Update voice runtime
+    info "Updating voice runtime..."
+    $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d --no-deps runtime
+    
+    # 6. Update audio services (if active)
+    local audio_services
+    audio_services=$(docker ps --filter "name=veralux-whisper" --filter "name=veralux-kokoro" --filter "name=veralux-xtts" --format '{{.Names}}' 2>/dev/null || echo "")
+    if [[ -n "$audio_services" ]]; then
+        info "Updating audio services..."
+        for svc in $audio_services; do
+            local short_name="${svc#veralux-}"
+            info "  Updating $short_name..."
+            # Determine which compose service name to use (gpu or cpu variant)
+            local compose_svc
+            if docker inspect "$svc" --format='{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null | grep -q "CUDA_VISIBLE_DEVICES="; then
+                compose_svc="${short_name}-cpu"
+            else
+                compose_svc="${short_name}-gpu"
+            fi
+            $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d --no-deps "$compose_svc" 2>/dev/null || \
+                warn "  Could not update $short_name (may need profile flag)."
+        done
+    fi
+    
+    # 7. Update tunnel if active
+    if docker ps --filter "name=veralux-cloudflared" --format '{{.Names}}' 2>/dev/null | grep -q cloudflared; then
+        info "Updating Cloudflare Tunnel..."
+        $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" up -d --no-deps cloudflared
+    fi
+    
+    echo ""
+    success "Rolling update complete!"
+    echo ""
+    cmd_status
+}
+
+cmd_backup() {
+    if [[ ! -x "scripts/backup.sh" ]]; then
+        error "Backup script not found at scripts/backup.sh"
+        exit 1
+    fi
+    bash scripts/backup.sh "$@"
 }
 
 cmd_tunnel() {
     local tunnel_type="${1:-cloudflare}"
     
-    # Detect audio profile based on TTS_MODE and hardware
-    local audio_profile=""
-    local tts_mode=$(grep "^TTS_MODE=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2)
-    if [[ "$tts_mode" == "coqui_xtts" || "$tts_mode" == "kokoro_http" ]]; then
-        if docker info 2>/dev/null | grep -qi nvidia || command -v nvidia-smi &>/dev/null; then
-            audio_profile="--profile gpu"
-            info "NVIDIA GPU detected — running audio services with GPU acceleration"
-        else
-            audio_profile="--profile cpu"
-            info "No NVIDIA GPU detected — running audio services in CPU mode (slower but functional)"
-        fi
+    local audio_profile
+    audio_profile=$(detect_audio_profile)
+    if [[ "$audio_profile" == *gpu* ]]; then
+        info "NVIDIA GPU detected — running audio services with GPU acceleration"
+    elif [[ -n "$audio_profile" ]]; then
+        info "No NVIDIA GPU detected — running audio services in CPU mode (slower but functional)"
     fi
     
     case "$tunnel_type" in
@@ -232,7 +345,9 @@ cmd_help() {
     echo "  restart [services...] Restart services"
     echo "  status               Show service status"
     echo "  logs [service]       Follow service logs"
-    echo "  update               Pull latest images and recreate containers"
+    echo "  build [services...]  Build images from local source"
+    echo "  update               Rolling update (pull + restart one at a time)"
+    echo "  backup [dir] [opts]  Backup the database"
     echo "  tunnel [type]        Start with tunnel (cloudflare or ngrok)"
     echo "  help                 Show this help message"
     echo ""
@@ -240,13 +355,19 @@ cmd_help() {
     echo "  ./deploy.sh tunnel cloudflare   # Start with Cloudflare Tunnel (recommended)"
     echo "  ./deploy.sh tunnel ngrok        # Start with ngrok (for testing)"
     echo ""
-    echo "GPU Services:"
-    echo "  ./deploy.sh up --profile gpu    # Start with GPU services"
+    echo "Build & Update:"
+    echo "  ./deploy.sh build                 # Build all images from source"
+    echo "  ./deploy.sh build control         # Build just the control plane"
+    echo "  ./deploy.sh update                # Rolling update (zero-downtime)"
+    echo ""
+    echo "Backup & Restore:"
+    echo "  ./deploy.sh backup                # Backup to ./backups/"
+    echo "  ./deploy.sh backup --s3 s3://b    # Backup + upload to S3"
     echo ""
     echo "Examples:"
     echo "  ./deploy.sh up                    # Start all core services"
+    echo "  ./deploy.sh build && ./deploy.sh up  # Build from source, then start"
     echo "  ./deploy.sh tunnel cloudflare     # Start with Cloudflare Tunnel"
-    echo "  ./deploy.sh up --profile gpu      # Start with GPU services"
     echo "  ./deploy.sh logs control          # Follow control service logs"
     echo "  ./deploy.sh restart runtime       # Restart only the runtime service"
 }
@@ -282,8 +403,16 @@ main() {
             shift
             cmd_logs "$@"
             ;;
+        build)
+            shift
+            cmd_build "$@"
+            ;;
         update)
             cmd_update
+            ;;
+        backup)
+            shift
+            cmd_backup "$@"
             ;;
         tunnel)
             shift

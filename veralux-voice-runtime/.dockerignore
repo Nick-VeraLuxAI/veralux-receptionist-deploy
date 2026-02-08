@@ -1,0 +1,13 @@
+.git
+.github
+.vscode
+.cursor
+node_modules
+dist
+brain-gpt4o/node_modules
+brain-gpt4o/dist
+*.log
+debuglog*.txt
+debuglogs*.txt
+tmp
+coverage

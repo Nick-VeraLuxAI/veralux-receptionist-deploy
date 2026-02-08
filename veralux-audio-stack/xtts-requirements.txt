@@ -1,0 +1,19 @@
+# XTTS server: TTS 0.22 does "from transformers import BeamSearchScorer";
+# that only works when transformers still exports it at top level (e.g. 4.33).
+#
+# Pin torch/torchaudio < 2.9 to avoid the torchcodec dependency.
+# torchaudio >= 2.9 replaced its audio backend with torchcodec, which has
+# no arm64 Linux wheel and requires system FFmpeg.  Versions < 2.9 use the
+# built-in soundfile/sox backends and work out of the box on all platforms.
+torch>=2.5.0,<2.9
+torchaudio>=2.5.0,<2.9
+TTS>=0.22.0,<0.23
+transformers==4.33.0
+fastapi
+uvicorn
+gunicorn
+slowapi
+python-multipart
+soundfile
+numpy
+scipy

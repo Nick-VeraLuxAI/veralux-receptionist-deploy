@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>VeraLux Receptionist • Dev Audio Console</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: radial-gradient(circle at 18% 22%, rgba(124,240,255,0.18), transparent 28%),
+          radial-gradient(circle at 82% 18%, rgba(255,184,108,0.18), transparent 30%),
+          linear-gradient(145deg, #050712 0%, #0a1226 55%, #0a1020 100%);
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+        color: #e8edf6;
+      }
+      .shell {
+        background: rgba(10, 16, 36, 0.92);
+        border-radius: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        padding: 20px 18px 16px;
+        width: min(420px, 94vw);
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(18px);
+      }
+      h1 {
+        margin: 0 0 4px;
+        font-size: 18px;
+      }
+      .muted {
+        font-size: 13px;
+        color: #9fb4d2;
+        margin-bottom: 16px;
+      }
+      #record-btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        padding: 14px;
+        border-radius: 999px;
+        border: none;
+        cursor: pointer;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        background: linear-gradient(135deg, #7cf0ff, #5d9dff);
+        color: #050712;
+        box-shadow: 0 14px 36px rgba(124, 240, 255, 0.38);
+        transition: transform 0.08s ease, box-shadow 0.1s ease, background 0.1s ease;
+      }
+      #record-btn.recording {
+        background: linear-gradient(135deg, #ff6b6b, #ffb86c);
+        box-shadow: 0 18px 46px rgba(255, 107, 107, 0.5);
+        transform: translateY(1px);
+      }
+      #status {
+        margin-top: 10px;
+        font-size: 13px;
+      }
+      #status[data-kind="ok"] {
+        color: #7cf0ff;
+      }
+      #status[data-kind="err"] {
+        color: #ff9c9c;
+      }
+      #status[data-kind="info"] {
+        color: #9fb4d2;
+      }
+      #last-raw {
+        margin-top: 12px;
+        font-size: 11px;
+        background: rgba(0, 0, 0, 0.45);
+        border-radius: 10px;
+        padding: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        color: #cdd6e8;
+        max-height: 140px;
+        overflow: auto;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <h1>Dev Audio Console</h1>
+      <div class="muted">
+        Hold the button to send mic audio through Whisper → Receptionist → Kokoro.
+      </div>
+
+      <button id="record-btn" type="button">🎙 Hold to talk</button>
+      <div id="status" data-kind="info">Waiting for input…</div>
+
+      <pre id="last-raw"></pre>
+    </div>
+
+    <!-- This is the compiled output of dev-console.ts -->
+    <script type="module" src="/dev-console.js"></script>
+  </body>
+</html>
