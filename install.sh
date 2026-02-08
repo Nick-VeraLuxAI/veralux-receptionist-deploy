@@ -340,7 +340,7 @@ write_env_file() {
 # =============================================================================
 
 # Version & Registry
-VERSION=latest
+VERSION=0.1.0
 REGISTRY=ghcr.io/nick-veraluxai
 
 # Database
@@ -351,6 +351,7 @@ POSTGRES_DB=veralux
 # Security
 JWT_SECRET=${jwt_secret}
 API_KEY=${api_key}
+ADMIN_API_KEY=$(generate_secret)
 
 # Telnyx
 TELNYX_API_KEY=${telnyx_api_key}
@@ -680,16 +681,21 @@ main() {
     echo ""
     echo "  Your Veralux Receptionist is now running!"
     echo ""
+    # Read back the generated ADMIN_API_KEY from .env
+    local admin_api_key
+    admin_api_key=$(grep '^ADMIN_API_KEY=' .env | cut -d= -f2)
+
     echo -e "  ${BOLD}Your Credentials:${NC}"
     echo -e "  ────────────────────────────────────────────"
     echo -e "  Admin Panel:    ${GREEN}http://localhost:4000${NC}"
+    echo -e "  Admin API Key:  ${DIM}${admin_api_key}${NC}"
     echo -e "  JWT Secret:     ${DIM}${JWT_SECRET}${NC}"
     if [[ -n "$TELNYX_NUMBER" ]]; then
         echo -e "  Phone Number:   ${GREEN}${TELNYX_NUMBER}${NC}"
     fi
     echo -e "  ────────────────────────────────────────────"
     echo ""
-    echo -e "  ${YELLOW}Save your JWT Secret somewhere safe!${NC}"
+    echo -e "  ${YELLOW}Save your Admin API Key and JWT Secret somewhere safe!${NC}"
     echo ""
     echo -e "  ${DIM}Commands:${NC}"
     echo "    ./deploy.sh status   - Check service status"
