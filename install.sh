@@ -332,6 +332,9 @@ write_env_file() {
     local openai_api_key="${5:-}"
     local jwt_secret="${6:-}"
     local cloudflare_token="${7:-}"
+    local llm_provider="${8:-openai}"
+    local openai_model="${9:-gpt-4o-mini}"
+    local local_llm_url="${10:-}"
     
     cat > .env << ENVFILE
 # =============================================================================
@@ -362,8 +365,11 @@ TELNYX_ACCEPT_CODECS=PCMU,AMR-WB
 TELNYX_AMRWB_DECODE=true
 PLAYBACK_PSTN_SAMPLE_RATE=24000
 
-# OpenAI
+# LLM Configuration
+LLM_PROVIDER=${llm_provider}
 OPENAI_API_KEY=${openai_api_key}
+OPENAI_MODEL=${openai_model}
+LOCAL_LLM_URL=${local_llm_url}
 
 # Ports
 CONTROL_PORT=4000
@@ -624,11 +630,70 @@ main() {
         echo -e "${GREEN}✓${NC} Admin authenticated"
         echo ""
         
-        # Quick setup - just the keys
+        # ── LLM Mode Selection ──
+        echo -e "${BOLD}LLM Configuration${NC}"
+        echo ""
+        LLM_MODE=$("$GUM_BIN" choose --header "How will this system handle AI?" \
+            "Cloud API (OpenAI / ChatGPT) — requires internet + API key" \
+            "Local LLM (Ollama) — fully offline, requires GPU" \
+            "← Back")
+        
+        [[ "$LLM_MODE" == "← Back" ]] && continue
+        
+        echo ""
+        LLM_PROVIDER=""
+        OPENAI_API_KEY=""
+        OPENAI_MODEL=""
+        LOCAL_LLM_URL=""
+        
+        if [[ "$LLM_MODE" == "Cloud"* ]]; then
+            LLM_PROVIDER="openai"
+            OPENAI_API_KEY=$("$GUM_BIN" input --placeholder "OpenAI API Key (sk-...)" --password --width 50)
+            if [[ -z "$OPENAI_API_KEY" ]]; then
+                echo -e "${RED}✗ API key is required for Cloud mode${NC}"
+                continue
+            fi
+            echo ""
+            OPENAI_MODEL=$("$GUM_BIN" choose --header "Which model?" \
+                "gpt-4o-mini (fast, cost-effective — recommended)" \
+                "gpt-4o (most capable)" \
+                "gpt-4-turbo (balanced)")
+            # Extract just the model name
+            OPENAI_MODEL=$(echo "$OPENAI_MODEL" | awk '{print $1}')
+            echo -e "${GREEN}✓${NC} Cloud API mode: ${OPENAI_MODEL}"
+        else
+            LLM_PROVIDER="local"
+            echo -e "${DIM}Local LLM requires Ollama running with a model loaded.${NC}"
+            echo ""
+            
+            # Check if Ollama is running
+            if curl -s http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+                echo -e "${GREEN}✓${NC} Ollama detected"
+                OLLAMA_MODELS=$(curl -s http://127.0.0.1:11434/api/tags 2>/dev/null | grep -o '"name":"[^"]*"' | cut -d'"' -f4)
+                if [[ -n "$OLLAMA_MODELS" ]]; then
+                    echo -e "${DIM}Available models:${NC}"
+                    echo "$OLLAMA_MODELS" | while read -r m; do echo "  • $m"; done
+                fi
+            else
+                echo -e "${YELLOW}⚠${NC} Ollama not detected at localhost:11434"
+                echo -e "${DIM}Install Ollama: curl -fsSL https://ollama.com/install.sh | sh${NC}"
+                echo -e "${DIM}Then: ollama pull llama3.1:8b-instruct-q4_K_M${NC}"
+                echo ""
+                if ! "$GUM_BIN" confirm "Continue anyway?"; then
+                    continue
+                fi
+            fi
+            echo ""
+            LOCAL_LLM_URL=$("$GUM_BIN" input --placeholder "Ollama URL" --value "http://127.0.0.1:11434/api/generate" --width 60)
+            echo -e "${GREEN}✓${NC} Local LLM mode: ${LOCAL_LLM_URL}"
+        fi
+        
+        echo ""
+        
+        # ── Remaining configuration ──
         echo -e "${BOLD}Enter configuration:${NC}"
         echo ""
         
-        OPENAI_API_KEY=$("$GUM_BIN" input --placeholder "OpenAI API Key (sk-...)" --password --width 50)
         TELNYX_API_KEY=$("$GUM_BIN" input --placeholder "Telnyx API Key" --password --width 50)
         TELNYX_PUBLIC_KEY=$("$GUM_BIN" input --placeholder "Telnyx Public Key" --width 50)
         TELNYX_NUMBER=$("$GUM_BIN" input --placeholder "Telnyx Phone Number (+1...)" --width 50)
@@ -640,7 +705,10 @@ main() {
         CLOUDFLARE_TOKEN=$("$GUM_BIN" input --placeholder "Cloudflare Tunnel Token (eyJ...)" --password --width 50)
         
         echo ""
-        echo -e "${DIM}Telnyx #: $TELNYX_NUMBER${NC}"
+        echo -e "${BOLD}Configuration Summary:${NC}"
+        echo -e "  LLM:      ${LLM_PROVIDER} $([ "$LLM_PROVIDER" = "openai" ] && echo "($OPENAI_MODEL)" || echo "($LOCAL_LLM_URL)")"
+        echo -e "  Telnyx #: ${TELNYX_NUMBER}"
+        [[ -n "$CLOUDFLARE_TOKEN" ]] && echo -e "  Tunnel:   Cloudflare (configured)" || echo -e "  Tunnel:   None"
         echo ""
         
         "$GUM_BIN" confirm "Deploy with this configuration?" || continue
@@ -652,8 +720,13 @@ main() {
     
     # Write configuration
     echo ""
+    # Default LLM vars if not set (Online/Offline paths default to openai)
+    LLM_PROVIDER="${LLM_PROVIDER:-openai}"
+    OPENAI_MODEL="${OPENAI_MODEL:-gpt-4o-mini}"
+    LOCAL_LLM_URL="${LOCAL_LLM_URL:-}"
+    
     "$GUM_BIN" spin --spinner dot --title "Saving configuration..." -- \
-        bash -c "$(declare -f write_env_file generate_secret); write_env_file '$API_KEY' '$TELNYX_NUMBER' '$TELNYX_API_KEY' '$TELNYX_PUBLIC_KEY' '$OPENAI_API_KEY' '$JWT_SECRET' '$CLOUDFLARE_TOKEN'"
+        bash -c "$(declare -f write_env_file generate_secret); write_env_file '$API_KEY' '$TELNYX_NUMBER' '$TELNYX_API_KEY' '$TELNYX_PUBLIC_KEY' '$OPENAI_API_KEY' '$JWT_SECRET' '$CLOUDFLARE_TOKEN' '$LLM_PROVIDER' '$OPENAI_MODEL' '$LOCAL_LLM_URL'"
     
     echo -e "${GREEN}✓${NC} Configuration saved"
     

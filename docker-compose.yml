@@ -53,6 +53,7 @@ services:
       - LLM_PROVIDER=${LLM_PROVIDER:-openai}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - LOCAL_LLM_URL=${LOCAL_LLM_URL:-}
       - TELNYX_PHONE_NUMBER=${TELNYX_PHONE_NUMBER}
       - TELNYX_API_KEY=${TELNYX_API_KEY}
       - BASE_URL=${BASE_URL:-http://localhost:4000}
@@ -125,6 +126,7 @@ services:
       - LLM_PROVIDER=${LLM_PROVIDER:-openai}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - LOCAL_LLM_URL=${LOCAL_LLM_URL:-}
       # Telnyx Configuration
       - TELNYX_API_KEY=${TELNYX_API_KEY}
       - TELNYX_PUBLIC_KEY=${TELNYX_PUBLIC_KEY}
