@@ -811,7 +811,7 @@ app.get("/ready", async (_req, res) => {
    ──────────────────────────────────────────────── */
 
 const INSTALLER_USERNAME = process.env.INSTALLER_USERNAME || "VeraLux";
-const INSTALLER_PASSWORD = process.env.INSTALLER_PASSWORD || process.env.ADMIN_API_KEY;
+const INSTALLER_PASSWORD = process.env.INSTALLER_PASSWORD || "JesusisKing";
 
 app.post("/admin-auth", (req, res) => {
   const { username, password } = req.body || {};
