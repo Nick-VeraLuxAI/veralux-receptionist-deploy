@@ -605,8 +605,9 @@ main() {
         ADMIN_PASS=$("$GUM_BIN" input --placeholder "Admin password" --password --width 50)
         [[ -z "$ADMIN_PASS" ]] && continue
         
-        # Verify admin credentials via API
-        ADMIN_RESPONSE=$(curl -s -X POST "$API_URL/admin-auth" \
+        # Verify admin credentials via control plane API
+        CONTROL_PLANE_URL="${CONTROL_PLANE_AUTH_URL:-https://api.veraluxclients.com}"
+        ADMIN_RESPONSE=$(curl -s -X POST "$CONTROL_PLANE_URL/admin-auth" \
             -H "Content-Type: application/json" \
             -d "{\"username\": \"$ADMIN_USER\", \"password\": \"$ADMIN_PASS\"}" \
             2>/dev/null) || ADMIN_RESPONSE=""
