@@ -441,6 +441,21 @@ export async function deleteStripePlan(planId: string): Promise<boolean> {
       [planId]
     );
 
+    // Clear subscription info for any tenants referencing this plan's price
+    if (plan.stripe_price_id) {
+      await client.query(
+        `UPDATE tenant_subscriptions
+         SET stripe_price_id = NULL,
+             stripe_product_id = NULL,
+             plan_name = NULL,
+             price_cents = NULL,
+             billing_frequency = NULL,
+             status = 'cancelled'
+         WHERE stripe_price_id = $1`,
+        [plan.stripe_price_id]
+      );
+    }
+
     return true;
   } finally {
     client.release();

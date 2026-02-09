@@ -609,8 +609,9 @@
             apiFetch("/api/admin/subscription"),
             apiFetch("/api/admin/stripe/status").catch(() => ({ configured: false })),
           ]);
-          // Hide billing if admin disabled it or no subscription is set up yet
-          if (!sub.showBillingPortal || sub.configured === false) {
+          // Hide billing if admin disabled it, no subscription, or plan was removed
+          if (!sub.showBillingPortal || sub.configured === false
+              || (sub.status === "cancelled" && !sub.planName && !sub.stripePriceId)) {
             $("billing-section").style.display = "none";
             return;
           }
