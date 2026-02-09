@@ -251,6 +251,12 @@ const EnvSchema = z.object({
   /** When set, write full call transcript (caller + assistant text) to this dir at teardown. No audio. */
   CALL_TRANSCRIPT_DIR: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
 
+  /* ───────────────────────── Control Plane integration ───────────────────────── */
+  /** When set, runtime reports call events (start/end with transcript) to the control plane. */
+  CONTROL_PLANE_URL: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+  /** API key for control plane auth (ADMIN_API_KEY). Required when CONTROL_PLANE_URL is set. */
+  CONTROL_PLANE_API_KEY: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
+
   /* ───────────────────────── Redis / Capacity ───────────────────────── */
   REDIS_URL: z.string().min(1),
 

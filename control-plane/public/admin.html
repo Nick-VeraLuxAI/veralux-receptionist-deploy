@@ -397,6 +397,7 @@
       <button type="button" class="tab" data-tab="calls">Calls</button>
       <button type="button" class="tab" data-tab="audit">Audit Logs</button>
       <button type="button" class="tab" data-tab="billing">Billing</button>
+      <button type="button" class="tab" data-tab="workflows">Workflows</button>
       <button type="button" class="tab" data-tab="settings">Settings</button>
       <button type="button" class="tab" id="refresh-all" style="margin-left: auto">Refresh All</button>
     </div>
@@ -947,6 +948,185 @@
           <div id="cf-token-status" class="small" style="margin-top: 8px; min-height: 16px"></div>
         </section>
       </div>
+
+      <!-- ── Workflows Tab ── -->
+      <div class="tab-content" data-tab="workflows">
+
+        <!-- Workflow Settings -->
+        <section class="panel" style="padding:12px 16px;">
+          <div style="display:flex; align-items:center; gap:10px;">
+            <label for="wf-owner-edit" style="margin:0; cursor:pointer; display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" id="wf-owner-edit" style="width:18px;height:18px;accent-color:#C9A04E;cursor:pointer;" />
+              <span>Allow business owners to create/edit workflows</span>
+            </label>
+          </div>
+        </section>
+
+        <!-- Workflow List -->
+        <section class="panel">
+          <div class="flex-between">
+            <h2>Workflows</h2>
+            <div class="row" style="gap:8px;">
+              <button type="button" id="wf-new-btn">+ New Workflow</button>
+              <button type="button" class="secondary" id="wf-refresh-btn">Refresh</button>
+            </div>
+          </div>
+          <div id="wf-list-empty" class="small muted" style="margin:12px 0;">No workflows yet. Create one to get started.</div>
+          <table id="wf-list-table" style="display:none; width:100%; border-collapse:collapse; margin-top:12px;">
+            <thead>
+              <tr style="text-align:left; border-bottom:1px solid rgba(246,243,236,0.1);">
+                <th class="small" style="padding:6px 8px;">Name</th>
+                <th class="small" style="padding:6px 8px;">Trigger</th>
+                <th class="small" style="padding:6px 8px;">Steps</th>
+                <th class="small" style="padding:6px 8px;">Enabled</th>
+                <th class="small" style="padding:6px 8px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="wf-list-body"></tbody>
+          </table>
+        </section>
+
+        <!-- Workflow Builder -->
+        <section class="panel" id="wf-builder" style="display:none;">
+          <h2 id="wf-builder-title">New Workflow</h2>
+
+          <!-- Step 1: Name -->
+          <div style="margin:12px 0;">
+            <label for="wf-name">Workflow name</label>
+            <input id="wf-name" type="text" placeholder="e.g. New lead follow-up" />
+          </div>
+
+          <!-- Step 2: Trigger -->
+          <div style="margin:12px 0;">
+            <label for="wf-trigger-type">Trigger</label>
+            <select id="wf-trigger-type" style="width:100%;">
+              <option value="call_ended">Call ended</option>
+              <option value="after_hours_call">After hours call</option>
+              <option value="keyword_detected">Keyword detected</option>
+              <option value="missed_call">Missed call</option>
+              <option value="scheduled">Scheduled (cron)</option>
+            </select>
+          </div>
+
+          <!-- Trigger config (dynamic) -->
+          <div id="wf-trigger-config" style="margin:12px 0; padding:12px; border-radius:10px; background:rgba(246,243,236,0.04); border:1px solid rgba(246,243,236,0.08);">
+            <!-- keyword_detected config -->
+            <div id="wf-tc-keywords" style="display:none;">
+              <label for="wf-keywords">Keywords (comma-separated)</label>
+              <input id="wf-keywords" type="text" placeholder="e.g. emergency, urgent, pricing" />
+              <p class="small muted">Workflow fires when any of these words appear in the call transcript.</p>
+            </div>
+            <!-- after_hours_call config -->
+            <div id="wf-tc-after-hours" style="display:none;">
+              <div class="row" style="gap:12px;">
+                <div>
+                  <label for="wf-biz-start">Business hours start</label>
+                  <input id="wf-biz-start" type="time" value="09:00" />
+                </div>
+                <div>
+                  <label for="wf-biz-end">Business hours end</label>
+                  <input id="wf-biz-end" type="time" value="17:00" />
+                </div>
+                <div>
+                  <label for="wf-tz">Timezone</label>
+                  <input id="wf-tz" type="text" value="America/New_York" style="width:180px;" />
+                </div>
+              </div>
+            </div>
+            <!-- missed_call config -->
+            <div id="wf-tc-missed" style="display:none;">
+              <div class="row" style="gap:12px;">
+                <div>
+                  <label for="wf-max-duration">Max duration (seconds)</label>
+                  <input id="wf-max-duration" type="number" value="15" min="1" style="width:100px;" />
+                </div>
+                <div>
+                  <label for="wf-min-turns">Min conversation turns</label>
+                  <input id="wf-min-turns" type="number" value="2" min="0" style="width:100px;" />
+                </div>
+              </div>
+            </div>
+            <!-- scheduled config -->
+            <div id="wf-tc-scheduled" style="display:none;">
+              <label for="wf-cron">Cron expression or shortcut</label>
+              <input id="wf-cron" type="text" placeholder="e.g. 0 9 * * 1 or @daily" />
+              <p class="small muted">Shortcuts: @hourly, @daily, @weekly, @monthly, @every5min, @every15min, @every30min</p>
+              <div style="margin-top:8px;">
+                <label for="wf-sched-tz">Timezone</label>
+                <input id="wf-sched-tz" type="text" value="America/New_York" style="width:200px;" />
+              </div>
+            </div>
+            <!-- call_ended has no additional config -->
+            <div id="wf-tc-call-ended">
+              <p class="small muted">This workflow fires after every completed call.</p>
+            </div>
+          </div>
+
+          <!-- Step 3: Action Steps -->
+          <div style="margin:12px 0;">
+            <div class="flex-between">
+              <h3>Action Steps</h3>
+              <button type="button" id="wf-add-step" class="secondary" style="font-size:13px;">+ Add Step</button>
+            </div>
+            <div id="wf-steps-list" style="margin-top:8px;"></div>
+            <div id="wf-steps-empty" class="small muted" style="margin:8px 0;">No steps added yet. Add at least one action step.</div>
+          </div>
+
+          <!-- Save / Cancel -->
+          <div class="row" style="gap:8px; margin-top:16px;">
+            <button type="button" id="wf-save-btn">Save Workflow</button>
+            <button type="button" class="secondary" id="wf-test-btn">Test (Dry Run)</button>
+            <button type="button" class="secondary" id="wf-cancel-btn">Cancel</button>
+          </div>
+          <div id="wf-builder-status" class="small" style="margin-top:8px; min-height:16px;"></div>
+        </section>
+
+        <!-- Run History -->
+        <section class="panel">
+          <div class="flex-between">
+            <h2>Run History</h2>
+            <button type="button" class="secondary" id="wf-runs-refresh">Refresh</button>
+          </div>
+          <div id="wf-runs-empty" class="small muted" style="margin:12px 0;">No workflow runs yet.</div>
+          <table id="wf-runs-table" style="display:none; width:100%; border-collapse:collapse; margin-top:12px;">
+            <thead>
+              <tr style="text-align:left; border-bottom:1px solid rgba(246,243,236,0.1);">
+                <th class="small" style="padding:6px 8px;">Workflow</th>
+                <th class="small" style="padding:6px 8px;">Trigger</th>
+                <th class="small" style="padding:6px 8px;">Status</th>
+                <th class="small" style="padding:6px 8px;">Steps</th>
+                <th class="small" style="padding:6px 8px;">Started</th>
+                <th class="small" style="padding:6px 8px;">Details</th>
+              </tr>
+            </thead>
+            <tbody id="wf-runs-body"></tbody>
+          </table>
+        </section>
+
+        <!-- Leads -->
+        <section class="panel">
+          <div class="flex-between">
+            <h2>Leads</h2>
+            <button type="button" class="secondary" id="wf-leads-refresh">Refresh</button>
+          </div>
+          <div id="wf-leads-empty" class="small muted" style="margin:12px 0;">No leads captured yet.</div>
+          <table id="wf-leads-table" style="display:none; width:100%; border-collapse:collapse; margin-top:12px;">
+            <thead>
+              <tr style="text-align:left; border-bottom:1px solid rgba(246,243,236,0.1);">
+                <th class="small" style="padding:6px 8px;">Name</th>
+                <th class="small" style="padding:6px 8px;">Phone</th>
+                <th class="small" style="padding:6px 8px;">Email</th>
+                <th class="small" style="padding:6px 8px;">Issue</th>
+                <th class="small" style="padding:6px 8px;">Priority</th>
+                <th class="small" style="padding:6px 8px;">Date</th>
+                <th class="small" style="padding:6px 8px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="wf-leads-body"></tbody>
+          </table>
+        </section>
+      </div>
+
     </main>
 
     <div id="admin-modal" class="modal">
@@ -2032,6 +2212,480 @@
         }
       }
 
+      // ── Workflow Automation Engine ──
+
+      let workflowsCache = [];
+      let workflowRunsCache = [];
+      let leadsCache = [];
+      let editingWorkflowId = null; // null = new workflow
+      let workflowSteps = []; // steps being built in the form
+
+      const TRIGGER_LABELS = {
+        call_ended: "Call ended",
+        after_hours_call: "After hours call",
+        keyword_detected: "Keyword detected",
+        missed_call: "Missed call",
+        scheduled: "Scheduled",
+      };
+
+      const ACTION_LABELS = {
+        send_email: "Send Email",
+        send_sms: "Send SMS",
+        fire_webhook: "Fire Webhook",
+        ai_summarize: "AI Summarize",
+        ai_extract: "AI Extract Data",
+        store_lead: "Store Lead",
+      };
+
+      async function loadWorkflows() {
+        try {
+          const data = await fetchJSON("/api/admin/workflows");
+          workflowsCache = data.workflows || [];
+          renderWorkflowList();
+        } catch (err) {
+          console.error("loadWorkflows:", err);
+        }
+      }
+
+      function renderWorkflowList() {
+        const empty = $("wf-list-empty");
+        const table = $("wf-list-table");
+        const body = $("wf-list-body");
+        if (!workflowsCache.length) {
+          empty.style.display = "";
+          table.style.display = "none";
+          return;
+        }
+        empty.style.display = "none";
+        table.style.display = "";
+        body.innerHTML = workflowsCache.map(wf => `
+          <tr style="border-bottom:1px solid rgba(246,243,236,0.06);">
+            <td style="padding:8px;">${escapeHtml(wf.name)}</td>
+            <td style="padding:8px;" class="small">${escapeHtml(TRIGGER_LABELS[wf.triggerType] || wf.triggerType)}</td>
+            <td style="padding:8px;" class="small">${(wf.steps || []).length} step${(wf.steps || []).length !== 1 ? "s" : ""}</td>
+            <td style="padding:8px;">
+              <label style="cursor:pointer;display:flex;align-items:center;gap:4px;">
+                <input type="checkbox" ${wf.enabled ? "checked" : ""} onchange="toggleWorkflow('${escapeHtml(wf.id)}', this.checked)" style="accent-color:#C9A04E;" />
+                <span class="small">${wf.enabled ? "On" : "Off"}</span>
+              </label>
+            </td>
+            <td style="padding:8px;">
+              <div class="row" style="gap:4px;">
+                <button type="button" onclick="editWorkflow('${escapeHtml(wf.id)}')" style="font-size:12px; padding:3px 10px; border-radius:6px; cursor:pointer;">Edit</button>
+                <button type="button" onclick="deleteWorkflowUI('${escapeHtml(wf.id)}')" style="font-size:12px; padding:3px 10px; border-radius:6px; cursor:pointer; background:rgba(196,80,80,0.15); color:#e07070; border:1px solid rgba(196,80,80,0.3);">Delete</button>
+              </div>
+            </td>
+          </tr>
+        `).join("");
+      }
+
+      async function toggleWorkflow(id, enabled) {
+        try {
+          await fetchJSON("/api/admin/workflows/" + encodeURIComponent(id), {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ enabled }),
+          });
+          setStatus(enabled ? "Workflow enabled" : "Workflow disabled", "ok");
+          await loadWorkflows();
+        } catch (err) {
+          setStatus("Toggle failed: " + err.message, "err");
+        }
+      }
+
+      async function deleteWorkflowUI(id) {
+        if (!confirm("Delete this workflow? This cannot be undone.")) return;
+        try {
+          await fetchJSON("/api/admin/workflows/" + encodeURIComponent(id), { method: "DELETE" });
+          setStatus("Workflow deleted", "ok");
+          await loadWorkflows();
+        } catch (err) {
+          setStatus("Delete failed: " + err.message, "err");
+        }
+      }
+
+      function showWorkflowBuilder(wf) {
+        editingWorkflowId = wf ? wf.id : null;
+        $("wf-builder").style.display = "";
+        $("wf-builder-title").textContent = wf ? "Edit Workflow" : "New Workflow";
+        $("wf-name").value = wf ? wf.name : "";
+        $("wf-trigger-type").value = wf ? wf.triggerType : "call_ended";
+        updateTriggerConfigUI();
+
+        if (wf && wf.triggerConfig) {
+          const tc = wf.triggerConfig;
+          if (tc.keywords) $("wf-keywords").value = tc.keywords.join(", ");
+          if (tc.businessHoursStart) $("wf-biz-start").value = tc.businessHoursStart;
+          if (tc.businessHoursEnd) $("wf-biz-end").value = tc.businessHoursEnd;
+          if (tc.timezone) { $("wf-tz").value = tc.timezone; if ($("wf-sched-tz")) $("wf-sched-tz").value = tc.timezone; }
+          if (tc.maxDurationSeconds) $("wf-max-duration").value = tc.maxDurationSeconds;
+          if (tc.minTurns !== undefined) $("wf-min-turns").value = tc.minTurns;
+          if (tc.cronExpression) $("wf-cron").value = tc.cronExpression;
+        }
+
+        workflowSteps = wf ? [...(wf.steps || [])] : [];
+        renderWorkflowSteps();
+        $("wf-builder-status").textContent = "";
+      }
+
+      function hideWorkflowBuilder() {
+        $("wf-builder").style.display = "none";
+        editingWorkflowId = null;
+        workflowSteps = [];
+      }
+
+      function editWorkflow(id) {
+        const wf = workflowsCache.find(w => w.id === id);
+        if (wf) showWorkflowBuilder(wf);
+      }
+
+      function updateTriggerConfigUI() {
+        const type = $("wf-trigger-type").value;
+        $("wf-tc-keywords").style.display = type === "keyword_detected" ? "" : "none";
+        $("wf-tc-after-hours").style.display = type === "after_hours_call" ? "" : "none";
+        $("wf-tc-missed").style.display = type === "missed_call" ? "" : "none";
+        $("wf-tc-scheduled").style.display = type === "scheduled" ? "" : "none";
+        $("wf-tc-call-ended").style.display = type === "call_ended" ? "" : "none";
+      }
+
+      function addWorkflowStep() {
+        const order = workflowSteps.length + 1;
+        workflowSteps.push({ action: "ai_summarize", config: {}, order });
+        renderWorkflowSteps();
+      }
+
+      function removeWorkflowStep(index) {
+        workflowSteps.splice(index, 1);
+        workflowSteps.forEach((s, i) => s.order = i + 1);
+        renderWorkflowSteps();
+      }
+
+      function renderWorkflowSteps() {
+        const list = $("wf-steps-list");
+        const empty = $("wf-steps-empty");
+        if (!workflowSteps.length) {
+          empty.style.display = "";
+          list.innerHTML = "";
+          return;
+        }
+        empty.style.display = "none";
+        list.innerHTML = workflowSteps.map((step, i) => `
+          <div style="margin:6px 0; padding:12px; border-radius:10px; background:rgba(246,243,236,0.04); border:1px solid rgba(246,243,236,0.08);">
+            <div class="row" style="gap:8px; align-items:center; margin-bottom:8px;">
+              <span class="small" style="font-weight:600;">Step ${i + 1}</span>
+              <select onchange="updateStepAction(${i}, this.value)" style="min-width:160px;">
+                ${Object.entries(ACTION_LABELS).map(([k, v]) =>
+                  `<option value="${k}" ${step.action === k ? "selected" : ""}>${v}</option>`
+                ).join("")}
+              </select>
+              <button type="button" onclick="removeWorkflowStep(${i})" style="font-size:12px; padding:3px 10px; border-radius:6px; cursor:pointer; background:rgba(196,80,80,0.15); color:#e07070; border:1px solid rgba(196,80,80,0.3); margin-left:auto;">Remove</button>
+            </div>
+            <div id="wf-step-config-${i}">${renderStepConfig(step, i)}</div>
+          </div>
+        `).join("");
+      }
+
+      function updateStepAction(index, action) {
+        workflowSteps[index].action = action;
+        workflowSteps[index].config = {};
+        renderWorkflowSteps();
+      }
+
+      function renderStepConfig(step, index) {
+        const c = step.config || {};
+        switch (step.action) {
+          case "send_email":
+            return `
+              <div class="row" style="gap:8px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:200px;">
+                  <label class="small">To (email)</label>
+                  <input type="email" value="${escapeHtml(c.to || "")}" onchange="updateStepConfig(${index}, 'to', this.value)" placeholder="recipient@example.com" />
+                </div>
+                <div style="flex:1; min-width:200px;">
+                  <label class="small">Subject</label>
+                  <input type="text" value="${escapeHtml(c.subject || "")}" onchange="updateStepConfig(${index}, 'subject', this.value)" placeholder="New call from {{caller}}" />
+                </div>
+              </div>
+              <div style="margin-top:6px;">
+                <label class="small">Body</label>
+                <textarea rows="3" onchange="updateStepConfig(${index}, 'body', this.value)" placeholder="Call transcript:\n{{transcript}}">${escapeHtml(c.body || "")}</textarea>
+              </div>
+              <p class="small muted" style="margin-top:4px;">Variables: {{caller}}, {{transcript}}, {{workflow}}, {{timestamp}}, {{step.N.summary}}</p>`;
+          case "send_sms":
+            return `
+              <div class="row" style="gap:8px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:200px;">
+                  <label class="small">To (phone)</label>
+                  <input type="tel" value="${escapeHtml(c.to || "")}" onchange="updateStepConfig(${index}, 'to', this.value)" placeholder="+15555555555" />
+                </div>
+              </div>
+              <div style="margin-top:6px;">
+                <label class="small">Message</label>
+                <textarea rows="2" onchange="updateStepConfig(${index}, 'message', this.value)" placeholder="New call from {{caller}}: {{step.1.summary}}">${escapeHtml(c.message || "")}</textarea>
+              </div>`;
+          case "fire_webhook":
+            return `
+              <div class="row" style="gap:8px; flex-wrap:wrap;">
+                <div style="flex:1; min-width:250px;">
+                  <label class="small">URL</label>
+                  <input type="url" value="${escapeHtml(c.url || "")}" onchange="updateStepConfig(${index}, 'url', this.value)" placeholder="https://hooks.example.com/veralux" />
+                </div>
+                <div style="min-width:150px;">
+                  <label class="small">HMAC Secret (optional)</label>
+                  <input type="text" value="${escapeHtml(c.secret || "")}" onchange="updateStepConfig(${index}, 'secret', this.value)" placeholder="signing-secret" />
+                </div>
+              </div>
+              <div class="row" style="gap:8px; margin-top:6px;">
+                <label class="small" style="display:flex;align-items:center;gap:4px;">
+                  <input type="checkbox" ${c.includeTranscript !== false ? "checked" : ""} onchange="updateStepConfig(${index}, 'includeTranscript', this.checked)" /> Include transcript
+                </label>
+                <label class="small" style="display:flex;align-items:center;gap:4px;">
+                  <input type="checkbox" ${c.includeStepOutputs ? "checked" : ""} onchange="updateStepConfig(${index}, 'includeStepOutputs', this.checked)" /> Include previous step outputs
+                </label>
+              </div>`;
+          case "ai_summarize":
+            return `
+              <div>
+                <label class="small">Custom prompt (optional)</label>
+                <textarea rows="2" onchange="updateStepConfig(${index}, 'prompt', this.value)" placeholder="Summarize this call including key points, action items, and follow-ups.">${escapeHtml(c.prompt || "")}</textarea>
+              </div>`;
+          case "ai_extract":
+            return `
+              <div>
+                <label class="small">Fields to extract (comma-separated)</label>
+                <input type="text" value="${escapeHtml((c.fields || []).join(", "))}" onchange="updateStepConfig(${index}, 'fields', this.value.split(',').map(f=>f.trim()).filter(Boolean))" placeholder="name, phone, email, issue, category, priority" />
+              </div>
+              <div style="margin-top:6px;">
+                <label class="small">Custom prompt (optional)</label>
+                <textarea rows="2" onchange="updateStepConfig(${index}, 'prompt', this.value)" placeholder="">${escapeHtml(c.prompt || "")}</textarea>
+              </div>`;
+          case "store_lead":
+            return `
+              <div class="row" style="gap:8px;">
+                <div>
+                  <label class="small">Use data from step #</label>
+                  <input type="number" min="1" value="${c.fromStep || ""}" onchange="updateStepConfig(${index}, 'fromStep', parseInt(this.value) || undefined)" style="width:80px;" placeholder="e.g. 2" />
+                </div>
+                <div style="flex:1;">
+                  <label class="small">Default priority</label>
+                  <select onchange="updateStepConfig(${index}, 'priority', this.value)">
+                    <option value="normal" ${(c.priority || "normal") === "normal" ? "selected" : ""}>Normal</option>
+                    <option value="high" ${c.priority === "high" ? "selected" : ""}>High</option>
+                    <option value="low" ${c.priority === "low" ? "selected" : ""}>Low</option>
+                    <option value="urgent" ${c.priority === "urgent" ? "selected" : ""}>Urgent</option>
+                  </select>
+                </div>
+              </div>
+              <p class="small muted" style="margin-top:4px;">If "from step" is set, extracted data from that ai_extract step will be used to populate the lead.</p>`;
+          default:
+            return `<p class="small muted">No configuration needed.</p>`;
+        }
+      }
+
+      function updateStepConfig(index, key, value) {
+        if (!workflowSteps[index].config) workflowSteps[index].config = {};
+        workflowSteps[index].config[key] = value;
+      }
+
+      function gatherTriggerConfig() {
+        const type = $("wf-trigger-type").value;
+        const cfg = {};
+        switch (type) {
+          case "keyword_detected":
+            cfg.keywords = ($("wf-keywords").value || "").split(",").map(k => k.trim()).filter(Boolean);
+            break;
+          case "after_hours_call":
+            cfg.businessHoursStart = $("wf-biz-start").value || "09:00";
+            cfg.businessHoursEnd = $("wf-biz-end").value || "17:00";
+            cfg.timezone = $("wf-tz").value || "America/New_York";
+            break;
+          case "missed_call":
+            cfg.maxDurationSeconds = parseInt($("wf-max-duration").value) || 15;
+            cfg.minTurns = parseInt($("wf-min-turns").value) || 2;
+            break;
+          case "scheduled":
+            cfg.cronExpression = $("wf-cron").value.trim();
+            cfg.timezone = $("wf-sched-tz").value || "America/New_York";
+            break;
+        }
+        return cfg;
+      }
+
+      async function saveWorkflow() {
+        const statusEl = $("wf-builder-status");
+        const name = $("wf-name").value.trim();
+        if (!name) { statusEl.textContent = "Name is required."; return; }
+        if (!workflowSteps.length) { statusEl.textContent = "Add at least one action step."; return; }
+
+        const payload = {
+          name,
+          triggerType: $("wf-trigger-type").value,
+          triggerConfig: gatherTriggerConfig(),
+          steps: workflowSteps,
+        };
+
+        try {
+          if (editingWorkflowId) {
+            await fetchJSON("/api/admin/workflows/" + encodeURIComponent(editingWorkflowId), {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            setStatus("Workflow updated", "ok");
+          } else {
+            await fetchJSON("/api/admin/workflows", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+            });
+            setStatus("Workflow created", "ok");
+          }
+          hideWorkflowBuilder();
+          await loadWorkflows();
+        } catch (err) {
+          statusEl.textContent = "Save failed: " + err.message;
+        }
+      }
+
+      async function testWorkflow() {
+        const statusEl = $("wf-builder-status");
+        if (!editingWorkflowId) {
+          statusEl.textContent = "Save the workflow first, then test it.";
+          return;
+        }
+        try {
+          statusEl.textContent = "Running dry run…";
+          const result = await fetchJSON("/api/admin/workflows/" + encodeURIComponent(editingWorkflowId) + "/test", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          const stepSummary = (result.steps || []).map(s =>
+            `${s.action}: ${s.status}${s.error ? " (" + s.error + ")" : ""}`
+          ).join(", ");
+          statusEl.textContent = "Dry run: " + stepSummary;
+          setStatus("Dry run completed", "ok");
+        } catch (err) {
+          statusEl.textContent = "Test failed: " + err.message;
+        }
+      }
+
+      // ── Run History ──
+
+      async function loadWorkflowRuns() {
+        try {
+          const data = await fetchJSON("/api/admin/workflow-runs?limit=50");
+          workflowRunsCache = data.runs || [];
+          renderWorkflowRuns();
+        } catch (err) {
+          console.error("loadWorkflowRuns:", err);
+        }
+      }
+
+      function renderWorkflowRuns() {
+        const empty = $("wf-runs-empty");
+        const table = $("wf-runs-table");
+        const body = $("wf-runs-body");
+        if (!workflowRunsCache.length) {
+          empty.style.display = "";
+          table.style.display = "none";
+          return;
+        }
+        empty.style.display = "none";
+        table.style.display = "";
+        body.innerHTML = workflowRunsCache.map(run => {
+          const wf = workflowsCache.find(w => w.id === run.workflowId);
+          const statusColors = { completed: "#4CAF50", failed: "#e07070", running: "#C9A04E", pending: "#888" };
+          const statusColor = statusColors[run.status] || "#888";
+          const trigger = run.triggerEvent?.type || "—";
+          const started = run.startedAt ? new Date(run.startedAt).toLocaleString() : "—";
+          return `
+            <tr style="border-bottom:1px solid rgba(246,243,236,0.06);">
+              <td style="padding:8px;" class="small">${escapeHtml(wf?.name || run.workflowId.slice(0, 8))}</td>
+              <td style="padding:8px;" class="small">${escapeHtml(TRIGGER_LABELS[trigger] || trigger)}</td>
+              <td style="padding:8px;"><span style="color:${statusColor}; font-weight:600;" class="small">${escapeHtml(run.status)}</span></td>
+              <td style="padding:8px;" class="small">${run.stepsCompleted}/${run.stepsTotal}</td>
+              <td style="padding:8px;" class="small">${escapeHtml(started)}</td>
+              <td style="padding:8px;">
+                <button type="button" onclick='showRunDetails(${JSON.stringify(run).replace(/'/g, "\\'")})'
+                  style="font-size:11px; padding:2px 8px; border-radius:4px; cursor:pointer;">Details</button>
+              </td>
+            </tr>`;
+        }).join("");
+      }
+
+      function showRunDetails(run) {
+        const details = (run.result || []).map(r =>
+          `Step ${r.order} (${r.action}): ${r.status}${r.error ? " — " + r.error : ""}${r.durationMs ? " (" + r.durationMs + "ms)" : ""}`
+        ).join("\n");
+        alert("Run Details:\n\nStatus: " + run.status + "\nError: " + (run.error || "none") + "\n\n" + (details || "No step results."));
+      }
+
+      // ── Leads ──
+
+      async function loadLeads() {
+        try {
+          const data = await fetchJSON("/api/admin/leads?limit=100");
+          leadsCache = data.leads || [];
+          renderLeads();
+        } catch (err) {
+          console.error("loadLeads:", err);
+        }
+      }
+
+      function renderLeads() {
+        const empty = $("wf-leads-empty");
+        const table = $("wf-leads-table");
+        const body = $("wf-leads-body");
+        if (!leadsCache.length) {
+          empty.style.display = "";
+          table.style.display = "none";
+          return;
+        }
+        empty.style.display = "none";
+        table.style.display = "";
+        body.innerHTML = leadsCache.map(lead => {
+          const priorityColors = { urgent: "#e07070", high: "#C9A04E", normal: "#aaa", low: "#666" };
+          const pColor = priorityColors[lead.priority] || "#aaa";
+          const date = lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : "—";
+          return `
+            <tr style="border-bottom:1px solid rgba(246,243,236,0.06);">
+              <td style="padding:8px;" class="small">${escapeHtml(lead.name || "—")}</td>
+              <td style="padding:8px;" class="small">${escapeHtml(lead.phone || "—")}</td>
+              <td style="padding:8px;" class="small">${escapeHtml(lead.email || "—")}</td>
+              <td style="padding:8px;" class="small">${escapeHtml(lead.issue || "—")}</td>
+              <td style="padding:8px;"><span style="color:${pColor};" class="small">${escapeHtml(lead.priority || "normal")}</span></td>
+              <td style="padding:8px;" class="small">${escapeHtml(date)}</td>
+              <td style="padding:8px;">
+                <button type="button" onclick="deleteLeadUI('${escapeHtml(lead.id)}')"
+                  style="font-size:11px; padding:2px 8px; border-radius:4px; cursor:pointer; background:rgba(196,80,80,0.15); color:#e07070; border:1px solid rgba(196,80,80,0.3);">Delete</button>
+              </td>
+            </tr>`;
+        }).join("");
+      }
+
+      async function deleteLeadUI(id) {
+        if (!confirm("Delete this lead?")) return;
+        try {
+          await fetchJSON("/api/admin/leads/" + encodeURIComponent(id), { method: "DELETE" });
+          setStatus("Lead deleted", "ok");
+          await loadLeads();
+        } catch (err) {
+          setStatus("Delete failed: " + err.message, "err");
+        }
+      }
+
+      // ── Workflow Settings ──
+
+      async function loadWorkflowSettings() {
+        try {
+          const settings = await fetchJSON("/api/admin/workflows/settings");
+          $("wf-owner-edit").checked = settings.ownerCanEdit === true;
+        } catch (err) {
+          console.error("loadWorkflowSettings:", err);
+        }
+      }
+
       function refreshAll() {
         setStatus("Refreshing…", "ok");
         loadConfig();
@@ -2045,6 +2699,10 @@
         loadAdminKeys();
         loadCloudflareStatus();
         loadSubscription();
+        loadWorkflows();
+        loadWorkflowRuns();
+        loadLeads();
+        loadWorkflowSettings();
       }
 
       // ── Subscription / Billing ──
@@ -2773,6 +3431,39 @@
         // TTS form
         const ttsForm = $("tts-form");
         if (ttsForm) ttsForm.addEventListener("submit", saveTtsConfig);
+
+        // Workflow automation
+        const wfNewBtn = $("wf-new-btn");
+        if (wfNewBtn) wfNewBtn.addEventListener("click", () => showWorkflowBuilder(null));
+        const wfRefreshBtn = $("wf-refresh-btn");
+        if (wfRefreshBtn) wfRefreshBtn.addEventListener("click", () => loadWorkflows());
+        const wfAddStep = $("wf-add-step");
+        if (wfAddStep) wfAddStep.addEventListener("click", addWorkflowStep);
+        const wfSaveBtn = $("wf-save-btn");
+        if (wfSaveBtn) wfSaveBtn.addEventListener("click", () => saveWorkflow());
+        const wfTestBtn = $("wf-test-btn");
+        if (wfTestBtn) wfTestBtn.addEventListener("click", () => testWorkflow());
+        const wfCancelBtn = $("wf-cancel-btn");
+        if (wfCancelBtn) wfCancelBtn.addEventListener("click", hideWorkflowBuilder);
+        const wfRunsRefresh = $("wf-runs-refresh");
+        if (wfRunsRefresh) wfRunsRefresh.addEventListener("click", () => loadWorkflowRuns());
+        const wfLeadsRefresh = $("wf-leads-refresh");
+        if (wfLeadsRefresh) wfLeadsRefresh.addEventListener("click", () => loadLeads());
+        const wfTriggerType = $("wf-trigger-type");
+        if (wfTriggerType) wfTriggerType.addEventListener("change", updateTriggerConfigUI);
+        const wfOwnerEdit = $("wf-owner-edit");
+        if (wfOwnerEdit) wfOwnerEdit.addEventListener("change", async () => {
+          try {
+            await fetchJSON("/api/admin/workflows/settings", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ownerCanEdit: wfOwnerEdit.checked }),
+            });
+            setStatus(wfOwnerEdit.checked ? "Owner workflow editing enabled" : "Owner workflow editing disabled", "ok");
+          } catch (err) {
+            setStatus("Failed: " + err.message, "err");
+          }
+        });
 
         const startApp = () => {
           loadTenants().then(() => {

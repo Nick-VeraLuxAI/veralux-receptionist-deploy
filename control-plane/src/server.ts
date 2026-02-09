@@ -67,6 +67,23 @@ import {
   createStripePlan,
   deleteStripePlan,
 } from "./stripe";
+import {
+  initAutomationEngine,
+  shutdownAutomationEngine,
+  handleCallEnded,
+  dryRunPipeline,
+  listWorkflows,
+  getWorkflow,
+  createWorkflow,
+  updateWorkflow,
+  deleteWorkflow,
+  listRuns,
+  listLeads,
+  deleteLead,
+  getWorkflowSettings,
+  updateWorkflowSettings,
+  type CallEndedEvent,
+} from "./automations";
 
 dotenv.config();
 
@@ -1729,7 +1746,30 @@ app.post("/api/runtime/calls", adminGuard("admin"), (req, res) => {
   }
 
   if (action === "end" && callId) {
+    // Capture call data before deleting
+    const endingCall = tenant.calls.getCall(callId);
     tenant.calls.deleteCall(callId);
+
+    // Fire workflow event bus (async, don't block response)
+    if (endingCall) {
+      const workflowEvent: CallEndedEvent = {
+        type: "call_ended",
+        tenantId,
+        callId,
+        callerId: endingCall.callerId,
+        durationMs: endingCall.createdAt
+          ? Date.now() - endingCall.createdAt
+          : undefined,
+        turns: endingCall.history as any,
+        transcript: req.body.transcript,
+        lead: endingCall.lead as any,
+        timestamp: new Date().toISOString(),
+      };
+      handleCallEnded(workflowEvent).catch(err => {
+        console.error("[runtime/calls] Workflow event bus error:", err);
+      });
+    }
+
     return res.json({ status: "ok", ended: true });
   }
 
@@ -2243,6 +2283,144 @@ app.post(
 const adminAuthToken = "";
 
 /* ────────────────────────────────────────────────
+   Admin – Workflow Automation Engine
+   ──────────────────────────────────────────────── */
+
+// List workflows for the current tenant
+app.get("/api/admin/workflows", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const workflows = await listWorkflows(tenant.id);
+  res.json({ workflows });
+}));
+
+// Create a workflow
+app.post("/api/admin/workflows", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const { name, triggerType, triggerConfig, steps, adminLocked } = req.body || {};
+  if (!name || !triggerType) {
+    return res.status(400).json({ error: "name and triggerType are required" });
+  }
+  const createdBy = (req as any).adminRole === "admin" ? "admin" : "owner";
+  const wf = await createWorkflow({
+    tenantId: tenant.id,
+    name,
+    triggerType,
+    triggerConfig: triggerConfig || {},
+    steps: steps || [],
+    createdBy,
+    adminLocked: adminLocked ?? false,
+  });
+  res.status(201).json(wf);
+}));
+
+// Update a workflow
+app.put("/api/admin/workflows/:id", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const { id } = req.params;
+  const existing = await getWorkflow(id);
+  if (!existing || existing.tenantId !== tenant.id) {
+    return res.status(404).json({ error: "Workflow not found" });
+  }
+  const { name, enabled, triggerType, triggerConfig, steps, adminLocked } = req.body || {};
+  const updated = await updateWorkflow(id, {
+    name, enabled, triggerType, triggerConfig, steps, adminLocked,
+  });
+  res.json(updated);
+}));
+
+// Delete a workflow
+app.delete("/api/admin/workflows/:id", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const { id } = req.params;
+  const existing = await getWorkflow(id);
+  if (!existing || existing.tenantId !== tenant.id) {
+    return res.status(404).json({ error: "Workflow not found" });
+  }
+  await deleteWorkflow(id);
+  res.json({ success: true });
+}));
+
+// Dry-run / test a workflow
+app.post("/api/admin/workflows/:id/test", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const { id } = req.params;
+  const workflow = await getWorkflow(id);
+  if (!workflow || workflow.tenantId !== tenant.id) {
+    return res.status(404).json({ error: "Workflow not found" });
+  }
+  const sampleEvent: CallEndedEvent = {
+    type: "call_ended",
+    tenantId: tenant.id,
+    callId: "test-" + Date.now(),
+    callerId: req.body?.callerId || "+15555555555",
+    durationMs: req.body?.durationMs || 120000,
+    turns: req.body?.turns || [
+      { role: "assistant", content: "Hello, thank you for calling. How can I help you today?" },
+      { role: "user", content: "I need to schedule an appointment for next week." },
+      { role: "assistant", content: "I'd be happy to help you schedule an appointment. What day works best for you?" },
+    ],
+    transcript: req.body?.transcript ||
+      "Assistant: Hello, thank you for calling. How can I help you today?\nUser: I need to schedule an appointment for next week.\nAssistant: I'd be happy to help you schedule an appointment. What day works best for you?",
+    lead: req.body?.lead || { name: "Test User", phone: "+15555555555" },
+    timestamp: new Date().toISOString(),
+  };
+  const result = await dryRunPipeline(workflow, sampleEvent);
+  res.json(result);
+}));
+
+// Workflow execution history
+app.get("/api/admin/workflow-runs", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const limit = parseInt(req.query.limit as string) || 50;
+  const runs = await listRuns(tenant.id, limit);
+  res.json({ runs });
+}));
+
+// List leads
+app.get("/api/admin/leads", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const limit = parseInt(req.query.limit as string) || 100;
+  const leads = await listLeads(tenant.id, limit);
+  res.json({ leads });
+}));
+
+// Delete a lead
+app.delete("/api/admin/leads/:id", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const { id } = req.params;
+  const deleted = await deleteLead(id);
+  if (!deleted) return res.status(404).json({ error: "Lead not found" });
+  res.json({ success: true });
+}));
+
+// Get workflow settings for tenant
+app.get("/api/admin/workflows/settings", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const settings = await getWorkflowSettings(tenant.id);
+  res.json(settings);
+}));
+
+// Update workflow settings for tenant
+app.patch("/api/admin/workflows/settings", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const { ownerCanEdit } = req.body || {};
+  const settings = await updateWorkflowSettings(tenant.id, {
+    ownerCanEdit: ownerCanEdit !== undefined ? !!ownerCanEdit : undefined,
+  });
+  res.json(settings);
+}));
+
+/* ────────────────────────────────────────────────
    Legacy voice loop endpoints (disabled)
    ──────────────────────────────────────────────── */
 
@@ -2299,6 +2477,13 @@ async function start() {
     process.exit(1);
   }
 
+  // Initialize workflow automation engine
+  try {
+    initAutomationEngine();
+  } catch (err) {
+    console.error("[startup] Failed to init automation engine (non-fatal):", err);
+  }
+
   // ✅ PROD guardrails (fail fast)
   if (IS_PROD) {
     const adminJwt = process.env.ADMIN_JWT_SECRET || process.env.JWT_SECRET;
@@ -2345,6 +2530,7 @@ function shutdown(signal: string) {
   try {
     httpServer?.close(async () => {
       try {
+        shutdownAutomationEngine();
         await closePool();
         if (ENABLE_RUNTIME_ADMIN) await closeRuntimeRedis();
         if (ADMIN_RATE_USE_REDIS) await closeRateLimitRedis();

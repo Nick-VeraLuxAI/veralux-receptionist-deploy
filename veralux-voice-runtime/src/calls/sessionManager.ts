@@ -13,6 +13,7 @@ import { CallSession } from './callSession';
 import { CallSessionConfig, CallSessionId } from './types';
 import type { TransportMode, TransportSession } from '../transport/types';
 import type { Pcm16Frame } from '../media/types';
+import { reportCallEnd } from '../controlPlane';
 import { clearTelnyxCodecSession } from '../audio/codecDecode';
 import { releaseFarEndBuffer } from '../audio/farEndReference';
 import { releaseAecProcessor } from '../audio/aecProcessor';
@@ -483,6 +484,22 @@ export class SessionManager {
       },
       'call transcript',
     );
+
+    // Report call end to control plane (workflow automation engine)
+    if (transcript.turns.length > 0) {
+      void reportCallEnd({
+        tenantId: transcript.tenantId ?? session.tenantId ?? 'unknown',
+        callId: transcript.callControlId,
+        callerId: transcript.from,
+        durationMs: transcript.durationMs,
+        turns: transcript.turns.map(t => ({
+          role: t.role,
+          content: t.content,
+          timestamp: t.timestamp,
+        })),
+        transcript: transcript.turns.map(t => `${t.role}: ${t.content}`).join('\n'),
+      });
+    }
 
     if (env.CALL_TRANSCRIPT_DIR && transcript.turns.length > 0) {
       const dir = env.CALL_TRANSCRIPT_DIR.trim();

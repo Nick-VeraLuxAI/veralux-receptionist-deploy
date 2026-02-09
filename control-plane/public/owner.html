@@ -511,6 +511,43 @@
             <div id="bill-status-msg" class="help" style="margin-top:6px;"></div>
         </div>
       </section>
+
+      <!-- Leads -->
+      <section class="owner-panel" id="owner-leads-section">
+        <h2>Leads</h2>
+        <p class="help">Contacts and leads automatically captured from calls.</p>
+        <div id="owner-leads-empty" class="help" style="margin:12px 0;">No leads captured yet.</div>
+        <table id="owner-leads-table" style="display:none; width:100%; border-collapse:collapse; margin-top:12px;">
+          <thead>
+            <tr style="text-align:left; border-bottom:1px solid var(--border);">
+              <th class="help" style="padding:6px 8px;">Name</th>
+              <th class="help" style="padding:6px 8px;">Phone</th>
+              <th class="help" style="padding:6px 8px;">Issue</th>
+              <th class="help" style="padding:6px 8px;">Priority</th>
+              <th class="help" style="padding:6px 8px;">Date</th>
+            </tr>
+          </thead>
+          <tbody id="owner-leads-body"></tbody>
+        </table>
+      </section>
+
+      <!-- Workflows -->
+      <section class="owner-panel" id="owner-workflows-section" style="display:none;">
+        <h2>Automations</h2>
+        <p class="help">Active workflow automations for your business.</p>
+        <div id="owner-wf-empty" class="help" style="margin:12px 0;">No workflows configured.</div>
+        <table id="owner-wf-table" style="display:none; width:100%; border-collapse:collapse; margin-top:12px;">
+          <thead>
+            <tr style="text-align:left; border-bottom:1px solid var(--border);">
+              <th class="help" style="padding:6px 8px;">Name</th>
+              <th class="help" style="padding:6px 8px;">Trigger</th>
+              <th class="help" style="padding:6px 8px;">Steps</th>
+              <th class="help" style="padding:6px 8px;">Status</th>
+            </tr>
+          </thead>
+          <tbody id="owner-wf-body"></tbody>
+        </table>
+      </section>
     </main>
 
     <footer class="owner-footer">
@@ -648,6 +685,9 @@
             ownerFetch("/api/admin/analytics").catch(() => null),
             ownerFetch("/api/admin/subscription").catch(() => null),
           ]);
+          // Load leads and workflows in background
+          loadOwnerLeads();
+          loadOwnerWorkflows();
           
           // Also load voice config
           loadVoiceConfig().catch(() => {});
@@ -1336,6 +1376,83 @@
           // Direct Telnyx number, no forwarding needed
           $("provisioned-number").textContent = telnyxNumber;
           $("forwarding-instructions").style.display = "none";
+        }
+      }
+
+      // ── Leads ──
+      const TRIGGER_LABELS = {
+        call_ended: "Call ended",
+        after_hours_call: "After hours",
+        keyword_detected: "Keyword",
+        missed_call: "Missed call",
+        scheduled: "Scheduled",
+      };
+
+      async function loadOwnerLeads() {
+        try {
+          const data = await ownerFetch("/api/admin/leads?limit=100");
+          const leads = data.leads || [];
+          const empty = $("owner-leads-empty");
+          const table = $("owner-leads-table");
+          const body = $("owner-leads-body");
+          if (!leads.length) {
+            empty.style.display = "";
+            table.style.display = "none";
+            return;
+          }
+          empty.style.display = "none";
+          table.style.display = "";
+          body.innerHTML = leads.map(lead => {
+            const priorityColors = { urgent: "#e07070", high: "#C9A04E", normal: "var(--muted)", low: "#666" };
+            const pColor = priorityColors[lead.priority] || "var(--muted)";
+            const date = lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : "—";
+            return `
+              <tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:8px;" class="help">${escapeHtml(lead.name || "—")}</td>
+                <td style="padding:8px;" class="help">${escapeHtml(lead.phone || "—")}</td>
+                <td style="padding:8px;" class="help">${escapeHtml(lead.issue || "—")}</td>
+                <td style="padding:8px;"><span style="color:${pColor};" class="help">${escapeHtml(lead.priority || "normal")}</span></td>
+                <td style="padding:8px;" class="help">${escapeHtml(date)}</td>
+              </tr>`;
+          }).join("");
+        } catch (err) {
+          console.error("loadOwnerLeads:", err);
+        }
+      }
+
+      async function loadOwnerWorkflows() {
+        try {
+          const [wfData, settings] = await Promise.all([
+            ownerFetch("/api/admin/workflows"),
+            ownerFetch("/api/admin/workflows/settings").catch(() => ({ ownerCanEdit: false })),
+          ]);
+          const workflows = wfData.workflows || [];
+          const section = $("owner-workflows-section");
+          if (!workflows.length && !settings.ownerCanEdit) {
+            section.style.display = "none";
+            return;
+          }
+          section.style.display = "";
+          const empty = $("owner-wf-empty");
+          const table = $("owner-wf-table");
+          const body = $("owner-wf-body");
+          if (!workflows.length) {
+            empty.style.display = "";
+            table.style.display = "none";
+            return;
+          }
+          empty.style.display = "none";
+          table.style.display = "";
+          body.innerHTML = workflows.map(wf => `
+            <tr style="border-bottom:1px solid var(--border);">
+              <td style="padding:8px;" class="help">${escapeHtml(wf.name)}</td>
+              <td style="padding:8px;" class="help">${escapeHtml(TRIGGER_LABELS[wf.triggerType] || wf.triggerType)}</td>
+              <td style="padding:8px;" class="help">${(wf.steps || []).length} step${(wf.steps || []).length !== 1 ? "s" : ""}</td>
+              <td style="padding:8px;" class="help">${wf.enabled ? '<span style="color:#4CAF50;">Active</span>' : '<span style="color:var(--muted);">Disabled</span>'}</td>
+            </tr>
+          `).join("");
+        } catch (err) {
+          console.error("loadOwnerWorkflows:", err);
         }
       }
 

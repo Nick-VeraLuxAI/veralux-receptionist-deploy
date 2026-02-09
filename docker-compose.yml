@@ -64,6 +64,12 @@ services:
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
       - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
       - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      # SMTP (for workflow email actions)
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-noreply@veralux.ai}
       # ── Redis sync env vars (used by redisSync.ts) ──
       - TTS_MODE=${TTS_MODE:-coqui_xtts}
       - KOKORO_URL=${KOKORO_URL:-http://kokoro:7001}
@@ -146,6 +152,9 @@ services:
       - TENANT_CONCURRENCY_CAP_DEFAULT=${TENANT_CONCURRENCY_CAP_DEFAULT:-10}
       - TENANT_CALLS_PER_MIN_CAP_DEFAULT=${TENANT_CALLS_PER_MIN_CAP_DEFAULT:-60}
       - CAPACITY_TTL_SECONDS=${CAPACITY_TTL_SECONDS:-3600}
+      # Control Plane integration (workflow automation)
+      - CONTROL_PLANE_URL=http://control:4000
+      - CONTROL_PLANE_API_KEY=${ADMIN_API_KEY}
     volumes:
       - audio-storage:/app/audio
     ports:
