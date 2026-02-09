@@ -807,6 +807,31 @@ app.get("/ready", async (_req, res) => {
 });
 
 /* ────────────────────────────────────────────────
+   Installer admin-auth (used by install.sh)
+   ──────────────────────────────────────────────── */
+
+const INSTALLER_USERNAME = process.env.INSTALLER_USERNAME || "VeraLux";
+const INSTALLER_PASSWORD = process.env.INSTALLER_PASSWORD || process.env.ADMIN_API_KEY;
+
+app.post("/admin-auth", (req, res) => {
+  const { username, password } = req.body || {};
+
+  if (!username || !password) {
+    return res.status(400).json({ success: false, error: "Username and password are required" });
+  }
+
+  // Constant-time-ish comparison to avoid timing attacks
+  const userOk = username === INSTALLER_USERNAME;
+  const passOk = password === INSTALLER_PASSWORD;
+
+  if (userOk && passOk) {
+    return res.json({ success: true });
+  }
+
+  return res.status(401).json({ success: false, error: "Invalid credentials" });
+});
+
+/* ────────────────────────────────────────────────
    Owner Portal – public auth (no adminGuard)
    ──────────────────────────────────────────────── */
 
