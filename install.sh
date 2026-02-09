@@ -343,7 +343,7 @@ write_env_file() {
 # =============================================================================
 
 # Version & Registry
-VERSION=0.1.0
+VERSION=latest
 REGISTRY=ghcr.io/nick-veraluxai
 
 # Database
