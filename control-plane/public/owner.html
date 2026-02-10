@@ -660,19 +660,20 @@
     <div id="owner-modal" class="modal">
       <div class="modal-card">
         <h3>Sign in</h3>
-        <p class="help">Enter your access token to manage your receptionist.</p>
-        <input id="owner-pass-input" type="password" placeholder="Your access token" autocomplete="off" />
+        <p class="help">Enter your phone number and passcode to manage your receptionist.</p>
+        <input id="owner-phone-input" type="tel" placeholder="Phone number" autocomplete="tel" style="margin-bottom:10px;" />
+        <input id="owner-pass-input" type="password" placeholder="Passcode" autocomplete="off" />
         <div id="owner-pass-error" class="help" style="color: var(--danger); min-height: 18px;"></div>
         <div class="modal-actions">
           <button type="button" class="secondary" id="owner-pass-cancel">Cancel</button>
-          <button type="button" id="owner-pass-confirm">Continue</button>
+          <button type="button" id="owner-pass-confirm">Sign in</button>
         </div>
       </div>
     </div>
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const OWNER_TENANT_ID = "default";
+      let OWNER_TENANT_ID = "default";
       let ownerAuthToken = "";
       let ownerAuthorized = false;
       let forwardingProfilesCache = [];
@@ -731,47 +732,60 @@
       }
 
       function showOwnerModal() {
+        $("owner-phone-input").value = "";
         $("owner-pass-input").value = "";
         $("owner-pass-error").textContent = "";
         $("owner-modal").classList.add("active");
-        $("owner-pass-input").focus();
+        $("owner-phone-input").focus();
       }
 
       function hideOwnerModal() {
         $("owner-modal").classList.remove("active");
       }
 
-      async function validateToken(token) {
-        try {
-          const res = await fetch("/api/admin/tenants", {
-            headers: { "X-Admin-Key": token }
-          });
-          return res.ok;
-        } catch {
-          return false;
+      async function doOwnerLogin(phone, passcode) {
+        const res = await fetch("/api/owner/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phone, passcode }),
+        });
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(errText);
         }
+        return await res.json();
       }
 
       function requireAuth(cb) {
         if (ownerAuthorized) { cb(); return; }
         $("owner-pass-confirm").onclick = async () => {
-          const pass = $("owner-pass-input").value.trim();
+          const phone = ($("owner-phone-input").value || "").trim();
+          const pass = ($("owner-pass-input").value || "").trim();
+          if (!phone) {
+            $("owner-pass-error").textContent = "Please enter your phone number.";
+            return;
+          }
           if (!pass) {
-            $("owner-pass-error").textContent = "Please enter your access token.";
+            $("owner-pass-error").textContent = "Please enter your passcode.";
             return;
           }
-          $("owner-pass-error").textContent = "Validating...";
+          $("owner-pass-error").textContent = "Signing in...";
           $("owner-pass-confirm").disabled = true;
-          const valid = await validateToken(pass);
-          $("owner-pass-confirm").disabled = false;
-          if (!valid) {
-            $("owner-pass-error").textContent = "Invalid access token. Please try again.";
+          try {
+            const data = await doOwnerLogin(phone, pass);
+            ownerAuthToken = data.token;
+            OWNER_TENANT_ID = data.tenantId || data.tenant_id || "default";
+            ownerAuthorized = true;
+            localStorage.setItem("owner_token", ownerAuthToken);
+            localStorage.setItem("owner_tenant", OWNER_TENANT_ID);
+            hideOwnerModal();
+            refreshReadyStatus();
+          } catch (e) {
+            $("owner-pass-error").textContent = "Invalid phone number or passcode.";
+            $("owner-pass-confirm").disabled = false;
             return;
           }
-          ownerAuthToken = pass;
-          ownerAuthorized = true;
-          hideOwnerModal();
-          refreshReadyStatus();
+          $("owner-pass-confirm").disabled = false;
           cb();
         };
         showOwnerModal();
@@ -1817,30 +1831,59 @@
       }
 
       document.addEventListener("DOMContentLoaded", () => {
+        // Login via phone + passcode
         $("owner-pass-confirm").addEventListener("click", async () => {
-          const pass = $("owner-pass-input").value.trim();
-          if (!pass) {
-            $("owner-pass-error").textContent = "Please enter your access token.";
-            return;
-          }
-          $("owner-pass-error").textContent = "Validating...";
+          const phone = ($("owner-phone-input").value || "").trim();
+          const pass = ($("owner-pass-input").value || "").trim();
+          if (!phone) { $("owner-pass-error").textContent = "Please enter your phone number."; return; }
+          if (!pass) { $("owner-pass-error").textContent = "Please enter your passcode."; return; }
+          $("owner-pass-error").textContent = "Signing in...";
           $("owner-pass-confirm").disabled = true;
-          const valid = await validateToken(pass);
-          $("owner-pass-confirm").disabled = false;
-          if (!valid) {
-            $("owner-pass-error").textContent = "Invalid access token. Please try again.";
-            return;
+          try {
+            const data = await doOwnerLogin(phone, pass);
+            ownerAuthToken = data.token;
+            OWNER_TENANT_ID = data.tenantId || data.tenant_id || "default";
+            ownerAuthorized = true;
+            localStorage.setItem("owner_token", ownerAuthToken);
+            localStorage.setItem("owner_tenant", OWNER_TENANT_ID);
+            hideOwnerModal();
+            refreshReadyStatus();
+            checkTelnyxStatus().then(() => loadOwnerData());
+          } catch (e) {
+            $("owner-pass-error").textContent = "Invalid phone number or passcode.";
           }
-          ownerAuthToken = pass;
-          ownerAuthorized = true;
-          hideOwnerModal();
-          refreshReadyStatus();
-          checkTelnyxStatus().then(() => loadOwnerData());
+          $("owner-pass-confirm").disabled = false;
         });
         $("owner-pass-cancel").addEventListener("click", hideOwnerModal);
+        $("owner-phone-input").addEventListener("keydown", (e) => {
+          if (e.key === "Enter") $("owner-pass-input").focus();
+        });
         $("owner-pass-input").addEventListener("keydown", (e) => {
           if (e.key === "Enter") $("owner-pass-confirm").click();
         });
+
+        // Try restoring session from localStorage
+        (async () => {
+          const savedToken = localStorage.getItem("owner_token");
+          const savedTenant = localStorage.getItem("owner_tenant");
+          if (savedToken && savedTenant) {
+            try {
+              const res = await fetch("/api/admin/tenants", {
+                headers: { "X-Admin-Key": savedToken, "X-Tenant-ID": savedTenant },
+              });
+              if (res.ok) {
+                ownerAuthToken = savedToken;
+                OWNER_TENANT_ID = savedTenant;
+                ownerAuthorized = true;
+                refreshReadyStatus();
+                checkTelnyxStatus().then(() => loadOwnerData());
+                return;
+              }
+            } catch { /* token expired or invalid */ }
+            localStorage.removeItem("owner_token");
+            localStorage.removeItem("owner_tenant");
+          }
+        })();
 
         $("owner-save-numbers").addEventListener("click", () => requireAuth(() => saveAndProvisionNumber()));
         $("owner-numbers").addEventListener("keydown", (e) => {

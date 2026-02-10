@@ -752,6 +752,26 @@
           <div class="list-title" style="margin-top: 6px">Existing keys</div>
           <div id="admin-keys" class="debug-block" style="max-height: 260px; overflow: auto"></div>
         </section>
+
+        <section class="panel">
+          <h2>Owner Passcode</h2>
+          <p class="small" style="margin: 0 0 12px;">Set or reset the passcode that business owners use to log in to the Owner Panel and Portal. This is separate from the admin API key.</p>
+          <div class="row" style="gap: 8px; flex-wrap: wrap; margin-bottom: 8px; align-items: flex-end;">
+            <div style="flex: 1; min-width: 160px;">
+              <label for="passcode-tenant">Tenant</label>
+              <input id="passcode-tenant" type="text" placeholder="e.g. King-Sod" style="margin-bottom: 0;" />
+            </div>
+            <div style="flex: 1; min-width: 160px;">
+              <label for="passcode-value">New passcode</label>
+              <input id="passcode-value" type="text" placeholder="Min 4 characters" style="margin-bottom: 0;" />
+            </div>
+            <button type="button" id="passcode-save">Set passcode</button>
+          </div>
+          <div id="passcode-status" class="small" style="min-height: 16px;"></div>
+          <div class="small" style="margin-top: 8px; color: rgba(255,255,255,0.5);">
+            Owners sign in at <code>/owner.html</code> or <code>/portal.html</code> using their phone number + this passcode.
+          </div>
+        </section>
       </div>
 
       <div class="tab-content" data-tab="billing">
@@ -3217,6 +3237,29 @@
         }
       }
 
+      /* ── Owner Passcode ─────────────────── */
+      async function saveOwnerPasscode() {
+        const sts = $("passcode-status");
+        const tenantId = ($("passcode-tenant").value || "").trim();
+        const passcode = ($("passcode-value").value || "").trim();
+        if (!tenantId) { sts.textContent = "Tenant ID is required."; sts.style.color = "#f87171"; return; }
+        if (!passcode || passcode.length < 4) { sts.textContent = "Passcode must be at least 4 characters."; sts.style.color = "#f87171"; return; }
+        try {
+          await fetchJSON("/api/owner/set-passcode", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tenantId, passcode }),
+          });
+          sts.textContent = "Passcode set for " + escapeHtml(tenantId) + "!";
+          sts.style.color = "#4ade80";
+          $("passcode-value").value = "";
+          setTimeout(() => { if (sts.textContent.includes("set for")) sts.textContent = ""; }, 5000);
+        } catch (e) {
+          sts.textContent = "Failed: " + e.message;
+          sts.style.color = "#f87171";
+        }
+      }
+
       /* ── Capacity & Concurrency ─────────────────── */
       const CAP_SLIDERS = [
         { id: "cap-global-concurrency", valId: "cap-global-val", path: "global.concurrencyCap", fmt: v => Math.round(v).toString() },
@@ -3315,6 +3358,8 @@
             currentTenantId = tenantSelect.value;
             renderTenantMeta();
             refreshAll();
+            const pt = $("passcode-tenant");
+            if (pt) pt.value = currentTenantId;
           });
         }
 
@@ -3387,6 +3432,13 @@
             }
           });
         }
+
+        // Owner passcode
+        const passcodeSave = $("passcode-save");
+        if (passcodeSave) passcodeSave.addEventListener("click", () => requireAuth(saveOwnerPasscode));
+        // Auto-fill tenant ID from selector
+        const passcTenant = $("passcode-tenant");
+        if (passcTenant && !passcTenant.value && currentTenantId) passcTenant.value = currentTenantId;
 
         // Capacity controls
         bindCapSliders();
