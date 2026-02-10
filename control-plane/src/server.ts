@@ -32,6 +32,7 @@ import {
   publishTenantConfig,
   unmapDid,
   closeRuntimeRedis,
+  getRawRedis,
 } from "./runtime/runtimePublisher";
 import {
   type LLMProvider,
@@ -1541,6 +1542,118 @@ app.post("/api/tts/config", async (req, res) => {
 });
 
 app.post("/api/tts/preview", (_req, res) => respondVoiceRuntimeMoved(res));
+
+/* ────────────────────────────────────────────────
+   Admin – Capacity / Concurrency Settings
+   ──────────────────────────────────────────────── */
+
+app.get("/api/admin/capacity", async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  try {
+    const redis = await getRawRedis();
+
+    // Read current values from Redis (per-tenant overrides + live counts)
+    const tenantConcurrencyCap = await redis.get(`tenantmap:tenant:${tenant.id}:cap:concurrency`);
+    const tenantRpmCap = await redis.get(`tenantmap:tenant:${tenant.id}:cap:rpm`);
+    const globalConcurrencyCap = await redis.get("cap:global:concurrency_cap");
+
+    // Read active counts
+    const globalActiveKey = "cap:global:active";
+    const tenantActiveKey = `cap:tenant:${tenant.id}:active`;
+    let globalActiveCount = 0;
+    let tenantActiveCount = 0;
+    try {
+      if (redis.scard) {
+        globalActiveCount = await redis.scard(globalActiveKey);
+        tenantActiveCount = await redis.scard(tenantActiveKey);
+      }
+    } catch { /* scard might not be available */ }
+
+    // Read TTS/STT concurrency limits (stored as runtime hints)
+    const whisperMaxConcurrent = await redis.get("cap:service:whisper:max_concurrent");
+    const kokoroMaxConcurrent = await redis.get("cap:service:kokoro:max_concurrent");
+    const xttsMaxConcurrent = await redis.get("cap:service:xtts:max_concurrent");
+
+    res.json({
+      global: {
+        concurrencyCap: globalConcurrencyCap ? parseInt(globalConcurrencyCap) : 100,
+        activeCalls: globalActiveCount,
+      },
+      tenant: {
+        id: tenant.id,
+        concurrencyCap: tenantConcurrencyCap ? parseInt(tenantConcurrencyCap) : 10,
+        rpmCap: tenantRpmCap ? parseInt(tenantRpmCap) : 60,
+        activeCalls: tenantActiveCount,
+      },
+      services: {
+        whisperMaxConcurrent: whisperMaxConcurrent ? parseInt(whisperMaxConcurrent) : 2,
+        kokoroMaxConcurrent: kokoroMaxConcurrent ? parseInt(kokoroMaxConcurrent) : 2,
+        xttsMaxConcurrent: xttsMaxConcurrent ? parseInt(xttsMaxConcurrent) : 0,
+      },
+    });
+  } catch (err) {
+    console.error("[capacity] GET failed:", err);
+    res.status(500).json({ error: "capacity_read_failed", message: String(err) });
+  }
+});
+
+app.post("/api/admin/capacity", async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  try {
+    const redis = await getRawRedis();
+    const { global: globalSettings, tenant: tenantSettings, services } = req.body;
+
+    const changes: string[] = [];
+
+    // Global concurrency cap
+    if (globalSettings?.concurrencyCap !== undefined) {
+      const cap = Math.max(1, Math.min(1000, Math.round(Number(globalSettings.concurrencyCap))));
+      await redis.set("cap:global:concurrency_cap", String(cap));
+      changes.push(`global concurrency → ${cap}`);
+    }
+
+    // Per-tenant concurrency cap
+    if (tenantSettings?.concurrencyCap !== undefined) {
+      const cap = Math.max(1, Math.min(500, Math.round(Number(tenantSettings.concurrencyCap))));
+      await redis.set(`tenantmap:tenant:${tenant.id}:cap:concurrency`, String(cap));
+      changes.push(`tenant concurrency → ${cap}`);
+    }
+
+    // Per-tenant RPM cap
+    if (tenantSettings?.rpmCap !== undefined) {
+      const cap = Math.max(1, Math.min(600, Math.round(Number(tenantSettings.rpmCap))));
+      await redis.set(`tenantmap:tenant:${tenant.id}:cap:rpm`, String(cap));
+      changes.push(`tenant RPM → ${cap}`);
+    }
+
+    // Service concurrency limits (stored as Redis hints for runtime to read)
+    if (services?.whisperMaxConcurrent !== undefined) {
+      const cap = Math.max(1, Math.min(50, Math.round(Number(services.whisperMaxConcurrent))));
+      await redis.set("cap:service:whisper:max_concurrent", String(cap));
+      changes.push(`whisper concurrency → ${cap}`);
+    }
+    if (services?.kokoroMaxConcurrent !== undefined) {
+      const cap = Math.max(1, Math.min(50, Math.round(Number(services.kokoroMaxConcurrent))));
+      await redis.set("cap:service:kokoro:max_concurrent", String(cap));
+      changes.push(`kokoro concurrency → ${cap}`);
+    }
+    if (services?.xttsMaxConcurrent !== undefined) {
+      const cap = Math.max(0, Math.min(50, Math.round(Number(services.xttsMaxConcurrent))));
+      await redis.set("cap:service:xtts:max_concurrent", String(cap));
+      changes.push(`xtts concurrency → ${cap}`);
+    }
+
+    console.log(`[capacity] Updated for tenant ${tenant.id}: ${changes.join(", ")}`);
+    res.json({ ok: true, changes });
+  } catch (err) {
+    console.error("[capacity] POST failed:", err);
+    res.status(500).json({ error: "capacity_update_failed", message: String(err) });
+  }
+});
 
 /* ────────────────────────────────────────────────
    Admin – health / analytics / calls / telephony secret

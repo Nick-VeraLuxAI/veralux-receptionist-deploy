@@ -947,6 +947,66 @@
           </div>
           <div id="cf-token-status" class="small" style="margin-top: 8px; min-height: 16px"></div>
         </section>
+
+        <!-- Capacity & Concurrency -->
+        <section class="panel">
+          <h2>Capacity &amp; Concurrency</h2>
+          <p class="small" style="margin: 0 0 16px;">Control how many calls the system can handle simultaneously. Changes take effect immediately — no restart required.</p>
+
+          <!-- Live status -->
+          <div id="cap-live-status" style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:140px;padding:12px 16px;border-radius:12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);">
+              <div class="small" style="margin-bottom:4px;">Global active calls</div>
+              <div id="cap-global-active" style="font-size:24px;font-weight:700;color:var(--primary);">—</div>
+            </div>
+            <div style="flex:1;min-width:140px;padding:12px 16px;border-radius:12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);">
+              <div class="small" style="margin-bottom:4px;">Tenant active calls</div>
+              <div id="cap-tenant-active" style="font-size:24px;font-weight:700;color:var(--accent);">—</div>
+            </div>
+          </div>
+
+          <!-- Global limits -->
+          <h3 style="margin:0 0 10px;font-size:14px;color:var(--primary);">Global Limits</h3>
+          <div style="margin-bottom:16px;">
+            <label style="display:flex;justify-content:space-between;"><span>Max concurrent calls (system-wide)</span><span id="cap-global-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">100</span></label>
+            <input type="range" id="cap-global-concurrency" min="1" max="500" step="1" value="100" style="width:100%;accent-color:var(--primary);" />
+            <div class="small" style="margin-top:2px;">Hard ceiling across all tenants. Set based on server resources.</div>
+          </div>
+
+          <!-- Per-tenant limits -->
+          <h3 style="margin:0 0 10px;font-size:14px;color:var(--primary);">Per-Tenant Limits <span class="small" style="font-weight:400;">(for selected tenant)</span></h3>
+          <div style="margin-bottom:14px;">
+            <label style="display:flex;justify-content:space-between;"><span>Max concurrent calls</span><span id="cap-tenant-concurrency-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">10</span></label>
+            <input type="range" id="cap-tenant-concurrency" min="1" max="200" step="1" value="10" style="width:100%;accent-color:var(--primary);" />
+          </div>
+          <div style="margin-bottom:16px;">
+            <label style="display:flex;justify-content:space-between;"><span>Max calls per minute</span><span id="cap-tenant-rpm-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">60</span></label>
+            <input type="range" id="cap-tenant-rpm" min="1" max="300" step="1" value="60" style="width:100%;accent-color:var(--primary);" />
+          </div>
+
+          <!-- Service concurrency -->
+          <h3 style="margin:0 0 10px;font-size:14px;color:var(--primary);">Audio Service Concurrency</h3>
+          <p class="small" style="margin:0 0 12px;">How many requests each service can process in parallel. Higher values need more GPU/CPU.</p>
+          <div style="margin-bottom:14px;">
+            <label style="display:flex;justify-content:space-between;"><span>Whisper (STT) concurrent requests</span><span id="cap-whisper-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">2</span></label>
+            <input type="range" id="cap-whisper" min="1" max="20" step="1" value="2" style="width:100%;accent-color:var(--primary);" />
+          </div>
+          <div style="margin-bottom:14px;">
+            <label style="display:flex;justify-content:space-between;"><span>Kokoro (TTS) concurrent requests</span><span id="cap-kokoro-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">2</span></label>
+            <input type="range" id="cap-kokoro" min="1" max="20" step="1" value="2" style="width:100%;accent-color:var(--primary);" />
+          </div>
+          <div style="margin-bottom:16px;">
+            <label style="display:flex;justify-content:space-between;"><span>XTTS (TTS) concurrent requests</span><span id="cap-xtts-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">0</span></label>
+            <input type="range" id="cap-xtts" min="0" max="20" step="1" value="0" style="width:100%;accent-color:var(--primary);" />
+            <div class="small" style="margin-top:2px;">0 = unlimited (no semaphore). Set a value to prevent GPU overload.</div>
+          </div>
+
+          <div class="row" style="gap:8px;">
+            <button type="button" id="cap-save">Save capacity settings</button>
+            <button type="button" class="secondary" id="cap-refresh">Refresh</button>
+          </div>
+          <div id="cap-status" class="small" style="margin-top:8px;min-height:16px;"></div>
+        </section>
       </div>
 
       <!-- ── Workflows Tab ── -->
@@ -2703,6 +2763,7 @@
         loadWorkflowRuns();
         loadLeads();
         loadWorkflowSettings();
+        loadCapacity();
       }
 
       // ── Subscription / Billing ──
@@ -3156,6 +3217,82 @@
         }
       }
 
+      /* ── Capacity & Concurrency ─────────────────── */
+      const CAP_SLIDERS = [
+        { id: "cap-global-concurrency", valId: "cap-global-val", path: "global.concurrencyCap", fmt: v => Math.round(v).toString() },
+        { id: "cap-tenant-concurrency", valId: "cap-tenant-concurrency-val", path: "tenant.concurrencyCap", fmt: v => Math.round(v).toString() },
+        { id: "cap-tenant-rpm", valId: "cap-tenant-rpm-val", path: "tenant.rpmCap", fmt: v => Math.round(v).toString() },
+        { id: "cap-whisper", valId: "cap-whisper-val", path: "services.whisperMaxConcurrent", fmt: v => Math.round(v).toString() },
+        { id: "cap-kokoro", valId: "cap-kokoro-val", path: "services.kokoroMaxConcurrent", fmt: v => Math.round(v).toString() },
+        { id: "cap-xtts", valId: "cap-xtts-val", path: "services.xttsMaxConcurrent", fmt: v => Math.round(v).toString() },
+      ];
+
+      function getNestedValue(obj, path) {
+        return path.split(".").reduce((o, k) => o?.[k], obj);
+      }
+
+      function bindCapSliders() {
+        CAP_SLIDERS.forEach(({ id, valId, fmt }) => {
+          const el = $(id);
+          if (!el) return;
+          el.addEventListener("input", () => {
+            const v = $(valId);
+            if (v) v.textContent = fmt(el.value);
+          });
+        });
+      }
+
+      async function loadCapacity() {
+        try {
+          const data = await fetchJSON("/api/admin/capacity");
+          CAP_SLIDERS.forEach(({ id, valId, path, fmt }) => {
+            const el = $(id);
+            const v = $(valId);
+            const val = getNestedValue(data, path);
+            if (el && val !== undefined) { el.value = val; }
+            if (v && val !== undefined) { v.textContent = fmt(val); }
+          });
+          const ga = $("cap-global-active");
+          const ta = $("cap-tenant-active");
+          if (ga) ga.textContent = data.global?.activeCalls ?? "—";
+          if (ta) ta.textContent = data.tenant?.activeCalls ?? "—";
+        } catch (e) {
+          console.error("loadCapacity:", e);
+        }
+      }
+
+      async function saveCapacity() {
+        const sts = $("cap-status");
+        try {
+          const body = {
+            global: {
+              concurrencyCap: parseInt($("cap-global-concurrency")?.value || "100"),
+            },
+            tenant: {
+              concurrencyCap: parseInt($("cap-tenant-concurrency")?.value || "10"),
+              rpmCap: parseInt($("cap-tenant-rpm")?.value || "60"),
+            },
+            services: {
+              whisperMaxConcurrent: parseInt($("cap-whisper")?.value || "2"),
+              kokoroMaxConcurrent: parseInt($("cap-kokoro")?.value || "2"),
+              xttsMaxConcurrent: parseInt($("cap-xtts")?.value || "0"),
+            },
+          };
+          const result = await fetchJSON("/api/admin/capacity", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          sts.textContent = "Saved! " + (result.changes || []).join(", ");
+          sts.style.color = "#4ade80";
+          setTimeout(() => { if (sts.textContent.startsWith("Saved")) sts.textContent = ""; }, 4000);
+          loadCapacity(); // refresh live counts
+        } catch (e) {
+          sts.textContent = "Failed: " + e.message;
+          sts.style.color = "#f87171";
+        }
+      }
+
       document.addEventListener("DOMContentLoaded", () => {
         document.querySelectorAll(".tab").forEach((tab) => {
           tab.addEventListener("click", () => {
@@ -3250,6 +3387,13 @@
             }
           });
         }
+
+        // Capacity controls
+        bindCapSliders();
+        const capSave = $("cap-save");
+        if (capSave) capSave.addEventListener("click", () => saveCapacity());
+        const capRefresh = $("cap-refresh");
+        if (capRefresh) capRefresh.addEventListener("click", () => loadCapacity());
 
         const fpAdd = $("fp-add");
         if (fpAdd) {
