@@ -320,7 +320,7 @@ export class CallSession {
       });
 
     // ✅ Ensure this is ALWAYS a string (tenant override → env fallback)
-    const sttEndpointUrl =
+    let sttEndpointUrl =
       this.sttConfig?.config?.url ??
       this.sttConfig?.whisperUrl ??
       env.WHISPER_URL ??
@@ -328,6 +328,27 @@ export class CallSession {
 
     if (!sttEndpointUrl) {
       log.warn({ event: 'stt_url_missing', ...this.logContext }, 'No STT URL configured');
+    }
+
+    // ✅ Safety: if whisperUrl is a bare origin (no path), append /transcribe
+    if (sttEndpointUrl) {
+      try {
+        const parsed = new URL(sttEndpointUrl);
+        if (!parsed.pathname || parsed.pathname === '/') {
+          sttEndpointUrl = `${sttEndpointUrl.replace(/\/$/, '')}/transcribe`;
+          log.warn(
+            {
+              event: 'stt_url_auto_corrected',
+              original: this.sttConfig?.whisperUrl ?? env.WHISPER_URL,
+              corrected: sttEndpointUrl,
+              ...this.logContext,
+            },
+            'whisperUrl had no path, auto-appended /transcribe',
+          );
+        }
+      } catch {
+        // not a valid URL, leave as-is
+      }
     }
 
 

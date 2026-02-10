@@ -126,7 +126,9 @@ services:
       - REDIS_URL=redis://redis:6379
       - CONTROL_URL=http://control:4000
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      # LLM / OpenAI
+      # LLM / Brain
+      - BRAIN_URL=http://control:4000/reply
+      - BRAIN_TIMEOUT_MS=${BRAIN_TIMEOUT_MS:-15000}
       - LLM_PROVIDER=${LLM_PROVIDER:-openai}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
@@ -154,6 +156,7 @@ services:
       # Speech-to-Text Settings
       - STT_CHUNK_MS=${STT_CHUNK_MS:-100}
       - STT_SILENCE_MS=${STT_SILENCE_MS:-700}
+      - STT_SPEECH_FRAMES_REQUIRED=${STT_SPEECH_FRAMES_REQUIRED:-3}
       - DEAD_AIR_MS=${DEAD_AIR_MS:-10000}
       # Rate Limiting
       - GLOBAL_CONCURRENCY_CAP=${GLOBAL_CONCURRENCY_CAP:-100}
@@ -242,7 +245,7 @@ services:
     profiles:
       - tunnel
       - cloudflare
-    command: tunnel run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel --protocol http2 run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     environment:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
     network_mode: host
@@ -286,10 +289,10 @@ services:
   # =============================================================================
 
   whisper-gpu:
-    image: ${REGISTRY:-ghcr.io/nick-veraluxai}/whisper:${VERSION:-latest}
+    image: ${REGISTRY:-ghcr.io/nick-veraluxai}/whisper-gpu:${VERSION:-latest}
     build:
       context: ./veralux-audio-stack
-      dockerfile: Dockerfile.whisper
+      dockerfile: Dockerfile.whisper-gpu
     container_name: veralux-whisper
     restart: unless-stopped
     logging: *default-logging
@@ -300,19 +303,21 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s
+      start_period: 180s
     deploy:
       resources:
         limits:
           cpus: "4.0"
-          memory: 4G
+          memory: 6G
         reservations:
           devices:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
     environment:
-      - MODEL_SIZE=${WHISPER_MODEL_SIZE:-base}
+      - WHISPER_MODEL=${WHISPER_MODEL:-medium}
+      - WHISPER_DEVICE=cuda
+      - WHISPER_COMPUTE_TYPE=float16
     ports:
       - "${WHISPER_PORT:-9000}:9000"
     networks:
@@ -384,6 +389,7 @@ services:
     environment:
       - LANGUAGE=${XTTS_LANGUAGE:-en}
       - COQUI_TOS_AGREED=1
+      - XTTS_USE_GPU=true
     ports:
       - "${XTTS_PORT:-7002}:7002"
     networks:
