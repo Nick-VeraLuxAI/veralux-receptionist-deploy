@@ -79,7 +79,7 @@ services:
       - TTS_MODE=${TTS_MODE:-coqui_xtts}
       - KOKORO_URL=${KOKORO_URL:-http://kokoro:7001}
       - COQUI_XTTS_URL=${COQUI_XTTS_URL:-http://xtts:7002/tts}
-      - WHISPER_URL=${WHISPER_URL:-http://whisper:9000}
+      - WHISPER_URL=${WHISPER_URL:-http://whisper:9000/transcribe}
       - AUDIO_PUBLIC_BASE_URL=${AUDIO_PUBLIC_BASE_URL}
       - AUDIO_STORAGE_DIR=${AUDIO_STORAGE_DIR:-/app/audio}
       - STT_CHUNK_MS=${STT_CHUNK_MS:-100}
@@ -150,7 +150,7 @@ services:
       # Media/Audio
       - MEDIA_STREAM_TOKEN=${MEDIA_STREAM_TOKEN}
       - AUDIO_STORAGE_DIR=${AUDIO_STORAGE_DIR:-/app/audio}
-      - WHISPER_URL=http://whisper:9000
+      - WHISPER_URL=${WHISPER_URL:-http://whisper:9000/transcribe}
       # Speech-to-Text Settings
       - STT_CHUNK_MS=${STT_CHUNK_MS:-100}
       - STT_SILENCE_MS=${STT_SILENCE_MS:-700}
