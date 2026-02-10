@@ -87,6 +87,10 @@ services:
       - GLOBAL_CONCURRENCY_CAP=${GLOBAL_CONCURRENCY_CAP:-100}
       - TENANT_CONCURRENCY_CAP_DEFAULT=${TENANT_CONCURRENCY_CAP_DEFAULT:-10}
       - TENANT_CALLS_PER_MIN_CAP_DEFAULT=${TENANT_CALLS_PER_MIN_CAP_DEFAULT:-60}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    group_add:
+      - "${DOCKER_GID:-984}"
     ports:
       - "${CONTROL_PORT:-4000}:4000"
     networks:
@@ -237,15 +241,12 @@ services:
   # Tunnel Service (Optional - enable with: docker compose --profile tunnel up)
   # =============================================================================
 
-  # Option A: Cloudflare Tunnel (recommended for production)
+  # Cloudflare Tunnel — exposes the instance to the internet securely
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: veralux-cloudflared
     restart: unless-stopped
     logging: *default-logging
-    profiles:
-      - tunnel
-      - cloudflare
     command: tunnel --protocol http2 run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     environment:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}

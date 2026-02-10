@@ -1710,6 +1710,98 @@ app.post("/api/admin/cloudflare/token", (req, res) => {
   res.json({ status: "ok", hasToken: true });
 });
 
+/* ── Docker container management (Cloudflare tunnel) ─────────── */
+import http from "node:http";
+
+function dockerApiRequest(
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<{ statusCode: number; data: any }> {
+  return new Promise((resolve, reject) => {
+    const options: http.RequestOptions = {
+      socketPath: "/var/run/docker.sock",
+      path: `/v1.45${path}`,
+      method,
+      headers: { "Content-Type": "application/json" },
+    };
+    const req = http.request(options, (res) => {
+      let raw = "";
+      res.on("data", (chunk) => (raw += chunk));
+      res.on("end", () => {
+        try {
+          resolve({ statusCode: res.statusCode || 500, data: raw ? JSON.parse(raw) : {} });
+        } catch {
+          resolve({ statusCode: res.statusCode || 500, data: raw });
+        }
+      });
+    });
+    req.on("error", reject);
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+app.get("/api/admin/cloudflare/status", async (_req, res) => {
+  try {
+    const { statusCode, data } = await dockerApiRequest("GET", "/containers/veralux-cloudflared/json");
+    if (statusCode === 404) {
+      return res.json({ exists: false, running: false, status: "not_found", message: "Container does not exist" });
+    }
+    if (statusCode !== 200) {
+      return res.json({ exists: false, running: false, status: "error", message: String(data) });
+    }
+    const state = data.State || {};
+    res.json({
+      exists: true,
+      running: state.Running === true,
+      status: state.Status || "unknown",
+      startedAt: state.StartedAt,
+      health: state.Health?.Status,
+      image: data.Config?.Image,
+    });
+  } catch (err) {
+    console.error("[cloudflare/status] error:", err);
+    res.json({ exists: false, running: false, status: "docker_unavailable", message: "Cannot connect to Docker. Is the socket mounted?" });
+  }
+});
+
+app.post("/api/admin/cloudflare/start", async (_req, res) => {
+  try {
+    const { statusCode, data } = await dockerApiRequest("POST", "/containers/veralux-cloudflared/start");
+    if (statusCode === 204 || statusCode === 304) {
+      return res.json({ ok: true, message: statusCode === 304 ? "Already running" : "Started" });
+    }
+    res.status(statusCode).json({ ok: false, message: String(data?.message || data) });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: String(err) });
+  }
+});
+
+app.post("/api/admin/cloudflare/stop", async (_req, res) => {
+  try {
+    const { statusCode, data } = await dockerApiRequest("POST", "/containers/veralux-cloudflared/stop");
+    if (statusCode === 204 || statusCode === 304) {
+      return res.json({ ok: true, message: statusCode === 304 ? "Already stopped" : "Stopped" });
+    }
+    res.status(statusCode).json({ ok: false, message: String(data?.message || data) });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: String(err) });
+  }
+});
+
+app.post("/api/admin/cloudflare/restart", async (_req, res) => {
+  try {
+    const { statusCode, data } = await dockerApiRequest("POST", "/containers/veralux-cloudflared/restart");
+    if (statusCode === 204) {
+      return res.json({ ok: true, message: "Restarted" });
+    }
+    res.status(statusCode).json({ ok: false, message: String(data?.message || data) });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: String(err) });
+  }
+});
+
 // ────────────────────────────────────────────────
 // Voice Recording Upload Endpoint
 // ────────────────────────────────────────────────

@@ -956,7 +956,25 @@
       <div class="tab-content" data-tab="settings">
         <section class="panel">
           <h2>Cloudflare Tunnel</h2>
-          <p class="small" style="margin: 0 0 12px">Configure a Cloudflare Tunnel token to expose this instance to the internet securely.</p>
+          <p class="small" style="margin: 0 0 12px">Expose this instance to the internet securely via Cloudflare Tunnel.</p>
+
+          <!-- Live status -->
+          <div id="cf-status-card" style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);margin-bottom:16px;">
+            <div id="cf-status-dot" style="width:12px;height:12px;border-radius:50%;background:#666;flex-shrink:0;"></div>
+            <div style="flex:1;">
+              <div id="cf-status-text" style="font-weight:600;">Checking…</div>
+              <div id="cf-status-detail" class="small" style="margin-top:2px;"></div>
+            </div>
+            <div style="display:flex;gap:6px;">
+              <button type="button" id="cf-start-btn" class="secondary" style="padding:6px 14px;font-size:12px;">Start</button>
+              <button type="button" id="cf-stop-btn" class="secondary" style="padding:6px 14px;font-size:12px;">Stop</button>
+              <button type="button" id="cf-restart-btn" class="secondary" style="padding:6px 14px;font-size:12px;">Restart</button>
+              <button type="button" id="cf-refresh-status" class="secondary" style="padding:6px 14px;font-size:12px;">Refresh</button>
+            </div>
+          </div>
+          <div id="cf-action-status" class="small" style="margin-bottom:12px;min-height:16px;"></div>
+
+          <!-- Token config -->
           <div class="row" style="gap: 8px; align-items: flex-end">
             <div style="flex: 1">
               <label for="cf-tunnel-token">Tunnel Token</label>
@@ -3203,16 +3221,64 @@
 
       /* ── Cloudflare Tunnel ─────────────────────── */
       async function loadCloudflareStatus() {
+        // Load token status
         try {
-          const data = await fetchJSON("/api/admin/cloudflare/token");
-          const status = $("cf-token-status");
-          if (data.hasToken) {
-            status.innerHTML = '<span style="color: var(--primary);">&#10003; Tunnel token is configured.</span>';
+          const tokenData = await fetchJSON("/api/admin/cloudflare/token");
+          const tokenStatus = $("cf-token-status");
+          if (tokenData.hasToken) {
+            tokenStatus.innerHTML = '<span style="color: var(--primary);">&#10003; Tunnel token is configured.</span>';
           } else {
-            status.textContent = "No tunnel token set.";
+            tokenStatus.textContent = "No tunnel token set.";
           }
         } catch {
-          $("cf-token-status").textContent = "Could not load Cloudflare status.";
+          $("cf-token-status").textContent = "Could not load token status.";
+        }
+
+        // Load container status
+        try {
+          const data = await fetchJSON("/api/admin/cloudflare/status");
+          const dot = $("cf-status-dot");
+          const text = $("cf-status-text");
+          const detail = $("cf-status-detail");
+          if (!data.exists) {
+            dot.style.background = "#666";
+            text.textContent = "Not found";
+            detail.textContent = data.message || "Container does not exist.";
+          } else if (data.running) {
+            dot.style.background = "#4ade80";
+            text.textContent = "Running";
+            const upSince = data.startedAt ? new Date(data.startedAt).toLocaleString() : "";
+            detail.textContent = upSince ? "Up since " + upSince : "Container is running.";
+          } else {
+            dot.style.background = "#f87171";
+            text.textContent = "Stopped";
+            detail.textContent = "Status: " + (data.status || "exited");
+          }
+        } catch {
+          const dot = $("cf-status-dot");
+          const text = $("cf-status-text");
+          const detail = $("cf-status-detail");
+          if (dot) dot.style.background = "#f59e0b";
+          if (text) text.textContent = "Unknown";
+          if (detail) detail.textContent = "Could not query Docker. Socket may not be mounted.";
+        }
+      }
+
+      async function cfAction(action) {
+        const sts = $("cf-action-status");
+        sts.textContent = action.charAt(0).toUpperCase() + action.slice(1) + "ing…";
+        sts.style.color = "#C9A04E";
+        try {
+          const data = await fetchJSON("/api/admin/cloudflare/" + action, { method: "POST" });
+          sts.textContent = data.message || "Done.";
+          sts.style.color = "#4ade80";
+          // Refresh status after a short delay to let Docker settle
+          setTimeout(loadCloudflareStatus, 2000);
+          setTimeout(() => { if (sts.style.color === "rgb(74, 222, 128)") sts.textContent = ""; }, 5000);
+        } catch (err) {
+          sts.textContent = "Failed: " + err.message;
+          sts.style.color = "#f87171";
+          loadCloudflareStatus();
         }
       }
 
@@ -3418,6 +3484,14 @@
         // Cloudflare Tunnel
         const cfSave = $("cf-save-token");
         if (cfSave) cfSave.addEventListener("click", () => requireAuth(saveCloudflareToken));
+        const cfStart = $("cf-start-btn");
+        if (cfStart) cfStart.addEventListener("click", () => cfAction("start"));
+        const cfStop = $("cf-stop-btn");
+        if (cfStop) cfStop.addEventListener("click", () => cfAction("stop"));
+        const cfRestart = $("cf-restart-btn");
+        if (cfRestart) cfRestart.addEventListener("click", () => cfAction("restart"));
+        const cfRefresh = $("cf-refresh-status");
+        if (cfRefresh) cfRefresh.addEventListener("click", loadCloudflareStatus);
 
         const cfToggle = $("cf-toggle-visibility");
         if (cfToggle) {
