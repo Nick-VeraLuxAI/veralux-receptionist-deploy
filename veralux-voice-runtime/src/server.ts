@@ -859,7 +859,7 @@ function attachMediaWebSocketServer(server: http.Server, sessionManager: Session
   return wss;
 }
 
-async function ensureGreetingAsset(): Promise<void> {
+async function ensureGreetingAsset(overrideText?: string): Promise<void> {
   const greetingPath = path.join(env.AUDIO_STORAGE_DIR, 'greeting.wav');
 
   // Remove existing greeting so it is regenerated from current GREETING_TEXT / TTS config on every startup.
@@ -875,7 +875,23 @@ async function ensureGreetingAsset(): Promise<void> {
       ? (env.COQUI_VOICE_ID ?? 'en_sample')
       : (env.KOKORO_VOICE_ID ?? 'af_bella');
   try {
-    const greetingText = env.GREETING_TEXT ?? 'Hi! Thanks for calling. How can I help you today?';
+    // Resolve greeting text: override > Redis tenant config > env > default
+    let greetingText = overrideText || '';
+    if (!greetingText) {
+      try {
+        const { getRedisClient } = await import('./redis/client.js');
+        const rc = getRedisClient();
+        const keys = await rc.keys('tenantcfg:*');
+        if (keys.length > 0) {
+          const raw = await rc.get(keys[0]);
+          if (raw) {
+            const cfg = JSON.parse(raw);
+            greetingText = cfg.greetingText || '';
+          }
+        }
+      } catch (e) { /* ignore redis errors during greeting */ }
+    }
+    if (!greetingText) greetingText = env.GREETING_TEXT ?? 'Hi! Thanks for calling. How can I help you today?';
     const result = await synthesizeSpeech({
       text: greetingText,
       voice,
@@ -1024,6 +1040,19 @@ export function buildServer(): { app: express.Express; server: http.Server; sess
   });
 
   app.use('/audio', playbackServeTimer(), wavInfoLogger('/audio'), express.static(env.AUDIO_STORAGE_DIR));
+
+  // Admin endpoint to regenerate greeting audio with new text
+  app.post('/admin/regenerate-greeting', async (req, res) => {
+    try {
+      const { greetingText } = req.body || {};
+      log.info({ greetingText: greetingText ? `${greetingText.substring(0, 50)}...` : '(none)' }, 'regenerate-greeting requested');
+      await ensureGreetingAsset(greetingText || undefined);
+      res.json({ ok: true, message: 'Greeting regenerated' });
+    } catch (error) {
+      log.error({ err: error }, 'regenerate-greeting failed');
+      res.status(500).json({ error: 'regeneration_failed', message: String(error) });
+    }
+  });
 
   app.use('/v1/webrtc', createWebRtcRouter(sessionManager));
 

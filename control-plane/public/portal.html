@@ -364,6 +364,103 @@
           <div id="prompt-status" class="help" style="margin-top: 8px; min-height: 16px;"></div>
         </section>
 
+        <!-- Receptionist Voice -->
+        <section class="owner-panel">
+          <h2>Receptionist voice</h2>
+          <p class="help">Choose how your receptionist sounds. Use a preset voice or clone your own for a personal touch.</p>
+
+          <label for="voice-selector">Active voice</label>
+          <select id="voice-selector" style="width:100%;padding:12px 14px;margin-bottom:14px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,0.03);color:var(--text);font-family:inherit;font-size:14px;">
+            <option value="preset:default">Default Voice (Preset)</option>
+          </select>
+          <div id="voice-selector-status" class="help" style="margin-bottom:16px;min-height:18px;"></div>
+          <button type="button" id="save-voice-settings" style="margin-top:0;">Save voice settings</button>
+          <div id="voice-settings-status" class="help" style="margin-top:6px;min-height:18px;"></div>
+
+          <!-- Voice Tuning -->
+          <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border);">
+            <h3 style="margin:0 0 4px;font-size:15px;font-weight:600;color:var(--text);">Voice tuning</h3>
+            <p class="help" style="margin-bottom:14px;">Fine-tune how your receptionist's voice sounds.</p>
+            <div id="tuning-sliders">
+              <div style="margin-bottom:14px;">
+                <label style="display:flex;justify-content:space-between;"><span>Speed</span><span id="tuning-speed-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">1.18</span></label>
+                <input type="range" id="tuning-speed" min="0.5" max="2.0" step="0.01" value="1.18" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                <div class="help" style="margin-top:2px;">Slower &larr; &rarr; Faster</div>
+              </div>
+              <div style="margin-bottom:14px;">
+                <label style="display:flex;justify-content:space-between;"><span>Temperature</span><span id="tuning-temp-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">0.80</span></label>
+                <input type="range" id="tuning-temp" min="0.01" max="1.50" step="0.01" value="0.80" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                <div class="help" style="margin-top:2px;">Consistent &larr; &rarr; Expressive</div>
+              </div>
+              <div style="margin-bottom:14px;">
+                <label style="display:flex;justify-content:space-between;"><span>Top P</span><span id="tuning-topp-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">0.92</span></label>
+                <input type="range" id="tuning-topp" min="0.10" max="1.00" step="0.01" value="0.92" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                <div class="help" style="margin-top:2px;">Focused &larr; &rarr; Varied</div>
+              </div>
+              <div style="margin-bottom:14px;">
+                <label style="display:flex;justify-content:space-between;"><span>Top K</span><span id="tuning-topk-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">50</span></label>
+                <input type="range" id="tuning-topk" min="1" max="200" step="1" value="50" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                <div class="help" style="margin-top:2px;">Narrow &larr; &rarr; Broad</div>
+              </div>
+              <div style="margin-bottom:14px;">
+                <label style="display:flex;justify-content:space-between;"><span>Repetition penalty</span><span id="tuning-rep-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">2.0</span></label>
+                <input type="range" id="tuning-rep" min="1.0" max="5.0" step="0.1" value="2.0" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                <div class="help" style="margin-top:2px;">Allow repetition &larr; &rarr; Penalize</div>
+              </div>
+              <div style="margin-bottom:14px;">
+                <label style="display:flex;justify-content:space-between;"><span>Length penalty</span><span id="tuning-len-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">1.0</span></label>
+                <input type="range" id="tuning-len" min="0.5" max="2.0" step="0.1" value="1.0" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                <div class="help" style="margin-top:2px;">Shorter &larr; &rarr; Longer</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:8px;">
+              <button type="button" id="save-tuning">Save tuning</button>
+              <button type="button" class="secondary" id="reset-tuning">Reset defaults</button>
+            </div>
+            <div id="tuning-status" class="help" style="margin-top:6px;min-height:18px;"></div>
+          </div>
+
+          <!-- Voice Cloning -->
+          <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border);">
+            <h3 style="margin:0 0 4px;font-size:15px;font-weight:600;color:var(--text);">Voice cloning</h3>
+            <p class="help" style="margin-bottom:14px;">Record or upload a voice sample to clone. Read clearly for 10-30 seconds in a quiet room.</p>
+            <div style="margin-bottom:16px;">
+              <label>Record from microphone</label>
+              <div style="display:flex;gap:10px;align-items:center;">
+                <button type="button" id="vc-record-btn" class="secondary" style="min-width:120px;">Start recording</button>
+                <span id="vc-record-timer" class="help" style="font-family:'JetBrains Mono',monospace;"></span>
+                <div id="vc-level-bar" style="flex:1;height:8px;border-radius:4px;background:var(--surface-hover);overflow:hidden;display:none;">
+                  <div id="vc-level-fill" style="height:100%;width:0%;background:var(--success);border-radius:4px;transition:width 0.1s;"></div>
+                </div>
+              </div>
+            </div>
+            <div style="margin-bottom:16px;">
+              <label>Or upload an audio file</label>
+              <div id="vc-drop-zone" style="border:2px dashed var(--border);border-radius:12px;padding:20px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;">
+                <input type="file" id="vc-file-input" accept=".wav,.mp3,.ogg,.webm" style="display:none;" />
+                <p class="help" style="margin:0;">Drag & drop a .wav or .mp3 here, or <span style="color:var(--accent);text-decoration:underline;">click to browse</span></p>
+                <p class="help" style="margin:4px 0 0;font-size:12px;">Max 10 MB</p>
+              </div>
+            </div>
+            <div id="vc-preview-section" style="display:none;margin-bottom:16px;padding:14px;border-radius:12px;background:var(--surface-hover);border:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                <button type="button" id="vc-play-btn" class="secondary" style="padding:8px 14px;">Play</button>
+                <span id="vc-preview-info" class="help"></span>
+                <button type="button" id="vc-discard-btn" class="secondary" style="padding:6px 10px;font-size:12px;margin-left:auto;">Discard</button>
+              </div>
+              <audio id="vc-audio-player" style="display:none;"></audio>
+              <label for="vc-label-input">Voice name</label>
+              <input type="text" id="vc-label-input" placeholder="e.g. Nick's voice" style="margin-bottom:10px;" />
+              <button type="button" id="vc-save-btn">Save as cloned voice</button>
+              <div id="vc-save-status" class="help" style="margin-top:6px;min-height:18px;"></div>
+            </div>
+            <div id="cloned-voices-section">
+              <label style="margin-top:8px;">Your saved voices</label>
+              <ul id="cloned-voices-list" class="owner-list"></ul>
+            </div>
+          </div>
+        </section>
+
         <!-- Pricing -->
         <section class="owner-panel">
           <h2>Services & products</h2>
@@ -599,6 +696,7 @@
           loadBilling(),
           loadPortalLeads(),
           loadPortalWorkflows(),
+          loadVoiceConfig(),
         ]);
       }
 
@@ -945,6 +1043,122 @@
         }
       }
 
+      /* ── Voice Settings ─────────────────────────── */
+      let voiceConfig = { ttsMode:"coqui_xtts", defaultVoiceMode:"preset", presetVoice:"default", clonedVoices:[], activeVoiceId:"preset:default" };
+
+      async function loadVoiceConfig() {
+        try {
+          const cfg = await apiFetch("/api/tts/config");
+          voiceConfig.ttsMode = cfg.ttsMode || cfg.mode || "coqui_xtts";
+          voiceConfig.presetVoice = cfg.voiceId || cfg.voice || "default";
+          voiceConfig.defaultVoiceMode = cfg.defaultVoiceMode || "preset";
+          if (cfg.clonedVoice && cfg.clonedVoice.speakerWavUrl) {
+            const exists = voiceConfig.clonedVoices.find(v => v.speakerWavUrl === cfg.clonedVoice.speakerWavUrl);
+            if (!exists) voiceConfig.clonedVoices.push({ id:"cloned_"+Date.now(), label:cfg.clonedVoice.label||"Custom Voice", speakerWavUrl:cfg.clonedVoice.speakerWavUrl });
+          }
+          if (voiceConfig.defaultVoiceMode==="cloned" && voiceConfig.clonedVoices.length>0) {
+            const ac = voiceConfig.clonedVoices.find(v => cfg.clonedVoice && v.speakerWavUrl===cfg.clonedVoice.speakerWavUrl);
+            voiceConfig.activeVoiceId = ac ? `cloned:${ac.id}` : "preset:default";
+          } else { voiceConfig.activeVoiceId = `preset:${voiceConfig.presetVoice}`; }
+          renderVoiceSelector();
+          renderClonedVoicesList();
+          loadTuningSliders(cfg);
+        } catch(e) { console.error("loadVoiceConfig:",e); }
+      }
+
+      function renderVoiceSelector() {
+        const sel = $("voice-selector"); if(!sel) return;
+        sel.innerHTML="";
+        const po = document.createElement("option"); po.value=`preset:${voiceConfig.presetVoice}`; po.textContent="Default Voice (Preset)"; sel.appendChild(po);
+        voiceConfig.clonedVoices.forEach(v => { const o=document.createElement("option"); o.value=`cloned:${v.id}`; o.textContent=`${v.label} (Custom)`; sel.appendChild(o); });
+        sel.value = voiceConfig.activeVoiceId;
+      }
+
+      function renderClonedVoicesList() {
+        const list=$("cloned-voices-list"); if(!list) return; list.innerHTML="";
+        if (!voiceConfig.clonedVoices.length) { list.innerHTML='<li class="help">No custom voices yet. Record or upload a sample above.</li>'; return; }
+        voiceConfig.clonedVoices.forEach(voice => {
+          const li=document.createElement("li"); const isActive=voiceConfig.activeVoiceId===`cloned:${voice.id}`;
+          li.innerHTML=`<span><strong>${escapeHtml(voice.label)}</strong>${isActive?'<span style="color:var(--success);margin-left:8px;">● Active</span>':''}</span><div style="display:flex;gap:6px;"><button type="button" class="secondary" style="font-size:11px;padding:4px 10px;" data-action="activate">Use</button><button type="button" class="secondary" style="font-size:11px;padding:4px 10px;color:var(--danger);" data-action="remove">Remove</button></div>`;
+          li.querySelector('[data-action="activate"]').onclick=()=>{ voiceConfig.activeVoiceId=`cloned:${voice.id}`; $("voice-selector").value=`cloned:${voice.id}`; renderClonedVoicesList(); };
+          li.querySelector('[data-action="remove"]').onclick=()=>{ voiceConfig.clonedVoices=voiceConfig.clonedVoices.filter(v=>v.id!==voice.id); if(voiceConfig.activeVoiceId===`cloned:${voice.id}`){voiceConfig.activeVoiceId=`preset:${voiceConfig.presetVoice}`;$("voice-selector").value=voiceConfig.activeVoiceId;} renderVoiceSelector(); renderClonedVoicesList(); };
+          list.appendChild(li);
+        });
+      }
+
+      async function saveVoiceSettings() {
+        const sts=$("voice-settings-status"); const sel=$("voice-selector");
+        try {
+          const sv=sel?.value||"preset:default"; voiceConfig.activeVoiceId=sv;
+          const [t,id]=sv.split(":"); const isC=t==="cloned";
+          const p={ttsMode:"coqui_xtts",defaultVoiceMode:isC?"cloned":"preset",voiceId:voiceConfig.presetVoice};
+          if(isC){const v=voiceConfig.clonedVoices.find(x=>x.id===id);if(v)p.clonedVoice={speakerWavUrl:v.speakerWavUrl,label:v.label};else p.defaultVoiceMode="preset";}
+          else if(voiceConfig.clonedVoices.length>0){p.clonedVoice={speakerWavUrl:voiceConfig.clonedVoices[0].speakerWavUrl,label:voiceConfig.clonedVoices[0].label};}
+          await apiFetch("/api/tts/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)});
+          sts.textContent="Saved!"; sts.style.color="var(--success)"; setTimeout(()=>{if(sts.textContent==="Saved!")sts.textContent="";},3000);
+        } catch(e){sts.textContent="Failed: "+e.message;sts.style.color="var(--danger)";}
+      }
+
+      /* ── Voice Tuning ─────────────────────────── */
+      const TUNING_DEFAULTS={coquiSpeed:1.18,coquiTemperature:0.80,coquiTopP:0.92,coquiTopK:50,coquiRepetitionPenalty:2.0,coquiLengthPenalty:1.0};
+      const TUNING_MAP=[
+        {slider:"tuning-speed",label:"tuning-speed-val",key:"coquiSpeed",fmt:v=>parseFloat(v).toFixed(2)},
+        {slider:"tuning-temp",label:"tuning-temp-val",key:"coquiTemperature",fmt:v=>parseFloat(v).toFixed(2)},
+        {slider:"tuning-topp",label:"tuning-topp-val",key:"coquiTopP",fmt:v=>parseFloat(v).toFixed(2)},
+        {slider:"tuning-topk",label:"tuning-topk-val",key:"coquiTopK",fmt:v=>Math.round(v).toString()},
+        {slider:"tuning-rep",label:"tuning-rep-val",key:"coquiRepetitionPenalty",fmt:v=>parseFloat(v).toFixed(1)},
+        {slider:"tuning-len",label:"tuning-len-val",key:"coquiLengthPenalty",fmt:v=>parseFloat(v).toFixed(1)},
+      ];
+      function loadTuningSliders(cfg){TUNING_MAP.forEach(({slider,label,key,fmt})=>{const el=$(slider);if(!el)return;const v=cfg[key]!==undefined?cfg[key]:TUNING_DEFAULTS[key];el.value=v;const l=$(label);if(l)l.textContent=fmt(v);});}
+      function bindTuningSliders(){TUNING_MAP.forEach(({slider,label,fmt})=>{const el=$(slider);if(!el)return;el.addEventListener("input",()=>{const l=$(label);if(l)l.textContent=fmt(el.value);});});}
+      async function saveTuning(){const s=$("tuning-status");try{const p={};TUNING_MAP.forEach(({slider,key})=>{const el=$(slider);if(el)p[key]=parseFloat(el.value);});await apiFetch("/api/tts/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)});s.textContent="Saved!";s.style.color="var(--success)";setTimeout(()=>{if(s.textContent==="Saved!")s.textContent="";},3000);}catch(e){s.textContent="Failed: "+e.message;s.style.color="var(--danger)";}}
+      function resetTuning(){TUNING_MAP.forEach(({slider,label,key,fmt})=>{const el=$(slider);if(el)el.value=TUNING_DEFAULTS[key];const l=$(label);if(l)l.textContent=fmt(TUNING_DEFAULTS[key]);});$("tuning-status").textContent="Reset. Click Save to apply.";$("tuning-status").style.color="var(--muted)";}
+
+      /* ── Voice Cloning ─────────────────────────── */
+      let vcMediaRecorder=null,vcRecordedChunks=[],vcRecordingBlob=null,vcRecordingStartTime=null,vcTimerInterval=null,vcAudioContext=null,vcAnalyser=null,vcLevelRafId=null;
+
+      function vcStartRecording(){
+        const btn=$("vc-record-btn");
+        navigator.mediaDevices.getUserMedia({audio:{sampleRate:24000,channelCount:1,echoCancellation:true,noiseSuppression:true}}).then(stream=>{
+          vcRecordedChunks=[];
+          vcMediaRecorder=new MediaRecorder(stream,{mimeType:MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":"audio/ogg"});
+          vcMediaRecorder.ondataavailable=e=>{if(e.data.size>0)vcRecordedChunks.push(e.data);};
+          vcMediaRecorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());if(vcLevelRafId){cancelAnimationFrame(vcLevelRafId);vcLevelRafId=null;}$("vc-level-bar").style.display="none";clearInterval(vcTimerInterval);vcRecordingBlob=new Blob(vcRecordedChunks,{type:vcMediaRecorder.mimeType});vcShowPreview(vcRecordingBlob);btn.textContent="Start recording";btn.style.borderColor="";};
+          vcMediaRecorder.start(250); vcRecordingStartTime=Date.now(); btn.textContent="Stop recording"; btn.style.borderColor="var(--danger)";
+          $("vc-level-bar").style.display=""; vcAudioContext=new(window.AudioContext||window.webkitAudioContext)();
+          const src=vcAudioContext.createMediaStreamSource(stream); vcAnalyser=vcAudioContext.createAnalyser(); vcAnalyser.fftSize=256; src.connect(vcAnalyser);
+          const d=new Uint8Array(vcAnalyser.frequencyBinCount); function upd(){vcAnalyser.getByteFrequencyData(d);$("vc-level-fill").style.width=Math.min(100,d.reduce((a,b)=>a+b,0)/d.length/128*100)+"%";vcLevelRafId=requestAnimationFrame(upd);} upd();
+          vcTimerInterval=setInterval(()=>{const s=Math.floor((Date.now()-vcRecordingStartTime)/1000);$("vc-record-timer").textContent=`${Math.floor(s/60)}:${(s%60).toString().padStart(2,"0")}`;},500);
+        }).catch(e=>{$("vc-save-status").textContent="Mic denied: "+e.message;$("vc-save-status").style.color="var(--danger)";});
+      }
+      function vcStopRecording(){if(vcMediaRecorder&&vcMediaRecorder.state==="recording")vcMediaRecorder.stop();}
+      function vcToggleRecording(){if(vcMediaRecorder&&vcMediaRecorder.state==="recording")vcStopRecording();else vcStartRecording();}
+      function vcShowPreview(blob){const p=$("vc-audio-player");if(p.src)URL.revokeObjectURL(p.src);p.src=URL.createObjectURL(blob);$("vc-preview-info").textContent=`${(blob.size/1024/1024).toFixed(2)} MB`;$("vc-preview-section").style.display="";$("vc-save-status").textContent="";}
+      function vcPlayPreview(){const p=$("vc-audio-player");if(p.paused){p.play();$("vc-play-btn").textContent="Pause";}else{p.pause();$("vc-play-btn").textContent="Play";}}
+      function vcDiscardPreview(){const p=$("vc-audio-player");p.pause();if(p.src)URL.revokeObjectURL(p.src);p.src="";vcRecordingBlob=null;$("vc-preview-section").style.display="none";$("vc-play-btn").textContent="Play";$("vc-record-timer").textContent="";}
+
+      async function vcSaveClonedVoice(){
+        const sts=$("vc-save-status"), label=($("vc-label-input").value||"").trim();
+        if(!label){sts.textContent="Please enter a voice name.";sts.style.color="var(--danger)";return;}
+        if(!vcRecordingBlob){sts.textContent="No audio. Record or upload first.";sts.style.color="var(--danger)";return;}
+        sts.textContent="Uploading…";sts.style.color="var(--muted)";
+        try{
+          const fd=new FormData(); const ext=vcRecordingBlob.type.includes("wav")?".wav":".webm";
+          fd.append("audio",vcRecordingBlob,`voice-clone-${Date.now()}${ext}`);
+          const hdr=new Headers(); if(authToken)hdr.set("X-Admin-Key",authToken);
+          const ur=await fetch("/api/admin/voice-recordings",{method:"POST",headers:hdr,body:fd});
+          if(!ur.ok)throw new Error(await ur.text()); const ud=await ur.json();
+          sts.textContent="Saving…";
+          await apiFetch("/api/tts/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ttsMode:"coqui_xtts",defaultVoiceMode:"cloned",clonedVoice:{speakerWavUrl:ud.url,label}})});
+          const nv={id:"cloned_"+Date.now(),label,speakerWavUrl:ud.url}; voiceConfig.clonedVoices.push(nv); voiceConfig.activeVoiceId=`cloned:${nv.id}`;
+          renderVoiceSelector(); renderClonedVoicesList(); vcDiscardPreview();
+          sts.textContent="Voice saved!"; sts.style.color="var(--success)"; setTimeout(()=>{if(sts.textContent==="Voice saved!")sts.textContent="";},4000);
+        }catch(e){sts.textContent="Failed: "+e.message;sts.style.color="var(--danger)";}
+      }
+
+      function vcHandleFileDrop(e){e.preventDefault();e.stopPropagation();$("vc-drop-zone").style.borderColor="var(--border)";$("vc-drop-zone").style.background="";const f=e.dataTransfer?.files||e.target?.files;if(!f||!f.length)return;const file=f[0];if(file.size>10*1024*1024){$("vc-save-status").textContent="File too large (max 10 MB).";$("vc-save-status").style.color="var(--danger)";return;}vcRecordingBlob=file;vcShowPreview(file);}
+      function vcSetupDropZone(){const z=$("vc-drop-zone"),fi=$("vc-file-input");z.addEventListener("click",()=>fi.click());fi.addEventListener("change",vcHandleFileDrop);z.addEventListener("dragover",e=>{e.preventDefault();z.style.borderColor="var(--accent)";z.style.background="rgba(201,160,78,0.05)";});z.addEventListener("dragleave",()=>{z.style.borderColor="var(--border)";z.style.background="";});z.addEventListener("drop",vcHandleFileDrop);}
+
       // ── Init ──
       document.addEventListener("DOMContentLoaded", () => {
         $("login-btn").addEventListener("click", doLogin);
@@ -959,6 +1173,18 @@
         $("bill-update-payment").addEventListener("click", updatePaymentMethod);
         $("bill-manage-billing").addEventListener("click", openBillingPortal);
         $("bill-pay-now").addEventListener("click", payNow);
+
+        // Voice settings
+        $("save-voice-settings").addEventListener("click", saveVoiceSettings);
+        bindTuningSliders();
+        $("save-tuning").addEventListener("click", saveTuning);
+        $("reset-tuning").addEventListener("click", resetTuning);
+        $("vc-record-btn").addEventListener("click", vcToggleRecording);
+        $("vc-play-btn").addEventListener("click", vcPlayPreview);
+        $("vc-discard-btn").addEventListener("click", vcDiscardPreview);
+        $("vc-save-btn").addEventListener("click", vcSaveClonedVoice);
+        $("vc-audio-player").addEventListener("ended", () => { $("vc-play-btn").textContent = "Play"; });
+        vcSetupDropZone();
 
         // Auto-refresh
         setInterval(loadAnalytics, 30000);

@@ -58,6 +58,14 @@ export interface TTSConfig {
   kokoroUrl?: string;                     // URL for Kokoro server
   clonedVoice?: ClonedVoiceConfig;        // Cloned voice profile
   defaultVoiceMode?: VoiceMode;           // Default voice mode at call start
+
+  // XTTS tuning parameters
+  coquiTemperature?: number;
+  coquiSpeed?: number;
+  coquiTopP?: number;
+  coquiTopK?: number;
+  coquiRepetitionPenalty?: number;
+  coquiLengthPenalty?: number;
 }
 
 // small helper so bad env values don’t wreck things
@@ -317,6 +325,13 @@ export class LLMConfigStore {
       kokoroUrl: base.kokoroUrl,
       clonedVoice: base.clonedVoice,
       defaultVoiceMode: base.defaultVoiceMode || "preset",
+      // XTTS tuning parameters
+      coquiTemperature: (base as any).coquiTemperature,
+      coquiSpeed: (base as any).coquiSpeed,
+      coquiTopP: (base as any).coquiTopP,
+      coquiTopK: (base as any).coquiTopK,
+      coquiRepetitionPenalty: (base as any).coquiRepetitionPenalty,
+      coquiLengthPenalty: (base as any).coquiLengthPenalty,
     };
 
     return config;

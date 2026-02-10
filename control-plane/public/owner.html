@@ -421,6 +421,23 @@
       </section>
 
       <section class="owner-panel">
+        <h2>Business information</h2>
+        <p class="help">Essential details about your business. Your receptionist will use this to answer caller questions accurately.</p>
+        
+        <label for="owner-businessHours">Business hours</label>
+        <textarea id="owner-businessHours" rows="3" placeholder="e.g. Monday–Friday: 8am–6pm&#10;Saturday: 9am–2pm&#10;Sunday: Closed"></textarea>
+
+        <label for="owner-businessAddress">Address / Location</label>
+        <textarea id="owner-businessAddress" rows="2" placeholder="e.g. 123 Main St, Suite 100, Boise, ID 83702"></textarea>
+
+        <label for="owner-businessFaq">Additional info &amp; FAQ</label>
+        <textarea id="owner-businessFaq" rows="4" placeholder="e.g. We offer free estimates. Emergency service available 24/7 with a $75 dispatch fee. Licensed and insured since 2005."></textarea>
+        
+        <button type="button" id="owner-save-business-info" style="margin-top: 12px">Save business info</button>
+        <div id="owner-business-info-status" class="help" style="margin-top: 6px; min-height: 18px;"></div>
+      </section>
+
+      <section class="owner-panel">
         <h2>Receptionist personality</h2>
         <p class="help">Customize how your AI receptionist introduces itself and interacts with callers.</p>
         
@@ -453,14 +470,100 @@
         </select>
         <div id="voice-selector-status" class="help" style="margin-bottom: 16px; min-height: 18px;"></div>
 
-        <!-- Saved cloned voices -->
-        <div id="cloned-voices-section">
-          <label style="margin-top: 8px;">Your saved voices</label>
-          <ul id="cloned-voices-list" class="owner-list"></ul>
+        <button type="button" id="save-voice-settings" style="margin-top: 0;">Save voice settings</button>
+        <div id="voice-settings-status" class="help" style="margin-top: 6px; min-height: 18px;"></div>
+
+        <!-- ── Voice Tuning ── -->
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
+          <h3 style="margin: 0 0 4px; font-size: 15px; font-weight: 600; color: var(--text);">Voice tuning</h3>
+          <p class="help" style="margin-bottom: 14px;">Fine-tune how your receptionist's voice sounds. Adjust speed, expressiveness, and clarity.</p>
+
+          <div id="tuning-sliders">
+            <div style="margin-bottom: 14px;">
+              <label style="display:flex;justify-content:space-between;"><span>Speed</span><span id="tuning-speed-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">1.18</span></label>
+              <input type="range" id="tuning-speed" min="0.5" max="2.0" step="0.01" value="1.18" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+              <div class="help" style="margin-top:2px;">Slower voice &larr; &rarr; Faster voice</div>
+            </div>
+            <div style="margin-bottom: 14px;">
+              <label style="display:flex;justify-content:space-between;"><span>Temperature</span><span id="tuning-temp-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">0.80</span></label>
+              <input type="range" id="tuning-temp" min="0.01" max="1.50" step="0.01" value="0.80" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+              <div class="help" style="margin-top:2px;">More consistent &larr; &rarr; More expressive</div>
+            </div>
+            <div style="margin-bottom: 14px;">
+              <label style="display:flex;justify-content:space-between;"><span>Top P</span><span id="tuning-topp-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">0.92</span></label>
+              <input type="range" id="tuning-topp" min="0.10" max="1.00" step="0.01" value="0.92" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+              <div class="help" style="margin-top:2px;">More focused &larr; &rarr; More varied</div>
+            </div>
+            <div style="margin-bottom: 14px;">
+              <label style="display:flex;justify-content:space-between;"><span>Top K</span><span id="tuning-topk-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">50</span></label>
+              <input type="range" id="tuning-topk" min="1" max="200" step="1" value="50" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+              <div class="help" style="margin-top:2px;">Narrower vocabulary &larr; &rarr; Broader vocabulary</div>
+            </div>
+            <div style="margin-bottom: 14px;">
+              <label style="display:flex;justify-content:space-between;"><span>Repetition penalty</span><span id="tuning-rep-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">2.0</span></label>
+              <input type="range" id="tuning-rep" min="1.0" max="5.0" step="0.1" value="2.0" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+              <div class="help" style="margin-top:2px;">Allow repetition &larr; &rarr; Penalize repetition</div>
+            </div>
+            <div style="margin-bottom: 14px;">
+              <label style="display:flex;justify-content:space-between;"><span>Length penalty</span><span id="tuning-len-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">1.0</span></label>
+              <input type="range" id="tuning-len" min="0.5" max="2.0" step="0.1" value="1.0" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+              <div class="help" style="margin-top:2px;">Shorter output &larr; &rarr; Longer output</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:8px;">
+            <button type="button" id="save-tuning">Save tuning</button>
+            <button type="button" class="secondary" id="reset-tuning">Reset defaults</button>
+          </div>
+          <div id="tuning-status" class="help" style="margin-top: 6px; min-height: 18px;"></div>
         </div>
 
-        <button type="button" id="save-voice-settings" style="margin-top: 16px;">Save voice settings</button>
-        <div id="voice-settings-status" class="help" style="margin-top: 6px; min-height: 18px;"></div>
+        <!-- ── Voice Cloning ── -->
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
+          <h3 style="margin: 0 0 4px; font-size: 15px; font-weight: 600; color: var(--text);">Voice cloning</h3>
+          <p class="help" style="margin-bottom: 14px;">Record or upload a voice sample to clone. Read clearly for 10-30 seconds in a quiet room for best results.</p>
+
+          <!-- Record from mic -->
+          <div style="margin-bottom: 16px;">
+            <label>Record from microphone</label>
+            <div style="display:flex;gap:10px;align-items:center;">
+              <button type="button" id="vc-record-btn" class="secondary" style="min-width:120px;">Start recording</button>
+              <span id="vc-record-timer" class="help" style="font-family:'JetBrains Mono',monospace;"></span>
+              <div id="vc-level-bar" style="flex:1;height:8px;border-radius:4px;background:var(--surface-hover);overflow:hidden;display:none;">
+                <div id="vc-level-fill" style="height:100%;width:0%;background:var(--success);border-radius:4px;transition:width 0.1s;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Upload file -->
+          <div style="margin-bottom: 16px;">
+            <label>Or upload an audio file</label>
+            <div id="vc-drop-zone" style="border:2px dashed var(--border);border-radius:12px;padding:20px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;">
+              <input type="file" id="vc-file-input" accept=".wav,.mp3,.ogg,.webm" style="display:none;" />
+              <p class="help" style="margin:0;">Drag & drop a .wav or .mp3 file here, or <span style="color:var(--accent);text-decoration:underline;">click to browse</span></p>
+              <p class="help" style="margin:4px 0 0;font-size:12px;">Max 10 MB</p>
+            </div>
+          </div>
+
+          <!-- Preview & save -->
+          <div id="vc-preview-section" style="display:none;margin-bottom:16px;padding:14px;border-radius:12px;background:var(--surface-hover);border:1px solid var(--border);">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+              <button type="button" id="vc-play-btn" class="secondary" style="padding:8px 14px;">Play</button>
+              <span id="vc-preview-info" class="help"></span>
+              <button type="button" id="vc-discard-btn" class="secondary" style="padding:6px 10px;font-size:12px;margin-left:auto;">Discard</button>
+            </div>
+            <audio id="vc-audio-player" style="display:none;"></audio>
+            <label for="vc-label-input">Voice name</label>
+            <input type="text" id="vc-label-input" placeholder="e.g. Nick's voice" style="margin-bottom:10px;" />
+            <button type="button" id="vc-save-btn">Save as cloned voice</button>
+            <div id="vc-save-status" class="help" style="margin-top:6px;min-height:18px;"></div>
+          </div>
+
+          <!-- Saved cloned voices -->
+          <div id="cloned-voices-section">
+            <label style="margin-top: 8px;">Your saved voices</label>
+            <ul id="cloned-voices-list" class="owner-list"></ul>
+          </div>
+        </div>
       </section>
 
       <section class="owner-panel">
@@ -735,6 +838,9 @@
             $("owner-policyPrompt").value = promptsRes.policyPrompt || "";
             $("owner-voicePrompt").value = promptsRes.voicePrompt || "";
             $("owner-schemaHint").value = promptsRes.schemaHint || "";
+            $("owner-businessHours").value = promptsRes.businessHours || "";
+            $("owner-businessAddress").value = promptsRes.businessAddress || "";
+            $("owner-businessFaq").value = promptsRes.businessFaq || "";
           }
           if (analyticsRes) {
             $("stat-calls").textContent = analyticsRes.callCount ?? "—";
@@ -955,6 +1061,25 @@
         }
       }
 
+      async function saveOwnerBusinessInfo() {
+        const statusEl = $("owner-business-info-status");
+        try {
+          await ownerFetch("/api/admin/prompts", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              businessHours: $("owner-businessHours").value,
+              businessAddress: $("owner-businessAddress").value,
+              businessFaq: $("owner-businessFaq").value,
+            }),
+          });
+          if (statusEl) statusEl.textContent = "Saved. Your receptionist will use this info immediately.";
+          refreshReadyStatus();
+        } catch (err) {
+          if (statusEl) statusEl.textContent = "Failed: " + err.message;
+        }
+      }
+
       /* ── Voice Settings ─────────────────────────── */
 
       async function loadVoiceConfig() {
@@ -994,6 +1119,7 @@
           
           renderVoiceSelector();
           renderClonedVoicesList();
+          loadTuningSliders(cfg);
         } catch (err) {
           console.error("Failed to load voice config:", err);
           $("voice-selector-status").textContent = "Failed to load voice settings.";
@@ -1035,14 +1161,11 @@
       function renderClonedVoicesList() {
         const list = $("cloned-voices-list");
         if (!list) return;
-        
         list.innerHTML = "";
-        
         if (voiceConfig.clonedVoices.length === 0) {
-          list.innerHTML = '<li class="help">No custom voices configured. Contact your administrator to add custom voices.</li>';
+          list.innerHTML = '<li class="help">No custom voices yet. Record or upload a sample above.</li>';
           return;
         }
-        
         voiceConfig.clonedVoices.forEach((voice) => {
           const li = document.createElement("li");
           const isActive = voiceConfig.activeVoiceId === `cloned:${voice.id}`;
@@ -1051,71 +1174,307 @@
               <strong>${escapeHtml(voice.label)}</strong>
               ${isActive ? '<span style="color: var(--success); margin-left: 8px;">● Active</span>' : ''}
             </span>
+            <div style="display:flex;gap:6px;">
+              <button type="button" class="secondary" style="font-size:11px;padding:4px 10px;" data-action="activate" data-id="${voice.id}">Use</button>
+              <button type="button" class="secondary" style="font-size:11px;padding:4px 10px;color:var(--danger);" data-action="remove" data-id="${voice.id}">Remove</button>
+            </div>
           `;
+          li.querySelector('[data-action="activate"]').onclick = () => {
+            voiceConfig.activeVoiceId = `cloned:${voice.id}`;
+            $("voice-selector").value = `cloned:${voice.id}`;
+            renderClonedVoicesList();
+          };
+          li.querySelector('[data-action="remove"]').onclick = () => {
+            voiceConfig.clonedVoices = voiceConfig.clonedVoices.filter(v => v.id !== voice.id);
+            if (voiceConfig.activeVoiceId === `cloned:${voice.id}`) {
+              voiceConfig.activeVoiceId = `preset:${voiceConfig.presetVoice}`;
+              $("voice-selector").value = voiceConfig.activeVoiceId;
+            }
+            renderVoiceSelector();
+            renderClonedVoicesList();
+          };
           list.appendChild(li);
         });
       }
 
-      // Voice management (add/remove) is handled in the admin dashboard
-      // Owner dashboard only allows selecting from available voices
-
       async function saveVoiceSettings() {
         const statusEl = $("voice-settings-status");
         const selector = $("voice-selector");
-        
         try {
           const selectedValue = selector?.value || "preset:default";
           voiceConfig.activeVoiceId = selectedValue;
-          
           const [type, id] = selectedValue.split(":");
           const isCloned = type === "cloned";
-          
-          // Build the payload
           const payload = {
-            ttsMode: voiceConfig.clonedVoices.length > 0 ? "coqui_xtts" : voiceConfig.ttsMode,
+            ttsMode: "coqui_xtts",
             defaultVoiceMode: isCloned ? "cloned" : "preset",
             voiceId: voiceConfig.presetVoice,
           };
-          
-          // If cloned voice selected, find it and set the URL
           if (isCloned) {
             const voice = voiceConfig.clonedVoices.find(v => v.id === id);
             if (voice) {
-              payload.clonedVoice = {
-                speakerWavUrl: voice.speakerWavUrl,
-                label: voice.label,
-              };
+              payload.clonedVoice = { speakerWavUrl: voice.speakerWavUrl, label: voice.label };
             } else {
-              // Fallback to preset if voice not found
               payload.defaultVoiceMode = "preset";
             }
           } else if (voiceConfig.clonedVoices.length > 0) {
-            // Keep the first cloned voice stored even if using preset
-            payload.clonedVoice = {
-              speakerWavUrl: voiceConfig.clonedVoices[0].speakerWavUrl,
-              label: voiceConfig.clonedVoices[0].label,
-            };
+            payload.clonedVoice = { speakerWavUrl: voiceConfig.clonedVoices[0].speakerWavUrl, label: voiceConfig.clonedVoices[0].label };
           }
-          
-          await ownerFetch("/api/tts/config", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-          
+          await ownerFetch("/api/tts/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
           statusEl.textContent = "Voice settings saved!";
           statusEl.style.color = "var(--success)";
-          
-          // Clear after a moment
-          setTimeout(() => {
-            if (statusEl.textContent === "Voice settings saved!") {
-              statusEl.textContent = "";
-            }
-          }, 3000);
+          setTimeout(() => { if (statusEl.textContent === "Voice settings saved!") statusEl.textContent = ""; }, 3000);
         } catch (err) {
           statusEl.textContent = "Failed to save: " + err.message;
           statusEl.style.color = "var(--danger)";
         }
+      }
+
+      /* ── Voice Tuning ─────────────────────────── */
+
+      const TUNING_DEFAULTS = { coquiSpeed: 1.18, coquiTemperature: 0.80, coquiTopP: 0.92, coquiTopK: 50, coquiRepetitionPenalty: 2.0, coquiLengthPenalty: 1.0 };
+      const TUNING_MAP = [
+        { slider: "tuning-speed", label: "tuning-speed-val", key: "coquiSpeed", fmt: v => parseFloat(v).toFixed(2) },
+        { slider: "tuning-temp", label: "tuning-temp-val", key: "coquiTemperature", fmt: v => parseFloat(v).toFixed(2) },
+        { slider: "tuning-topp", label: "tuning-topp-val", key: "coquiTopP", fmt: v => parseFloat(v).toFixed(2) },
+        { slider: "tuning-topk", label: "tuning-topk-val", key: "coquiTopK", fmt: v => Math.round(v).toString() },
+        { slider: "tuning-rep", label: "tuning-rep-val", key: "coquiRepetitionPenalty", fmt: v => parseFloat(v).toFixed(1) },
+        { slider: "tuning-len", label: "tuning-len-val", key: "coquiLengthPenalty", fmt: v => parseFloat(v).toFixed(1) },
+      ];
+
+      function loadTuningSliders(cfg) {
+        TUNING_MAP.forEach(({ slider, label, key, fmt }) => {
+          const el = $(slider);
+          const lbl = $(label);
+          if (!el) return;
+          const val = cfg[key] !== undefined ? cfg[key] : TUNING_DEFAULTS[key];
+          el.value = val;
+          if (lbl) lbl.textContent = fmt(val);
+        });
+      }
+
+      function bindTuningSliders() {
+        TUNING_MAP.forEach(({ slider, label, fmt }) => {
+          const el = $(slider);
+          if (!el) return;
+          el.addEventListener("input", () => {
+            const lbl = $(label);
+            if (lbl) lbl.textContent = fmt(el.value);
+          });
+        });
+      }
+
+      async function saveTuning() {
+        const statusEl = $("tuning-status");
+        try {
+          const payload = {};
+          TUNING_MAP.forEach(({ slider, key }) => {
+            const el = $(slider);
+            if (el) payload[key] = parseFloat(el.value);
+          });
+          await ownerFetch("/api/tts/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          statusEl.textContent = "Voice tuning saved!";
+          statusEl.style.color = "var(--success)";
+          setTimeout(() => { if (statusEl.textContent === "Voice tuning saved!") statusEl.textContent = ""; }, 3000);
+        } catch (err) {
+          statusEl.textContent = "Failed: " + err.message;
+          statusEl.style.color = "var(--danger)";
+        }
+      }
+
+      function resetTuning() {
+        TUNING_MAP.forEach(({ slider, label, key, fmt }) => {
+          const el = $(slider);
+          if (el) el.value = TUNING_DEFAULTS[key];
+          const lbl = $(label);
+          if (lbl) lbl.textContent = fmt(TUNING_DEFAULTS[key]);
+        });
+        $("tuning-status").textContent = "Reset to defaults. Click Save to apply.";
+        $("tuning-status").style.color = "var(--muted)";
+      }
+
+      /* ── Voice Cloning ─────────────────────────── */
+
+      let vcMediaRecorder = null;
+      let vcRecordedChunks = [];
+      let vcRecordingBlob = null;
+      let vcRecordingStartTime = null;
+      let vcTimerInterval = null;
+      let vcAudioContext = null;
+      let vcAnalyser = null;
+      let vcLevelRafId = null;
+
+      function vcStartRecording() {
+        const btn = $("vc-record-btn");
+        navigator.mediaDevices.getUserMedia({ audio: { sampleRate: 24000, channelCount: 1, echoCancellation: true, noiseSuppression: true } })
+          .then(stream => {
+            vcRecordedChunks = [];
+            vcMediaRecorder = new MediaRecorder(stream, { mimeType: MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/ogg" });
+            vcMediaRecorder.ondataavailable = e => { if (e.data.size > 0) vcRecordedChunks.push(e.data); };
+            vcMediaRecorder.onstop = () => {
+              stream.getTracks().forEach(t => t.stop());
+              if (vcLevelRafId) { cancelAnimationFrame(vcLevelRafId); vcLevelRafId = null; }
+              $("vc-level-bar").style.display = "none";
+              clearInterval(vcTimerInterval);
+              vcRecordingBlob = new Blob(vcRecordedChunks, { type: vcMediaRecorder.mimeType });
+              vcShowPreview(vcRecordingBlob);
+              btn.textContent = "Start recording";
+              btn.style.borderColor = "";
+            };
+            vcMediaRecorder.start(250);
+            vcRecordingStartTime = Date.now();
+            btn.textContent = "Stop recording";
+            btn.style.borderColor = "var(--danger)";
+            // Level meter
+            $("vc-level-bar").style.display = "";
+            vcAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const src = vcAudioContext.createMediaStreamSource(stream);
+            vcAnalyser = vcAudioContext.createAnalyser();
+            vcAnalyser.fftSize = 256;
+            src.connect(vcAnalyser);
+            const dataArr = new Uint8Array(vcAnalyser.frequencyBinCount);
+            function updateLevel() {
+              vcAnalyser.getByteFrequencyData(dataArr);
+              const avg = dataArr.reduce((a, b) => a + b, 0) / dataArr.length;
+              $("vc-level-fill").style.width = Math.min(100, avg / 128 * 100) + "%";
+              vcLevelRafId = requestAnimationFrame(updateLevel);
+            }
+            updateLevel();
+            // Timer
+            vcTimerInterval = setInterval(() => {
+              const secs = Math.floor((Date.now() - vcRecordingStartTime) / 1000);
+              $("vc-record-timer").textContent = `${Math.floor(secs / 60)}:${(secs % 60).toString().padStart(2, "0")}`;
+            }, 500);
+          })
+          .catch(err => {
+            $("vc-save-status").textContent = "Microphone access denied: " + err.message;
+            $("vc-save-status").style.color = "var(--danger)";
+          });
+      }
+
+      function vcStopRecording() {
+        if (vcMediaRecorder && vcMediaRecorder.state === "recording") {
+          vcMediaRecorder.stop();
+        }
+      }
+
+      function vcToggleRecording() {
+        if (vcMediaRecorder && vcMediaRecorder.state === "recording") {
+          vcStopRecording();
+        } else {
+          vcStartRecording();
+        }
+      }
+
+      function vcShowPreview(blob) {
+        const player = $("vc-audio-player");
+        const prevUrl = player.src;
+        if (prevUrl) URL.revokeObjectURL(prevUrl);
+        const url = URL.createObjectURL(blob);
+        player.src = url;
+        const sizeMB = (blob.size / 1024 / 1024).toFixed(2);
+        $("vc-preview-info").textContent = `${sizeMB} MB · ${blob.type}`;
+        $("vc-preview-section").style.display = "";
+        $("vc-save-status").textContent = "";
+      }
+
+      function vcPlayPreview() {
+        const player = $("vc-audio-player");
+        if (player.paused) { player.play(); $("vc-play-btn").textContent = "Pause"; }
+        else { player.pause(); $("vc-play-btn").textContent = "Play"; }
+      }
+
+      function vcDiscardPreview() {
+        const player = $("vc-audio-player");
+        player.pause();
+        if (player.src) URL.revokeObjectURL(player.src);
+        player.src = "";
+        vcRecordingBlob = null;
+        $("vc-preview-section").style.display = "none";
+        $("vc-play-btn").textContent = "Play";
+        $("vc-record-timer").textContent = "";
+      }
+
+      async function vcSaveClonedVoice() {
+        const statusEl = $("vc-save-status");
+        const label = ($("vc-label-input").value || "").trim();
+        if (!label) { statusEl.textContent = "Please enter a name for this voice."; statusEl.style.color = "var(--danger)"; return; }
+        if (!vcRecordingBlob) { statusEl.textContent = "No audio to save. Record or upload a sample first."; statusEl.style.color = "var(--danger)"; return; }
+
+        statusEl.textContent = "Uploading…";
+        statusEl.style.color = "var(--muted)";
+
+        try {
+          // Upload the audio file
+          const formData = new FormData();
+          const ext = vcRecordingBlob.type.includes("wav") ? ".wav" : vcRecordingBlob.type.includes("mp3") ? ".mp3" : ".webm";
+          formData.append("audio", vcRecordingBlob, `voice-clone-${Date.now()}${ext}`);
+
+          const headers = new Headers();
+          if (ownerAuthToken) headers.set("X-Admin-Key", ownerAuthToken);
+          headers.set("X-Tenant-ID", OWNER_TENANT_ID);
+
+          const uploadRes = await fetch("/api/admin/voice-recordings", { method: "POST", headers, body: formData });
+          if (!uploadRes.ok) throw new Error(await uploadRes.text());
+          const uploadData = await uploadRes.json();
+          const speakerWavUrl = uploadData.url;
+
+          statusEl.textContent = "Saving voice profile…";
+
+          // Save as cloned voice via TTS config
+          await ownerFetch("/api/tts/config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ttsMode: "coqui_xtts",
+              defaultVoiceMode: "cloned",
+              clonedVoice: { speakerWavUrl, label },
+            }),
+          });
+
+          // Add to local cache and refresh UI
+          const newVoice = { id: "cloned_" + Date.now(), label, speakerWavUrl };
+          voiceConfig.clonedVoices.push(newVoice);
+          voiceConfig.activeVoiceId = `cloned:${newVoice.id}`;
+          voiceConfig.defaultVoiceMode = "cloned";
+          renderVoiceSelector();
+          renderClonedVoicesList();
+          vcDiscardPreview();
+
+          statusEl.textContent = "Voice saved and activated!";
+          statusEl.style.color = "var(--success)";
+          setTimeout(() => { if (statusEl.textContent === "Voice saved and activated!") statusEl.textContent = ""; }, 4000);
+        } catch (err) {
+          statusEl.textContent = "Failed: " + err.message;
+          statusEl.style.color = "var(--danger)";
+        }
+      }
+
+      function vcHandleFileDrop(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        $("vc-drop-zone").style.borderColor = "var(--border)";
+        $("vc-drop-zone").style.background = "";
+        const files = e.dataTransfer?.files || e.target?.files;
+        if (!files || files.length === 0) return;
+        const file = files[0];
+        if (file.size > 10 * 1024 * 1024) {
+          $("vc-save-status").textContent = "File too large. Max 10 MB.";
+          $("vc-save-status").style.color = "var(--danger)";
+          return;
+        }
+        vcRecordingBlob = file;
+        vcShowPreview(file);
+      }
+
+      function vcSetupDropZone() {
+        const zone = $("vc-drop-zone");
+        const fileInput = $("vc-file-input");
+        zone.addEventListener("click", () => fileInput.click());
+        fileInput.addEventListener("change", vcHandleFileDrop);
+        zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.style.borderColor = "var(--accent)"; zone.style.background = "rgba(201,160,78,0.05)"; });
+        zone.addEventListener("dragleave", () => { zone.style.borderColor = "var(--border)"; zone.style.background = ""; });
+        zone.addEventListener("drop", vcHandleFileDrop);
       }
 
       /* ── Telnyx Integration ─────────────────────────── */
@@ -1519,10 +1878,24 @@
         $("bill-manage-billing").addEventListener("click", () => requireAuth(() => openOwnerBillingPortal()));
         $("bill-pay-now").addEventListener("click", () => requireAuth(() => payNowOwner()));
         $("owner-save-prompts").addEventListener("click", () => requireAuth(() => saveOwnerPrompts()));
+        $("owner-save-business-info").addEventListener("click", () => requireAuth(() => saveOwnerBusinessInfo()));
         $("owner-refresh").addEventListener("click", () => requireAuth(() => loadOwnerData()));
         
         // Voice settings event listeners
         $("save-voice-settings").addEventListener("click", () => requireAuth(() => saveVoiceSettings()));
+
+        // Tuning slider listeners
+        bindTuningSliders();
+        $("save-tuning").addEventListener("click", () => requireAuth(() => saveTuning()));
+        $("reset-tuning").addEventListener("click", () => resetTuning());
+
+        // Voice cloning listeners
+        $("vc-record-btn").addEventListener("click", () => requireAuth(() => vcToggleRecording()));
+        $("vc-play-btn").addEventListener("click", () => vcPlayPreview());
+        $("vc-discard-btn").addEventListener("click", () => vcDiscardPreview());
+        $("vc-save-btn").addEventListener("click", () => requireAuth(() => vcSaveClonedVoice()));
+        $("vc-audio-player").addEventListener("ended", () => { $("vc-play-btn").textContent = "Play"; });
+        vcSetupDropZone();
 
         // Telnyx event listeners
         $("telnyx-get-number").addEventListener("click", () => searchAndShowNumbers());

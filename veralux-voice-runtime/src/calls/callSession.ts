@@ -101,6 +101,7 @@ export class CallSession {
   private readonly ttsConfig?: RuntimeTenantConfig['tts'];
   private readonly transferProfiles?: RuntimeTenantConfig['transferProfiles'];
   private readonly assistantContext?: RuntimeTenantConfig['assistantContext'];
+  private readonly _greetingText?: string;
 
   /**
    * Voice mode for XTTS: 'preset' uses built-in voice_id, 'cloned' uses reference audio.
@@ -286,6 +287,7 @@ export class CallSession {
     this.ttsConfig = config.tenantConfig?.tts;
     this.transferProfiles = config.tenantConfig?.transferProfiles;
     this.assistantContext = config.tenantConfig?.assistantContext;
+    this._greetingText = (config.tenantConfig as any)?.greetingText;
 
     this.logContext = {
       call_control_id: this.callControlId,
@@ -2169,8 +2171,11 @@ export class CallSession {
 
       this.onAnswered();
 
+      // Resolve greeting: tenant config > env > default
+      const _resolvedGreeting = this._greetingText || env.GREETING_TEXT || 'Hi! Thanks for calling. How can I help you today?';
+
       if (this.transport.mode === 'webrtc_hd') {
-        await this.playText(env.GREETING_TEXT ?? 'Hi! Thanks for calling. How can I help you today?', 'greeting');
+        await this.playText(_resolvedGreeting, 'greeting');
         return;
       }
 
@@ -2197,7 +2202,7 @@ export class CallSession {
         }
         // Fallback: greeting.wav may be missing (XTTS down at startup). Use live TTS.
         log.warn({ err: error, ...this.logContext }, 'greeting URL playback failed, using live TTS');
-        await this.playText(env.GREETING_TEXT ?? 'Hi! Thanks for calling. How can I help you today?', 'greeting');
+        await this.playText(_resolvedGreeting, 'greeting');
         return;
       }
 

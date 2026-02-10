@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src http://localhost:*;" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VeraLux Receptionist</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- Titlebar / Navigation -->
+  <div class="titlebar">
+    <div class="titlebar-brand">
+      <img class="logo" src="../assets/icon.png" alt="V" />
+      <span>VeraLux</span>
+    </div>
+    <div class="tab-nav">
+      <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="owner-panel">Owner Panel</button>
+      <button class="tab-btn" data-tab="logs">Logs</button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+    </div>
+  </div>
+
+  <!-- Tab Panels -->
+  <div class="content">
+
+    <!-- Dashboard -->
+    <div class="tab-panel active" id="dashboard">
+      <div class="dashboard-controls">
+        <button class="btn btn-success btn-sm" id="btn-start-all">Start All</button>
+        <button class="btn btn-danger btn-sm" id="btn-stop-all">Stop All</button>
+        <button class="btn btn-sm" id="btn-restart-all">Restart All</button>
+        <div class="status-summary" id="status-summary"></div>
+      </div>
+      <div class="gpu-bar" id="gpu-bar" style="display:none">
+        <span class="gpu-label">GPU</span>
+        <span id="gpu-util">—</span>
+        <div class="gpu-meter"><div class="gpu-meter-fill" id="gpu-fill" style="width:0%"></div></div>
+        <span id="gpu-mem">—</span>
+      </div>
+      <div class="service-grid" id="service-grid"></div>
+    </div>
+
+    <!-- Owner Panel -->
+    <div class="tab-panel" id="owner-panel">
+      <div class="owner-toolbar">
+        <button class="btn btn-sm" id="btn-reload-owner">Reload</button>
+        <span>Owner configuration panel</span>
+      </div>
+      <iframe id="owner-frame" src="about:blank"></iframe>
+    </div>
+
+    <!-- Logs -->
+    <div class="tab-panel" id="logs">
+      <div class="logs-toolbar">
+        <select id="log-service-select"></select>
+        <input type="text" id="log-filter" placeholder="Filter logs..." />
+        <button class="btn btn-sm" id="btn-log-pause">Pause</button>
+        <button class="btn btn-sm" id="btn-log-clear">Clear</button>
+      </div>
+      <div class="log-output" id="log-output"></div>
+    </div>
+
+    <!-- Settings -->
+    <div class="tab-panel" id="settings">
+      <div class="settings-toolbar">
+        <button class="btn btn-primary btn-sm" id="btn-save-settings">Save .env</button>
+        <button class="btn btn-sm" id="btn-reload-settings">Reload</button>
+        <span class="settings-status" id="settings-status"></span>
+      </div>
+      <textarea class="env-editor" id="env-editor" spellcheck="false"></textarea>
+    </div>
+
+  </div>
+
+  <!-- Status Bar -->
+  <div class="statusbar">
+    <span id="sb-overall"><span class="dot-inline" style="background:var(--muted)"></span> Connecting...</span>
+    <span id="sb-services"></span>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast hidden" id="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

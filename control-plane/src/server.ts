@@ -525,6 +525,7 @@ async function syncLLMContextToRuntime(tenant: TenantContext): Promise<void> {
     const prompts = tenant.config.getPrompts();
     const updatedConfig: RuntimeTenantConfig = {
       ...existing,
+      greetingText: prompts.greetingText,
       llmContext: {
         forwardingProfiles: tenant.forwardingProfiles.map((p) => ({
           id: p.id,
@@ -552,6 +553,21 @@ async function syncLLMContextToRuntime(tenant: TenantContext): Promise<void> {
 
     await publishTenantConfig(tenant.id, updatedConfig);
     console.debug(`[syncLLMContext] Updated LLM context for tenant ${tenant.id}`);
+
+    // Trigger greeting regeneration on the runtime
+    if (prompts.greetingText) {
+      try {
+        const runtimeUrl = process.env.RUNTIME_URL || "http://veralux-runtime:3001";
+        await fetch(`${runtimeUrl}/admin/regenerate-greeting`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ greetingText: prompts.greetingText }),
+        });
+        console.debug(`[syncLLMContext] Triggered greeting regeneration for tenant ${tenant.id}`);
+      } catch (greetErr) {
+        console.error(`[syncLLMContext] Failed to trigger greeting regeneration:`, greetErr);
+      }
+    }
   } catch (err) {
     console.error(`[syncLLMContext] Failed to sync LLM context for tenant ${tenant.id}:`, err);
   }
@@ -1378,7 +1394,6 @@ app.post("/api/admin/stripe/sync", asyncHandler(async (req, res) => {
 type ExtendedTtsConfig = TTSConfig & {
   mode?: string;
   voice?: string;
-  coquiSpeed?: number;
 };
 
 app.get("/api/tts/config", (req, res) => {
@@ -1387,31 +1402,17 @@ app.get("/api/tts/config", (req, res) => {
   
   const baseCfg = tenant.config.getSafeTtsConfig();
   
-  // Return extended config with mode info
+  // Return extended config with mode info and tuning params
   const extendedCfg: ExtendedTtsConfig = {
     ...baseCfg,
-    mode: (baseCfg as any).ttsMode || "kokoro_http",
-    ttsMode: (baseCfg as any).ttsMode || "kokoro_http",
+    mode: baseCfg.ttsMode || "kokoro_http",
+    ttsMode: baseCfg.ttsMode || "kokoro_http",
   };
-  
-  // Include voice cloning fields if present
-  if ((baseCfg as any).defaultVoiceMode) {
-    extendedCfg.defaultVoiceMode = (baseCfg as any).defaultVoiceMode;
-  }
-  if ((baseCfg as any).clonedVoice) {
-    extendedCfg.clonedVoice = (baseCfg as any).clonedVoice;
-  }
-  if ((baseCfg as any).coquiXttsUrl) {
-    extendedCfg.coquiXttsUrl = (baseCfg as any).coquiXttsUrl;
-  }
-  if ((baseCfg as any).kokoroUrl) {
-    extendedCfg.kokoroUrl = (baseCfg as any).kokoroUrl;
-  }
   
   res.json(extendedCfg);
 });
 
-app.post("/api/tts/config", (req, res) => {
+app.post("/api/tts/config", async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);
   if (!tenant) return;
 
@@ -1426,6 +1427,12 @@ app.post("/api/tts/config", (req, res) => {
     ttsMode,
     defaultVoiceMode,
     clonedVoice,
+    coquiTemperature,
+    coquiSpeed,
+    coquiTopP,
+    coquiTopK,
+    coquiRepetitionPenalty,
+    coquiLengthPenalty,
   } = req.body as Partial<ExtendedTtsConfig>;
 
   // Determine the TTS URL based on mode
@@ -1500,19 +1507,34 @@ app.post("/api/tts/config", (req, res) => {
     configUpdate.clonedVoice = undefined;
   }
 
+  // XTTS tuning parameters
+  if (typeof coquiTemperature === "number") configUpdate.coquiTemperature = clamp(coquiTemperature, 0.01, 1.5);
+  if (typeof coquiSpeed === "number") configUpdate.coquiSpeed = clamp(coquiSpeed, 0.5, 2.0);
+  if (typeof coquiTopP === "number") configUpdate.coquiTopP = clamp(coquiTopP, 0.1, 1.0);
+  if (typeof coquiTopK === "number") configUpdate.coquiTopK = Math.round(clamp(coquiTopK, 1, 200));
+  if (typeof coquiRepetitionPenalty === "number") configUpdate.coquiRepetitionPenalty = clamp(coquiRepetitionPenalty, 1.0, 5.0);
+  if (typeof coquiLengthPenalty === "number") configUpdate.coquiLengthPenalty = clamp(coquiLengthPenalty, 0.5, 2.0);
+
   const updated = tenant.config.setTtsConfig(configUpdate);
 
   tenants.persistConfig(tenant.id);
+
+  // Sync tuning params to runtime via Redis
+  try {
+    const existing = await getTenantConfig(tenant.id);
+    if (existing) {
+      const tts = { ...(existing.tts || {}), ...configUpdate };
+      await publishTenantConfig(tenant.id, { ...existing, tts } as any);
+    }
+  } catch (syncErr) {
+    console.error("[tts/config] Redis sync error:", syncErr);
+  }
   
   // Return extended config with all fields
   const response: ExtendedTtsConfig = {
     ...updated,
     mode: configUpdate.ttsMode,
     ttsMode: configUpdate.ttsMode,
-    defaultVoiceMode: configUpdate.defaultVoiceMode,
-    clonedVoice: configUpdate.clonedVoice,
-    coquiXttsUrl: configUpdate.coquiXttsUrl,
-    kokoroUrl: configUpdate.kokoroUrl,
   };
   
   res.json(response);
