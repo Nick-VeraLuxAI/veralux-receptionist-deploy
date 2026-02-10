@@ -11,6 +11,7 @@ WORKDIR /app
 
 # Install build/runtime dependencies required by native modules (wrtc, onnxruntime, opus, etc.)
 # wget is needed for Docker health checks
+# libspeexdsp-dev provides SpeexDSP for Acoustic Echo Cancellation (AEC)
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       python3 \
@@ -19,6 +20,7 @@ RUN apt-get update && \
       pkg-config \
       libopus0 \
       libgomp1 \
+      libspeexdsp-dev \
       ffmpeg \
       wget && \
     rm -rf /var/lib/apt/lists/*
