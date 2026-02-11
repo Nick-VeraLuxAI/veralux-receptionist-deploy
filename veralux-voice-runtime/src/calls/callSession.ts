@@ -53,23 +53,36 @@ const WHISPER_HALLUCINATIONS = [
   'please subscribe',
   'like and subscribe',
   'see you next time',
-  'bye bye',
   'the end',
   'you',         // Whisper often returns bare "you" for noise
-  'i\'m going to',
-  'so',
-  'okay',
-  'um',
-  'uh',
 ];
+
+// Short responses that are legitimate in a phone conversation and should
+// never be rejected, even though they are 1-2 words.
+const VALID_SHORT_RESPONSES = new Set([
+  'no', 'yes', 'yeah', 'yep', 'nope', 'nah',
+  'no thanks', 'no thank you', 'yes please',
+  'goodbye', 'bye', 'bye bye', 'good bye',
+  'okay', 'ok', 'sure', 'thanks', 'thank you',
+  'hello', 'hi', 'hey',
+  'help', 'transfer', 'operator', 'agent',
+  'that\'s all', 'thats all', 'that is all', 'all good',
+  'i\'m good', 'im good', 'nothing', 'never mind', 'nevermind',
+  'not right now', 'no i\'m good', 'no im good',
+]);
 
 function detectGibberish(text: string): { gibberish: boolean; reason?: string } {
   const trimmed = text.trim().toLowerCase().replace(/[^\w\s']/g, '');
   const words = trimmed.split(/\s+/).filter(w => w.length > 0);
 
-  // 1) Too few words to be a meaningful utterance
-  if (words.length < 3) {
-    return { gibberish: true, reason: 'too_few_words' };
+  // 0) Allow known valid short responses — never reject these
+  if (VALID_SHORT_RESPONSES.has(trimmed)) {
+    return { gibberish: false };
+  }
+
+  // 1) Single bare word that isn't in the valid set — likely noise
+  if (words.length === 1) {
+    return { gibberish: true, reason: 'single_word_noise' };
   }
 
   // 2) Known Whisper hallucination phrases
