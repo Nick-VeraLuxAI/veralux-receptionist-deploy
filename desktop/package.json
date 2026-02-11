@@ -8,7 +8,7 @@
     "dev": "electron . --dev"
   },
   "author": "Nick <nick@veralux.ai>",
-  "license": "UNLICENSED",
+  "license": "SEE LICENSE IN ../LICENSE",
   "private": true,
   "dependencies": {
     "electron": "^33.0.0"
