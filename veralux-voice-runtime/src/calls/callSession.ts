@@ -43,6 +43,61 @@ import { startStageTimer, incStageError, observeStageDuration, incSttFramesFed }
 
 const PARTIAL_FAST_PATH_MIN_CHARS = 18;
 
+// ─── Gibberish / Low-Quality Transcript Detection ────────────────────────────
+// Catches common Whisper misheard / hallucinated outputs before they hit the LLM.
+// Returns { gibberish: true, reason } if the transcript should be rejected.
+
+const WHISPER_HALLUCINATIONS = [
+  'thank you for watching',
+  'thanks for watching',
+  'please subscribe',
+  'like and subscribe',
+  'see you next time',
+  'bye bye',
+  'the end',
+  'you',         // Whisper often returns bare "you" for noise
+  'i\'m going to',
+  'so',
+  'okay',
+  'um',
+  'uh',
+];
+
+function detectGibberish(text: string): { gibberish: boolean; reason?: string } {
+  const trimmed = text.trim().toLowerCase().replace(/[^\w\s']/g, '');
+  const words = trimmed.split(/\s+/).filter(w => w.length > 0);
+
+  // 1) Too few words to be a meaningful utterance
+  if (words.length < 3) {
+    return { gibberish: true, reason: 'too_few_words' };
+  }
+
+  // 2) Known Whisper hallucination phrases
+  for (const hallucination of WHISPER_HALLUCINATIONS) {
+    if (trimmed === hallucination || trimmed.startsWith(hallucination + ' ')) {
+      return { gibberish: true, reason: `hallucination:${hallucination}` };
+    }
+  }
+
+  // 3) Excessive repeated words (e.g., "the the the the")
+  const wordCounts = new Map<string, number>();
+  for (const w of words) {
+    wordCounts.set(w, (wordCounts.get(w) || 0) + 1);
+  }
+  const maxRepeat = Math.max(...wordCounts.values());
+  if (words.length >= 4 && maxRepeat / words.length > 0.6) {
+    return { gibberish: true, reason: 'excessive_repetition' };
+  }
+
+  // 4) Very short total characters relative to word count (random syllables)
+  const avgWordLen = trimmed.replace(/\s/g, '').length / words.length;
+  if (words.length >= 3 && avgWordLen < 2) {
+    return { gibberish: true, reason: 'very_short_words' };
+  }
+
+  return { gibberish: false };
+}
+
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return 'unknown_error';
@@ -139,6 +194,9 @@ export class CallSession {
 
   private isHandlingTranscript = false;
   private hasStarted = false;
+  /** Consecutive gibberish/reprompt count — after N retries we pass through to the brain. */
+  private gibberishRetryCount = 0;
+  private readonly gibberishMaxRetries = 2;
   private turnSequence = 0;
   private deadAirTimer?: NodeJS.Timeout;
   private deadAirEligible = false;
@@ -1807,6 +1865,47 @@ export class CallSession {
       },
       'turn trigger',
     );
+
+    // ─── Gibberish guard: reject low-quality / hallucinated STT output ───
+    const gibberishCheck = detectGibberish(trimmed);
+    if (gibberishCheck.gibberish && this.gibberishRetryCount < this.gibberishMaxRetries) {
+      this.gibberishRetryCount += 1;
+      log.warn(
+        {
+          event: 'transcript_rejected_gibberish',
+          reason: gibberishCheck.reason,
+          retry: this.gibberishRetryCount,
+          max_retries: this.gibberishMaxRetries,
+          transcript_preview: trimmed.slice(0, 80),
+          ...this.logContext,
+        },
+        'transcript rejected as gibberish — prompting caller to repeat',
+      );
+
+      // Play a reprompt and return to listening
+      const turnId = `clarify-${this.nextTurnId()}`;
+      this.isHandlingTranscript = true;
+      try {
+        await this.playText(
+          "Sorry, I didn't quite catch that. Could you please say that again?",
+          turnId,
+        );
+      } finally {
+        this.isHandlingTranscript = false;
+        this.resetTranscriptTracking();
+        if (this.active && this.state !== ('ENDED' as CallSessionState)) {
+          if (!this.isPlaybackActive() && this.state !== 'LISTENING') {
+            this.enterListeningState(true);
+          }
+        }
+      }
+      return;
+    }
+
+    // Reset gibberish counter on a good transcript
+    if (!gibberishCheck.gibberish) {
+      this.gibberishRetryCount = 0;
+    }
 
     // Accept this FINAL as the utterance we will respond to.
     this.transcriptAcceptedForUtterance = true;
