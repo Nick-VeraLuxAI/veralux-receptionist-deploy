@@ -344,56 +344,6 @@
 
     <main class="owner-main">
       <section class="owner-panel">
-        <h2>Your business line</h2>
-        <p class="help">Enter the phone number callers dial to reach your business. We'll set up your AI receptionist to answer it.</p>
-
-        <div class="row" style="margin-top: 12px;">
-          <input type="text" id="owner-numbers" placeholder="e.g. +15551234567" style="flex: 1; min-width: 200px" />
-          <button type="button" id="owner-save-numbers">Connect</button>
-        </div>
-        <div id="owner-numbers-status" class="help" style="margin-top: 8px; min-height: 20px;"></div>
-
-        <!-- Number not found prompt -->
-        <div id="number-not-found" style="display: none; margin-top: 16px; padding: 20px; border-radius: 12px; background: var(--surface-hover); border: 1px solid var(--border);">
-          <p style="margin: 0 0 16px; font-size: 14px;"><strong>That number isn't set up for your AI receptionist yet.</strong></p>
-          <p class="help" style="margin: 0 0 8px;">Choose how to connect your business line:</p>
-
-          <!-- Option 1: Get new number + forwarding -->
-          <div style="margin: 16px 0; padding: 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border);">
-            <p style="margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--accent);">Option 1: Get a new number + forward calls (Recommended)</p>
-            <p class="help" style="margin: 0 0 10px;">Get a new number now, then set up call forwarding on your existing line. Works in minutes.</p>
-            <div class="row" style="flex-wrap: wrap; gap: 8px;">
-              <select id="telnyx-country" style="width: 80px;">
-                <option value="US">US</option>
-                <option value="CA">CA</option>
-                <option value="GB">UK</option>
-              </select>
-              <input type="text" id="telnyx-area" class="sm" placeholder="Area code" style="width: 100px;" />
-              <button type="button" id="telnyx-get-number">Find numbers</button>
-            </div>
-            <ul id="telnyx-available-list" class="owner-list" style="max-height: 140px; overflow-y: auto; margin-top: 10px;"></ul>
-            <div id="telnyx-purchase-status" class="help" style="margin-top: 6px; min-height: 18px;"></div>
-          </div>
-
-          <!-- Option 2: Port number -->
-          <div style="padding: 14px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border);">
-            <p style="margin: 0 0 8px; font-size: 13px; font-weight: 600; color: var(--text-soft);">Option 2: Port your number (3-10 days)</p>
-            <p class="help" style="margin: 0;">Transfer ownership of your number to Telnyx. Once complete, calls go directly to your receptionist without forwarding. <a href="https://portal.telnyx.com/#/numbers/porting" target="_blank" style="color: var(--accent);">Start port request →</a></p>
-          </div>
-        </div>
-
-        <!-- Success state -->
-        <div id="number-provisioned" style="display: none; margin-top: 16px; padding: 16px; border-radius: 12px; background: rgba(52, 211, 153, 0.1); border: 1px solid rgba(52, 211, 153, 0.25);">
-          <p style="margin: 0; color: var(--success);"><strong>✓ Your receptionist is ready!</strong></p>
-          <p class="help" style="margin: 8px 0 0;">Calls to <strong id="provisioned-number"></strong> will be answered by your AI receptionist.</p>
-          <div id="forwarding-instructions" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(52, 211, 153, 0.2);">
-            <p class="help" style="margin: 0 0 6px;"><strong>Next step:</strong> Set up call forwarding from <strong id="business-number-display"></strong> to <strong id="telnyx-number-display"></strong></p>
-            <p class="help" style="margin: 0;">On most phones, dial <code style="background: var(--surface); padding: 2px 6px; border-radius: 4px;">*72<span id="forward-to-number"></span></code> or configure forwarding in your carrier's app/website.</p>
-          </div>
-        </div>
-      </section>
-
-      <section class="owner-panel">
         <h2>When to transfer calls</h2>
         <p class="help">Who should the receptionist transfer callers to? Add yourself or your team (name, number, role).</p>
         <div class="row">
@@ -962,33 +912,6 @@
           const myTelnyxNumbers = me.numbers || [];
           const myBusinessNumber = me.businessNumber || "";
 
-          // Show the business number in the input (what customers dial)
-          $("owner-numbers").value = myBusinessNumber || myTelnyxNumbers.join(", ");
-
-          // Also set pendingBusinessNumber so it's available if they proceed to purchase
-          if (myBusinessNumber) {
-            pendingBusinessNumber = myBusinessNumber;
-          }
-
-          // Check if we have a complete setup (Telnyx number linked)
-          if (myTelnyxNumbers.length > 0) {
-            if (telnyxConfigured) {
-              const match = findTelnyxNumber(myTelnyxNumbers[0]);
-              if (match && match.provisioned) {
-                showProvisionedState(myTelnyxNumbers[0], myBusinessNumber || null);
-              } else if (match) {
-                // Number exists but not provisioned yet - show status
-                $("owner-numbers-status").innerHTML = `<span class="help">Telnyx number found but not yet provisioned. Click Connect to complete setup.</span>`;
-              }
-            } else {
-              // Telnyx not configured but we have a number saved - show provisioned
-              showProvisionedState(myTelnyxNumbers[0], myBusinessNumber || null);
-            }
-          } else if (myBusinessNumber && telnyxConfigured) {
-            // Business number saved but no Telnyx number yet - incomplete setup
-            $("owner-numbers-status").innerHTML = `<span class="help" style="color: var(--accent-warm);">Business number saved. Click Connect to get a Telnyx number for call forwarding.</span>`;
-          }
-
           forwardingProfilesCache = Array.isArray(profilesRes?.profiles) ? profilesRes.profiles : [];
           pricingCache = pricingRes && typeof pricingRes === "object"
             ? { items: Array.isArray(pricingRes.items) ? pricingRes.items : [], notes: pricingRes.notes || "" }
@@ -1012,7 +935,6 @@
           if (billingRes) renderBilling(billingRes);
         } catch (err) {
           console.error("loadOwnerData error:", err);
-          $("owner-numbers-status").textContent = "";
         } finally {
           const refreshBtn = $("owner-refresh");
           if (refreshBtn) { refreshBtn.textContent = "Refresh"; refreshBtn.disabled = false; }
@@ -1835,248 +1757,6 @@
         }
       }
 
-      function normalizePhone(num) {
-        // Strip everything except digits and leading +
-        let n = (num || "").trim();
-        if (n.startsWith("+")) return "+" + n.slice(1).replace(/\D/g, "");
-        return n.replace(/\D/g, "");
-      }
-
-      function findTelnyxNumber(phoneNumber) {
-        const normalized = normalizePhone(phoneNumber);
-        const withPlus = normalized.startsWith("+") ? normalized : "+" + normalized;
-        const withoutPlus = normalized.replace(/^\+/, "");
-        return telnyxNumbers.find((n) => {
-          const tn = normalizePhone(n.phone_number);
-          return tn === withPlus || tn === withoutPlus || tn === normalized;
-        });
-      }
-
-      async function saveAndProvisionNumber() {
-        const statusEl = $("owner-numbers-status");
-        const notFoundEl = $("number-not-found");
-        const provisionedEl = $("number-provisioned");
-        const raw = ($("owner-numbers").value || "").trim();
-
-        if (!raw) {
-          statusEl.textContent = "Please enter a phone number.";
-          return;
-        }
-
-        // Remember this as the business number for later
-        pendingBusinessNumber = raw;
-
-        statusEl.innerHTML = `<span style="color: var(--muted);">Checking number…</span>`;
-        notFoundEl.style.display = "none";
-        provisionedEl.style.display = "none";
-
-        // Re-check Telnyx numbers
-        if (telnyxConfigured) {
-          try {
-            const numData = await ownerFetch("/api/admin/telnyx/numbers", { skipTenantHeader: true });
-            telnyxNumbers = numData.numbers || [];
-          } catch {}
-        }
-
-        const match = telnyxConfigured ? findTelnyxNumber(raw) : null;
-
-        if (match) {
-          // Number found in Telnyx — auto-provision it (it's already a Telnyx number)
-          statusEl.innerHTML = `<span style="color: var(--muted);">Setting up ${escapeHtml(match.phone_number)}…</span>`;
-
-          try {
-            // Provision (assign webhook)
-            if (!match.provisioned) {
-              const provRes = await fetch("/api/admin/telnyx/provision", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "X-Admin-Key": ownerAuthToken },
-                body: JSON.stringify({ phone_number: match.phone_number }),
-              });
-              if (!provRes.ok) {
-                const err = await provRes.json();
-                throw new Error(err.message || err.error);
-              }
-            }
-
-            // Save to tenant (no businessNumber needed since they entered their Telnyx number directly)
-            await ownerFetch("/api/admin/tenants", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ id: OWNER_TENANT_ID, name: "My business", numbers: [match.phone_number] }),
-            });
-
-            $("owner-numbers").value = match.phone_number;
-            statusEl.innerHTML = "";
-            showProvisionedState(match.phone_number, null);
-            refreshReadyStatus();
-          } catch (err) {
-            statusEl.innerHTML = `<span style="color: var(--danger);">Setup failed: ${escapeHtml(err.message)}</span>`;
-          }
-        } else if (telnyxConfigured) {
-          // Number NOT in Telnyx — show options to get a Telnyx number
-          statusEl.innerHTML = "";
-          notFoundEl.style.display = "block";
-          $("telnyx-available-list").innerHTML = "";
-          $("telnyx-purchase-status").textContent = "";
-
-          // Extract area code from business number and pre-fill search
-          const digits = raw.replace(/\D/g, "");
-          let areaCode = "";
-          if (digits.length === 10) {
-            areaCode = digits.substring(0, 3);
-          } else if (digits.length === 11 && digits.startsWith("1")) {
-            areaCode = digits.substring(1, 4);
-          }
-          if (areaCode) {
-            $("telnyx-area").value = areaCode;
-            // Auto-search for numbers in their area
-            searchAndShowNumbers();
-          }
-        } else {
-          // Telnyx not configured — save business number only, they'll need to set up manually
-          try {
-            await ownerFetch("/api/admin/tenants", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ id: OWNER_TENANT_ID, name: "My business", businessNumber: raw }),
-            });
-            statusEl.innerHTML = `<span style="color: var(--accent-warm);">Business number saved.</span> <span class="help">To complete setup, add <code>TELNYX_API_KEY</code> to enable automatic provisioning, or manually configure call forwarding.</span>`;
-          } catch (err) {
-            statusEl.innerHTML = `<span style="color: var(--danger);">Failed: ${escapeHtml(err.message)}</span>`;
-          }
-        }
-      }
-
-      async function searchAndShowNumbers() {
-        const list = $("telnyx-available-list");
-        const statusEl = $("telnyx-purchase-status");
-        const country = $("telnyx-country").value;
-        const areaCode = ($("telnyx-area").value || "").trim();
-
-        list.innerHTML = "<li class=\"help\">Searching…</li>";
-        statusEl.textContent = "";
-
-        try {
-          const params = new URLSearchParams({ country, limit: "5" });
-          if (areaCode) params.set("contains", areaCode);
-
-          const res = await fetch(`/api/admin/telnyx/available?${params.toString()}`, {
-            headers: { "X-Admin-Key": ownerAuthToken },
-          });
-          const data = await res.json();
-
-          if (!res.ok) throw new Error(data.message || data.error);
-
-          const numbers = data.numbers || [];
-          if (numbers.length === 0) {
-            list.innerHTML = "<li class=\"help\">No numbers found. Try a different area code.</li>";
-            return;
-          }
-
-          list.innerHTML = "";
-          numbers.forEach((n) => {
-            const li = document.createElement("li");
-            const rawMonthlyCost = parseFloat(n.cost_information?.monthly_cost) || 0;
-            const rawUpfrontCost = parseFloat(n.cost_information?.upfront_cost) || 0;
-            const currency = n.cost_information?.currency || "USD";
-            const displayMonthly = (rawMonthlyCost * PRICE_MARKUP).toFixed(2);
-            const region = n.region_information?.map(r => r.region_name).join(", ") || "";
-            li.innerHTML = `
-              <span>
-                <strong>${escapeHtml(n.phone_number)}</strong>
-                <span class="help">${escapeHtml(region)} $${displayMonthly}/mo</span>
-              </span>
-              <button type="button" class="secondary" style="font-size: 12px; padding: 4px 10px;">Get this number</button>
-            `;
-            li.querySelector("button").onclick = () => confirmPurchase(n.phone_number, rawMonthlyCost, rawUpfrontCost, currency);
-            list.appendChild(li);
-          });
-        } catch (err) {
-          list.innerHTML = `<li class=\"help\" style="color: var(--danger);">Search failed: ${escapeHtml(err.message)}</li>`;
-        }
-      }
-
-      const PRICE_MARKUP = 2.0; // 100% markup (2x the Telnyx cost)
-
-      function confirmPurchase(phoneNumber, monthlyCost, upfrontCost, currency) {
-        const upfront = (parseFloat(upfrontCost) || 0) * PRICE_MARKUP;
-        const monthly = (parseFloat(monthlyCost) || 0) * PRICE_MARKUP;
-        
-        let costMessage = `Monthly: $${monthly.toFixed(2)}`;
-        if (upfront > 0) {
-          costMessage = `One-time: $${upfront.toFixed(2)} + ${costMessage}`;
-        }
-
-        const confirmed = confirm(
-          `Purchase ${phoneNumber}?\n\n` +
-          `Cost: ${costMessage}\n\n` +
-          `This will be added to your VeraLux account. Continue?`
-        );
-
-        if (confirmed) {
-          purchaseAndSetup(phoneNumber);
-        }
-      }
-
-      async function purchaseAndSetup(telnyxNumber) {
-        const statusEl = $("telnyx-purchase-status");
-        const businessNum = pendingBusinessNumber || "";
-
-        statusEl.innerHTML = `<span style="color: var(--muted);">Purchasing and setting up ${escapeHtml(telnyxNumber)}…</span>`;
-
-        try {
-          // Purchase
-          const res = await fetch("/api/admin/telnyx/purchase", {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Admin-Key": ownerAuthToken },
-            body: JSON.stringify({ phone_number: telnyxNumber }),
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.message || data.error);
-
-          // Save to tenant with both business number and Telnyx number
-          await ownerFetch("/api/admin/tenants", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              id: OWNER_TENANT_ID,
-              name: "My business",
-              numbers: [telnyxNumber],
-              businessNumber: businessNum,
-            }),
-          });
-
-          // Keep business number in the input (that's what they entered)
-          $("owner-numbers-status").innerHTML = "";
-          statusEl.textContent = "";
-          showProvisionedState(telnyxNumber, businessNum);
-          refreshReadyStatus();
-        } catch (err) {
-          statusEl.innerHTML = `<span style="color: var(--danger);">Failed: ${escapeHtml(err.message)}</span>`;
-        }
-      }
-
-      let pendingBusinessNumber = ""; // Tracks the business number user entered
-
-      function showProvisionedState(telnyxNumber, businessNumber = null) {
-        if (!telnyxNumber) return;
-        $("number-not-found").style.display = "none";
-        $("number-provisioned").style.display = "block";
-
-        if (businessNumber && businessNumber !== telnyxNumber) {
-          // Show both numbers with forwarding instructions
-          $("provisioned-number").textContent = businessNumber;
-          $("business-number-display").textContent = businessNumber;
-          $("telnyx-number-display").textContent = telnyxNumber;
-          $("forward-to-number").textContent = telnyxNumber;
-          $("forwarding-instructions").style.display = "block";
-        } else {
-          // Direct Telnyx number, no forwarding needed
-          $("provisioned-number").textContent = telnyxNumber;
-          $("forwarding-instructions").style.display = "none";
-        }
-      }
-
       // ── Leads ──
       const TRIGGER_LABELS = {
         call_ended: "Call ended",
@@ -2240,16 +1920,6 @@
           }
         })();
 
-        $("owner-save-numbers").addEventListener("click", () => requireAuth(() => saveAndProvisionNumber()));
-        $("owner-numbers").addEventListener("keydown", (e) => {
-          if (e.key === "Enter") requireAuth(() => saveAndProvisionNumber());
-        });
-        $("owner-numbers").addEventListener("input", () => {
-          // Hide success/error states when user edits the number
-          $("number-provisioned").style.display = "none";
-          $("number-not-found").style.display = "none";
-          $("owner-numbers-status").textContent = "";
-        });
         $("fp-add").addEventListener("click", () => {
           const name = ($("fp-name").value || "").trim();
           const number = ($("fp-number").value || "").trim();
@@ -2306,12 +1976,6 @@
         $("vc-save-btn").addEventListener("click", () => requireAuth(() => vcSaveClonedVoice()));
         $("vc-audio-player").addEventListener("ended", () => { $("vc-play-btn").textContent = "Play"; });
         vcSetupDropZone();
-
-        // Telnyx event listeners
-        $("telnyx-get-number").addEventListener("click", () => searchAndShowNumbers());
-        $("telnyx-area").addEventListener("keydown", (e) => {
-          if (e.key === "Enter") searchAndShowNumbers();
-        });
 
         refreshReadyStatus();
         setInterval(refreshReadyStatus, 30000);
