@@ -21,6 +21,7 @@ import type { TTSResult } from '../tts/types';
 import type { RuntimeTenantConfig } from '../tenants/tenantConfig';
 import { getEffectiveSpeakerWavUrl, type VoiceMode } from '../tenants/tenantConfig';
 import { generateAssistantReply, generateAssistantReplyStream, type AssistantReplyResult } from '../ai/brainClient';
+import { reportCallerMessage } from '../controlPlane';
 import {
   CallSessionConfig,
   CallSessionMetrics,
@@ -194,6 +195,9 @@ export class CallSession {
   private pstnPlaybackWatchdogFor?: string;
 
   private readonly pstnPlaybackWatchdogMs = 8000; // tune 6000–12000ms as needed
+
+  // ===== PSTN streaming: resolve when Telnyx playback.ended webhook fires for the current segment =====
+  private pstnSegmentResolve: (() => void) | null = null;
 
 
   private onSttRequestStart(kind: 'partial' | 'final'): void {
@@ -1004,10 +1008,21 @@ export class CallSession {
         state: this.state,
         playback_active: this.playbackState.active,
         tts_queue_depth: this.ttsSegmentQueueDepth,
+        pstn_segment_streaming: !!this.pstnSegmentResolve,
         ...this.logContext,
       },
       'telnyx playback ended (webhook)',
     );
+
+    // If a streaming segment is waiting for this webhook, resolve it so the next
+    // segment in the chain can start. Don't trigger full playback-end transition yet —
+    // that happens when the segment queue drains to 0.
+    if (this.pstnSegmentResolve) {
+      const resolve = this.pstnSegmentResolve;
+      this.pstnSegmentResolve = null;
+      resolve();
+      return;
+    }
 
     this.endPlaybackAuthoritatively('webhook');
 
@@ -1179,6 +1194,14 @@ export class CallSession {
         'forcing playback end (telnyx playback.ended webhook missing/delayed)',
       );
 
+      // If a streaming segment is waiting for the webhook, unblock it
+      if (this.pstnSegmentResolve) {
+        const resolve = this.pstnSegmentResolve;
+        this.pstnSegmentResolve = null;
+        resolve();
+        return; // let the segment queue drain handle final cleanup
+      }
+
       this.endPlaybackAuthoritatively('watchdog');
     }, this.pstnPlaybackWatchdogMs);
 
@@ -1215,6 +1238,13 @@ export class CallSession {
   private clearTtsQueue(): void {
     this.ttsSegmentChain = Promise.resolve();
     this.ttsSegmentQueueDepth = 0;
+
+    // Unblock any PSTN segment waiting for a playback.ended webhook
+    if (this.pstnSegmentResolve) {
+      const resolve = this.pstnSegmentResolve;
+      this.pstnSegmentResolve = null;
+      resolve();
+    }
   }
 
   private invalidateTranscriptHandling(): void {
@@ -1811,6 +1841,9 @@ export class CallSession {
       this.appendTranscriptSegment(trimmed);
       this.appendHistory({ role: 'user', content: trimmed, timestamp: new Date() });
 
+      // Report caller message to control plane analytics (fire-and-forget)
+      void reportCallerMessage(this.tenantId ?? 'unknown', trimmed);
+
       let response = '';
       let replySource = 'unknown';
       let playbackDone: Promise<void> | undefined;
@@ -1940,6 +1973,27 @@ export class CallSession {
         return;
       }
 
+      // AI requested hangup: play goodbye then end the call.
+      if (replyResult?.hangup) {
+        this.appendHistory({ role: 'assistant', content: response, timestamp: new Date() });
+        if (env.BRAIN_STREAMING_ENABLED && playbackDone) {
+          await playbackDone;
+        } else {
+          await this.playAssistantTurn(response);
+        }
+        log.info(
+          { event: 'ai_hangup_requested', ...this.logContext },
+          'AI requested call hangup after goodbye',
+        );
+        this.markEnded('ai_goodbye');
+        try {
+          await this.transport.stop?.('ai_goodbye');
+        } catch (error) {
+          log.error({ err: error, ...this.logContext }, 'AI hangup failed');
+        }
+        return;
+      }
+
       this.appendHistory({ role: 'assistant', content: response, timestamp: new Date() });
 
       if (env.BRAIN_STREAMING_ENABLED) {
@@ -1989,8 +2043,10 @@ export class CallSession {
     const nextSegmentMin = env.BRAIN_STREAM_SEGMENT_NEXT_CHARS;
     const firstAudioMaxMs = env.BRAIN_STREAM_FIRST_AUDIO_MAX_MS;
 
-    // === PSTN SAFETY: disable TTS streaming segments on PSTN ===
-    // Telnyx "play" does NOT mean "playback finished" — segments will overlap/queue incorrectly.
+    // === PSTN: use non-streaming (single TTS turn) for now ===
+    // The llama3.2:3b model produces unreliable output in streaming mode
+    // (regurgitates prompt examples, adds meta-commentary). Non-streaming
+    // produces consistent short answers. Re-enable when using a better model.
     if (this.transport.mode === 'pstn') {
       const tenantLabel = this.tenantId ?? 'unknown';
       const endLlm = startStageTimer('llm', tenantLabel);
@@ -2012,7 +2068,6 @@ export class CallSession {
         throw error;
       }
 
-      // Play as a single turn (no segmentation) on PSTN
       return { reply, playbackDone: this.playAssistantTurn(reply.text) };
     }
 
@@ -2476,8 +2531,13 @@ export class CallSession {
         this.ttsSegmentQueueDepth = Math.max(0, this.ttsSegmentQueueDepth - 1);
 
         // ✅ Playback ends ONCE when all queued segments are done
-        if (this.ttsSegmentQueueDepth === 0 && this.transport.mode !== 'pstn') {
-          this.onPlaybackEnded();
+        if (this.ttsSegmentQueueDepth === 0) {
+          if (this.transport.mode === 'pstn') {
+            // PSTN: use authoritative path so playback state is properly cleared
+            this.endPlaybackAuthoritatively('webhook');
+          } else {
+            this.onPlaybackEnded();
+          }
         }
       });
   }
@@ -2624,12 +2684,28 @@ export class CallSession {
       markAudioSpan('tx_sent', spanMeta);
       await this.transport.playback.play(playbackInput);
 
+      // For PSTN: wait for Telnyx playback.ended webhook before letting the next
+      // segment in the chain start. This prevents audio overlap.
+      if (this.transport.mode === 'pstn') {
+        this.playbackState.segmentId = segmentId; // track for watchdog
+        this.armPstnPlaybackWatchdog();
+        await new Promise<void>((resolve) => {
+          this.pstnSegmentResolve = resolve;
+        });
+      }
+
       // ✅ IMPORTANT: do NOT call onPlaybackEnded() here.
       // Streaming playback ends when the segment queue drains.
     } catch (error) {
       incStageError(playbackStage, tenantLabel);
 
-      // ✅ IMPORTANT: do NOT call onPlaybackEnded() here either.
+      // If PSTN segment was awaiting webhook, clear it so the chain can proceed
+      if (this.pstnSegmentResolve) {
+        const resolve = this.pstnSegmentResolve;
+        this.pstnSegmentResolve = null;
+        resolve();
+      }
+
       throw error;
     } finally {
       endPlayback();

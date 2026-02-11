@@ -3,10 +3,12 @@ import { log } from '../log';
 import { TTSRequest, TTSResult } from './types';
 
 export async function synthesizeSpeech(request: TTSRequest): Promise<TTSResult> {
-  const kokoroUrl = request.kokoroUrl ?? env.KOKORO_URL;
-  if (!kokoroUrl) {
+  const baseUrl = request.kokoroUrl ?? env.KOKORO_URL;
+  if (!baseUrl) {
     throw new Error('KOKORO_URL or request.kokoroUrl is required for Kokoro TTS');
   }
+  // Ensure the URL includes the /tts endpoint path
+  const kokoroUrl = baseUrl.replace(/\/+$/, '').endsWith('/tts') ? baseUrl : `${baseUrl.replace(/\/+$/, '')}/tts`;
   const sampleRate = request.sampleRate ?? env.TTS_SAMPLE_RATE;
   const format = request.format ?? 'wav';
   log.info(
@@ -20,7 +22,8 @@ export async function synthesizeSpeech(request: TTSRequest): Promise<TTSResult> 
     },
     body: JSON.stringify({
       text: request.text,
-      voice: request.voice,
+      voice_id: request.voice,
+      rate: request.kokoroSpeed,
       format,
       sampleRate,
     }),

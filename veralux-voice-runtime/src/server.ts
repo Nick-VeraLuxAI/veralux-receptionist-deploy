@@ -862,7 +862,7 @@ function attachMediaWebSocketServer(server: http.Server, sessionManager: Session
 async function ensureGreetingAsset(overrideText?: string): Promise<void> {
   const greetingPath = path.join(env.AUDIO_STORAGE_DIR, 'greeting.wav');
 
-  // Remove existing greeting so it is regenerated from current GREETING_TEXT / TTS config on every startup.
+  // Remove existing greeting so it is regenerated from current config.
   try {
     await fs.promises.rm(greetingPath, { force: true });
   } catch (error) {
@@ -870,35 +870,49 @@ async function ensureGreetingAsset(overrideText?: string): Promise<void> {
     if (code && code !== 'ENOENT') log.warn({ err: error, path: greetingPath }, 'greeting asset remove failed');
   }
 
-  const voice =
-    env.TTS_MODE === 'coqui_xtts'
+  // Read live TTS config from Redis (falls back to env vars)
+  let ttsConfig: Parameters<typeof synthesizeSpeech>[1] = null;
+  let greetingText = overrideText || '';
+  let voice: string | undefined;
+  try {
+    const { getRedisClient } = await import('./redis/client.js');
+    const rc = getRedisClient();
+    const keys = await rc.keys('tenantcfg:*');
+    if (keys.length > 0) {
+      const raw = await rc.get(keys[0]);
+      if (raw) {
+        const cfg = JSON.parse(raw);
+        if (!greetingText) greetingText = cfg.greetingText || '';
+        // Use the live TTS config from Redis
+        if (cfg.tts) {
+          ttsConfig = cfg.tts;
+          voice = cfg.tts.voice;
+          log.info(
+            { event: 'greeting_tts_config', mode: cfg.tts.mode, voice },
+            'greeting using live TTS config from Redis',
+          );
+        }
+      }
+    }
+  } catch (e) { /* ignore redis errors during greeting */ }
+
+  // Fallback to env vars if no Redis config
+  if (!voice) {
+    voice = env.TTS_MODE === 'coqui_xtts'
       ? (env.COQUI_VOICE_ID ?? 'en_sample')
       : (env.KOKORO_VOICE_ID ?? 'af_bella');
+  }
+
   try {
-    // Resolve greeting text: override > Redis tenant config > env > default
-    let greetingText = overrideText || '';
-    if (!greetingText) {
-      try {
-        const { getRedisClient } = await import('./redis/client.js');
-        const rc = getRedisClient();
-        const keys = await rc.keys('tenantcfg:*');
-        if (keys.length > 0) {
-          const raw = await rc.get(keys[0]);
-          if (raw) {
-            const cfg = JSON.parse(raw);
-            greetingText = cfg.greetingText || '';
-          }
-        }
-      } catch (e) { /* ignore redis errors during greeting */ }
-    }
     if (!greetingText) greetingText = env.GREETING_TEXT ?? 'Hi! Thanks for calling. How can I help you today?';
     const result = await synthesizeSpeech({
       text: greetingText,
       voice,
       format: 'wav',
-    });
+    }, ttsConfig);
 
-    const ttsSource = env.TTS_MODE === 'coqui_xtts' ? 'coqui_xtts' : 'kokoro';
+    const rawMode = ttsConfig?.mode ?? env.TTS_MODE;
+    const ttsSource: 'coqui_xtts' | 'kokoro' = rawMode === 'coqui_xtts' ? 'coqui_xtts' : 'kokoro';
     logTtsBytesReady('greeting.wav', result.audio, result.contentType, { path: greetingPath }, ttsSource);
 
     // Always resample greeting to PSTN rate so Telnyx playback is correct (avoids slowed/distorted

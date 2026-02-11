@@ -1403,11 +1403,11 @@ app.get("/api/tts/config", (req, res) => {
   
   const baseCfg = tenant.config.getSafeTtsConfig();
   
-  // Return extended config with mode info and tuning params
+  // Return extended config with mode info, tuning params, and Kokoro settings
   const extendedCfg: ExtendedTtsConfig = {
     ...baseCfg,
-    mode: baseCfg.ttsMode || "kokoro_http",
-    ttsMode: baseCfg.ttsMode || "kokoro_http",
+    mode: baseCfg.ttsMode || "coqui_xtts",
+    ttsMode: baseCfg.ttsMode || "coqui_xtts",
   };
   
   res.json(extendedCfg);
@@ -1434,7 +1434,9 @@ app.post("/api/tts/config", async (req, res) => {
     coquiTopK,
     coquiRepetitionPenalty,
     coquiLengthPenalty,
-  } = req.body as Partial<ExtendedTtsConfig>;
+    kokoroVoice,
+    kokoroSpeed,
+  } = req.body as Partial<ExtendedTtsConfig & { kokoroVoice?: string; kokoroSpeed?: number }>;
 
   // Determine the TTS URL based on mode
   const urlCandidate = coquiXttsUrl || kokoroUrl || xttsUrl;
@@ -1487,7 +1489,7 @@ app.post("/api/tts/config", async (req, res) => {
     preset: presetValue,
   };
 
-  // Store mode-specific fields
+  // Store mode-specific fields — only update mode if explicitly provided
   if (ttsMode === "coqui_xtts") {
     configUpdate.ttsMode = "coqui_xtts";
     configUpdate.coquiXttsUrl = ttsUrlValue;
@@ -1500,13 +1502,18 @@ app.post("/api/tts/config", async (req, res) => {
         label: clonedVoice.label?.trim() || undefined,
       };
     }
-  } else {
+  } else if (ttsMode === "kokoro_http") {
     configUpdate.ttsMode = "kokoro_http";
     configUpdate.kokoroUrl = ttsUrlValue;
     // Clear voice cloning fields for non-XTTS mode
     configUpdate.defaultVoiceMode = undefined;
     configUpdate.clonedVoice = undefined;
   }
+  // If ttsMode not provided (e.g. tuning-only save), preserve existing mode
+
+  // Kokoro-specific settings
+  if (typeof kokoroVoice === "string" && kokoroVoice.trim()) configUpdate.kokoroVoice = kokoroVoice.trim();
+  if (typeof kokoroSpeed === "number") configUpdate.kokoroSpeed = clamp(kokoroSpeed, 0.5, 1.5);
 
   // XTTS tuning parameters
   if (typeof coquiTemperature === "number") configUpdate.coquiTemperature = clamp(coquiTemperature, 0.01, 1.5);
@@ -1522,26 +1529,238 @@ app.post("/api/tts/config", async (req, res) => {
 
   // Sync tuning params to runtime via Redis
   try {
-    const existing = await getTenantConfig(tenant.id);
+    // Try the tenant.id first; if not in Redis, try looking up by the tenant meta name
+    let existing = await getTenantConfig(tenant.id);
+    if (!existing && tenant.meta?.name && tenant.meta.name !== tenant.id) {
+      existing = await getTenantConfig(tenant.meta.name);
+    }
     if (existing) {
-      const tts = { ...(existing.tts || {}), ...configUpdate };
-      await publishTenantConfig(tenant.id, { ...existing, tts } as any);
+      // Determine the effective mode for the Redis update
+      const effectiveSyncMode = configUpdate.ttsMode || (existing.tts as any)?.mode || "coqui_xtts";
+
+      // Build a clean runtime-compatible TTS config based on the mode
+      // The Zod schema uses a discriminated union, so we must include mode-specific required fields
+      const redisTts: Record<string, unknown> = { mode: effectiveSyncMode };
+
+      if (effectiveSyncMode === "kokoro_http") {
+        // Kokoro mode: requires kokoroUrl
+        redisTts.kokoroUrl = configUpdate.kokoroUrl
+          || (existing.tts as any)?.kokoroUrl
+          || process.env.KOKORO_URL
+          || "http://kokoro:7001";
+        // Voice and speed
+        const voice = configUpdate.kokoroVoice || (existing.tts as any)?.voice;
+        if (voice) redisTts.voice = voice;
+        if (configUpdate.kokoroSpeed != null) redisTts.kokoroSpeed = configUpdate.kokoroSpeed;
+        else if ((existing.tts as any)?.kokoroSpeed != null) redisTts.kokoroSpeed = (existing.tts as any).kokoroSpeed;
+      } else {
+        // XTTS mode: requires coquiXttsUrl
+        redisTts.coquiXttsUrl = configUpdate.coquiXttsUrl
+          || (existing.tts as any)?.coquiXttsUrl
+          || process.env.COQUI_XTTS_URL
+          || "http://xtts:7002/tts";
+        // Voice/language/cloning
+        const voice = configUpdate.voiceId || (existing.tts as any)?.voice;
+        if (voice) redisTts.voice = voice;
+        const lang = configUpdate.language || (existing.tts as any)?.language;
+        if (lang) redisTts.language = lang;
+        if (configUpdate.defaultVoiceMode !== undefined) redisTts.defaultVoiceMode = configUpdate.defaultVoiceMode;
+        else if ((existing.tts as any)?.defaultVoiceMode) redisTts.defaultVoiceMode = (existing.tts as any).defaultVoiceMode;
+        if (configUpdate.clonedVoice !== undefined) redisTts.clonedVoice = configUpdate.clonedVoice;
+        else if ((existing.tts as any)?.clonedVoice) redisTts.clonedVoice = (existing.tts as any).clonedVoice;
+        // XTTS tuning params — carry forward existing or apply new
+        const tuningKeys = ["coquiTemperature", "coquiSpeed", "coquiTopP", "coquiTopK", "coquiRepetitionPenalty", "coquiLengthPenalty"] as const;
+        for (const k of tuningKeys) {
+          if (configUpdate[k] != null) redisTts[k] = configUpdate[k];
+          else if ((existing.tts as any)?.[k] != null) redisTts[k] = (existing.tts as any)[k];
+        }
+      }
+
+      await publishTenantConfig(tenant.id, { ...existing, tts: redisTts } as any);
     }
   } catch (syncErr) {
     console.error("[tts/config] Redis sync error:", syncErr);
   }
-  
+
+  // Trigger greeting WAV regeneration on the voice runtime so the greeting
+  // uses the newly-selected TTS engine / voice.
+  try {
+    const runtimeUrl = process.env.VOICE_RUNTIME_URL || "http://runtime:4001";
+    const regen = await fetch(`${runtimeUrl}/admin/regenerate-greeting`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (regen.ok) {
+      console.log("[tts/config] Greeting regenerated on voice runtime");
+    } else {
+      console.warn("[tts/config] Greeting regen failed:", regen.status, await regen.text().catch(() => ""));
+    }
+  } catch (regenErr) {
+    console.warn("[tts/config] Greeting regen request failed:", regenErr);
+  }
+
   // Return extended config with all fields
+  const effectiveMode = configUpdate.ttsMode || updated.ttsMode || "coqui_xtts";
   const response: ExtendedTtsConfig = {
     ...updated,
-    mode: configUpdate.ttsMode,
-    ttsMode: configUpdate.ttsMode,
+    mode: effectiveMode,
+    ttsMode: effectiveMode,
   };
   
   res.json(response);
 });
 
-app.post("/api/tts/preview", (_req, res) => respondVoiceRuntimeMoved(res));
+app.post("/api/tts/preview", async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  const {
+    text,
+    engine,
+    coquiSpeed,
+    coquiTemperature,
+    coquiTopP,
+    coquiTopK,
+    coquiRepetitionPenalty,
+    coquiLengthPenalty,
+    kokoroVoice,
+    kokoroSpeed,
+  } = req.body as {
+    text?: string;
+    engine?: string;
+    coquiSpeed?: number;
+    coquiTemperature?: number;
+    coquiTopP?: number;
+    coquiTopK?: number;
+    coquiRepetitionPenalty?: number;
+    coquiLengthPenalty?: number;
+    kokoroVoice?: string;
+    kokoroSpeed?: number;
+  };
+
+  const sampleText = (typeof text === "string" && text.trim())
+    ? text.trim()
+    : "Hello! Welcome to our business. How can I help you today?";
+
+  // Read current TTS config for this tenant
+  const ttsCfg = tenant.config.getTtsConfig();
+
+  // Determine which engine to preview: explicit "engine" param, or infer from ttsMode
+  const previewEngine = engine === "kokoro" || (engine !== "xtts" && (ttsCfg as any).ttsMode === "kokoro_http" && engine !== "xtts")
+    ? "kokoro"
+    : "xtts";
+
+  if (previewEngine === "kokoro") {
+    // ── Kokoro preview ──
+    const kokoroBaseUrl = process.env.KOKORO_URL || "http://kokoro:7001";
+    let kokoroUrl = kokoroBaseUrl.replace(/\/+$/, "");
+    if (!kokoroUrl.endsWith("/tts")) kokoroUrl += "/tts";
+
+    const voice = kokoroVoice || (ttsCfg as any).kokoroVoice || "af_bella";
+    const rate = kokoroSpeed ?? (ttsCfg as any).kokoroSpeed ?? 1.0;
+
+    const body: Record<string, unknown> = {
+      text: sampleText,
+      voice_id: voice,
+      rate,
+    };
+
+    try {
+      const upstream = await fetch(kokoroUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30_000),
+      });
+
+      if (!upstream.ok) {
+        const errText = await upstream.text();
+        console.error("[tts/preview] Kokoro error:", upstream.status, errText);
+        return res.status(502).json({ error: "tts_preview_failed", message: `Kokoro returned ${upstream.status}` });
+      }
+
+      const contentType = upstream.headers.get("content-type") || "audio/wav";
+      const arrayBuf = await upstream.arrayBuffer();
+      res.set("Content-Type", contentType);
+      res.set("Content-Length", String(arrayBuf.byteLength));
+      res.send(Buffer.from(arrayBuf));
+    } catch (err: any) {
+      console.error("[tts/preview] Kokoro error:", err);
+      res.status(502).json({ error: "tts_preview_failed", message: err.message || "Failed to reach Kokoro service" });
+    }
+    return;
+  }
+
+  // ── XTTS preview ──
+  // Resolve XTTS URL: prefer explicit coqui URL from config/env, then fall back
+  const xttsBaseUrl = (ttsCfg as any).coquiXttsUrl
+    || process.env.COQUI_XTTS_URL
+    || process.env.XTTS_URL
+    || (ttsCfg as any).xttsUrl
+    || "http://xtts:7002/tts";
+
+  // Build XTTS URL — if it already ends with /tts, use as-is; otherwise append /tts
+  let xttsUrl = xttsBaseUrl.replace(/\/+$/, "");
+  if (!xttsUrl.endsWith("/tts")) {
+    xttsUrl += "/tts";
+  }
+
+  // Build the request body using provided params or falling back to saved config
+  const body: Record<string, string | number | boolean> = {
+    text: sampleText,
+    language: (ttsCfg as any).language || "en",
+  };
+
+  // Voice: use cloned voice if configured, otherwise speaker preset
+  if ((ttsCfg as any).defaultVoiceMode === "cloned" && (ttsCfg as any).clonedVoice?.speakerWavUrl) {
+    body.speaker_wav = (ttsCfg as any).clonedVoice.speakerWavUrl;
+  } else if ((ttsCfg as any).voiceId) {
+    body.voice_id = (ttsCfg as any).voiceId;
+    body.speaker = (ttsCfg as any).voiceId;
+  }
+
+  // Apply tuning — prefer request body overrides, fall back to saved config
+  const speed = coquiSpeed ?? (ttsCfg as any).coquiSpeed;
+  const temperature = coquiTemperature ?? (ttsCfg as any).coquiTemperature;
+  const topP = coquiTopP ?? (ttsCfg as any).coquiTopP;
+  const topK = coquiTopK ?? (ttsCfg as any).coquiTopK;
+  const repPenalty = coquiRepetitionPenalty ?? (ttsCfg as any).coquiRepetitionPenalty;
+  const lenPenalty = coquiLengthPenalty ?? (ttsCfg as any).coquiLengthPenalty;
+
+  if (speed != null) body.speed = speed;
+  if (temperature != null) body.temperature = temperature;
+  if (topP != null) body.top_p = topP;
+  if (topK != null) body.top_k = topK;
+  if (repPenalty != null) body.repetition_penalty = repPenalty;
+  if (lenPenalty != null) body.length_penalty = lenPenalty;
+
+  try {
+    const upstream = await fetch(xttsUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!upstream.ok) {
+      const errText = await upstream.text();
+      console.error("[tts/preview] XTTS error:", upstream.status, errText);
+      return res.status(502).json({ error: "tts_preview_failed", message: `XTTS returned ${upstream.status}` });
+    }
+
+    const contentType = upstream.headers.get("content-type") || "audio/wav";
+    const arrayBuf = await upstream.arrayBuffer();
+
+    res.set("Content-Type", contentType);
+    res.set("Content-Length", String(arrayBuf.byteLength));
+    res.send(Buffer.from(arrayBuf));
+  } catch (err: any) {
+    console.error("[tts/preview] error:", err);
+    res.status(502).json({ error: "tts_preview_failed", message: err.message || "Failed to reach XTTS service" });
+  }
+});
 
 /* ────────────────────────────────────────────────
    Admin – Capacity / Concurrency Settings

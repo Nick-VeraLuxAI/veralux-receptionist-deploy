@@ -5,6 +5,8 @@ export interface TTSRequest {
   sampleRate?: number;
   /** Kokoro: base URL for the TTS service. */
   kokoroUrl?: string;
+  /** Kokoro: speaking speed (rate), 0.5–1.5 */
+  kokoroSpeed?: number;
   /** Coqui XTTS: base URL for the TTS API (e.g. http://host:7002/api/tts). */
   coquiXttsUrl?: string;
   /** Coqui XTTS: reference audio for voice cloning (URL or path). XTTS uses this, not preset voice IDs. */

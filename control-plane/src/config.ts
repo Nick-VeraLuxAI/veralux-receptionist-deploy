@@ -66,6 +66,10 @@ export interface TTSConfig {
   coquiTopK?: number;
   coquiRepetitionPenalty?: number;
   coquiLengthPenalty?: number;
+
+  // Kokoro-specific settings
+  kokoroVoice?: string;
+  kokoroSpeed?: number;
 }
 
 // small helper so bad env values don’t wreck things
@@ -332,6 +336,9 @@ export class LLMConfigStore {
       coquiTopK: (base as any).coquiTopK,
       coquiRepetitionPenalty: (base as any).coquiRepetitionPenalty,
       coquiLengthPenalty: (base as any).coquiLengthPenalty,
+      // Kokoro-specific settings
+      kokoroVoice: base.kokoroVoice,
+      kokoroSpeed: base.kokoroSpeed,
     };
 
     return config;

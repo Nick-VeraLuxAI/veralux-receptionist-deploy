@@ -269,6 +269,38 @@ body {
   gap: 6px;
 }
 
+/* ─── TTS Engine Badges ─────────────────────────────────────────────────── */
+.tts-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.tts-badge.tts-active {
+  background: var(--success-glow);
+  color: var(--success);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.tts-badge.tts-standby {
+  background: rgba(138, 132, 119, 0.12);
+  color: var(--muted);
+  border: 1px solid rgba(138, 132, 119, 0.2);
+}
+
+.service-card.tts-inactive {
+  opacity: 0.55;
+}
+
+.service-card.tts-inactive:hover {
+  opacity: 0.75;
+}
+
 /* ─── Owner Panel ────────────────────────────────────────────────────────── */
 #owner-panel {
   padding: 0;

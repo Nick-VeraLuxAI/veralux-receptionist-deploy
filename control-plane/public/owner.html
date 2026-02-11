@@ -213,6 +213,13 @@
         background: #0a0f1a;
         color: var(--text);
       }
+      select optgroup {
+        background: #131a2b;
+        color: var(--accent);
+        font-style: normal;
+        font-weight: 600;
+        padding: 6px 0;
+      }
       input::placeholder, textarea::placeholder { color: var(--muted); }
       input:focus, textarea:focus, select:focus {
         outline: none;
@@ -462,63 +469,162 @@
 
       <section class="owner-panel">
         <h2>Receptionist voice</h2>
-        <p class="help">Choose how your receptionist sounds. Use a preset voice or clone your own voice for a personal touch.</p>
-        
-        <label for="voice-selector">Active voice</label>
-        <select id="voice-selector" style="width: 100%; padding: 12px 14px; margin-bottom: 14px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,0.03); color: var(--text); font-family: inherit; font-size: 14px;">
-          <option value="preset:default">Default Voice (Preset)</option>
+        <p class="help">Choose how your receptionist sounds. Select a TTS engine and configure its settings.</p>
+
+        <!-- ── TTS Engine Selector ── -->
+        <label for="tts-engine-selector">TTS Engine</label>
+        <select id="tts-engine-selector" style="width: 100%; padding: 12px 14px; margin-bottom: 14px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,0.03); color: var(--text); font-family: inherit; font-size: 14px;">
+          <option value="coqui_xtts">XTTS (Coqui) &mdash; Voice cloning, expressive</option>
+          <option value="kokoro_http">Kokoro &mdash; Fast, multi-voice</option>
         </select>
-        <div id="voice-selector-status" class="help" style="margin-bottom: 16px; min-height: 18px;"></div>
+        <div id="tts-engine-status" class="help" style="margin-bottom: 16px; min-height: 18px;"></div>
 
-        <button type="button" id="save-voice-settings" style="margin-top: 0;">Save voice settings</button>
-        <div id="voice-settings-status" class="help" style="margin-top: 6px; min-height: 18px;"></div>
+        <!-- ════════════════════════════════════════════════════ -->
+        <!-- XTTS Panel                                          -->
+        <!-- ════════════════════════════════════════════════════ -->
+        <div id="tts-xtts-panel">
+          <label for="voice-selector">Active voice</label>
+          <select id="voice-selector" style="width: 100%; padding: 12px 14px; margin-bottom: 14px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,0.03); color: var(--text); font-family: inherit; font-size: 14px;">
+            <option value="preset:default">Default Voice (Preset)</option>
+          </select>
+          <div id="voice-selector-status" class="help" style="margin-bottom: 16px; min-height: 18px;"></div>
 
-        <!-- ── Voice Tuning ── -->
-        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
-          <h3 style="margin: 0 0 4px; font-size: 15px; font-weight: 600; color: var(--text);">Voice tuning</h3>
-          <p class="help" style="margin-bottom: 14px;">Fine-tune how your receptionist's voice sounds. Adjust speed, expressiveness, and clarity.</p>
+          <button type="button" id="save-voice-settings" style="margin-top: 0;">Save voice settings</button>
+          <div id="voice-settings-status" class="help" style="margin-top: 6px; min-height: 18px;"></div>
 
-          <div id="tuning-sliders">
-            <div style="margin-bottom: 14px;">
-              <label style="display:flex;justify-content:space-between;"><span>Speed</span><span id="tuning-speed-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">1.18</span></label>
-              <input type="range" id="tuning-speed" min="0.5" max="2.0" step="0.01" value="1.18" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
-              <div class="help" style="margin-top:2px;">Slower voice &larr; &rarr; Faster voice</div>
+          <!-- ── XTTS Voice Tuning ── -->
+          <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
+            <h3 style="margin: 0 0 4px; font-size: 15px; font-weight: 600; color: var(--text);">XTTS Voice tuning</h3>
+            <p class="help" style="margin-bottom: 14px;">Fine-tune how your receptionist's voice sounds. Adjust speed, expressiveness, and clarity.</p>
+
+            <div id="tuning-sliders">
+              <div style="margin-bottom: 14px;">
+                <label style="display:flex;justify-content:space-between;"><span>Speed</span><span id="tuning-speed-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">1.18</span></label>
+                <input type="range" id="tuning-speed" min="0.5" max="2.0" step="0.01" value="1.18" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                <div class="help" style="margin-top:2px;">Slower voice &larr; &rarr; Faster voice</div>
+              </div>
+              <div style="margin-bottom: 14px;">
+                <label style="display:flex;justify-content:space-between;"><span>Temperature</span><span id="tuning-temp-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">0.80</span></label>
+                <input type="range" id="tuning-temp" min="0.01" max="1.50" step="0.01" value="0.80" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                <div class="help" style="margin-top:2px;">More consistent &larr; &rarr; More expressive</div>
+              </div>
+              <div style="margin-bottom: 14px;">
+                <label style="display:flex;justify-content:space-between;"><span>Top P</span><span id="tuning-topp-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">0.92</span></label>
+                <input type="range" id="tuning-topp" min="0.10" max="1.00" step="0.01" value="0.92" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                <div class="help" style="margin-top:2px;">More focused &larr; &rarr; More varied</div>
+              </div>
+              <div style="margin-bottom: 14px;">
+                <label style="display:flex;justify-content:space-between;"><span>Top K</span><span id="tuning-topk-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">50</span></label>
+                <input type="range" id="tuning-topk" min="1" max="200" step="1" value="50" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                <div class="help" style="margin-top:2px;">Narrower vocabulary &larr; &rarr; Broader vocabulary</div>
+              </div>
+              <div style="margin-bottom: 14px;">
+                <label style="display:flex;justify-content:space-between;"><span>Repetition penalty</span><span id="tuning-rep-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">2.0</span></label>
+                <input type="range" id="tuning-rep" min="1.0" max="5.0" step="0.1" value="2.0" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                <div class="help" style="margin-top:2px;">Allow repetition &larr; &rarr; Penalize repetition</div>
+              </div>
+              <div style="margin-bottom: 14px;">
+                <label style="display:flex;justify-content:space-between;"><span>Length penalty</span><span id="tuning-len-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">1.0</span></label>
+                <input type="range" id="tuning-len" min="0.5" max="2.0" step="0.1" value="1.0" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                <div class="help" style="margin-top:2px;">Shorter output &larr; &rarr; Longer output</div>
+              </div>
             </div>
-            <div style="margin-bottom: 14px;">
-              <label style="display:flex;justify-content:space-between;"><span>Temperature</span><span id="tuning-temp-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">0.80</span></label>
-              <input type="range" id="tuning-temp" min="0.01" max="1.50" step="0.01" value="0.80" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
-              <div class="help" style="margin-top:2px;">More consistent &larr; &rarr; More expressive</div>
+            <div style="display:flex;gap:10px;margin-top:8px;">
+              <button type="button" id="save-tuning">Save tuning</button>
+              <button type="button" class="secondary" id="reset-tuning">Reset defaults</button>
             </div>
-            <div style="margin-bottom: 14px;">
-              <label style="display:flex;justify-content:space-between;"><span>Top P</span><span id="tuning-topp-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">0.92</span></label>
-              <input type="range" id="tuning-topp" min="0.10" max="1.00" step="0.01" value="0.92" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
-              <div class="help" style="margin-top:2px;">More focused &larr; &rarr; More varied</div>
-            </div>
-            <div style="margin-bottom: 14px;">
-              <label style="display:flex;justify-content:space-between;"><span>Top K</span><span id="tuning-topk-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">50</span></label>
-              <input type="range" id="tuning-topk" min="1" max="200" step="1" value="50" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
-              <div class="help" style="margin-top:2px;">Narrower vocabulary &larr; &rarr; Broader vocabulary</div>
-            </div>
-            <div style="margin-bottom: 14px;">
-              <label style="display:flex;justify-content:space-between;"><span>Repetition penalty</span><span id="tuning-rep-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">2.0</span></label>
-              <input type="range" id="tuning-rep" min="1.0" max="5.0" step="0.1" value="2.0" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
-              <div class="help" style="margin-top:2px;">Allow repetition &larr; &rarr; Penalize repetition</div>
-            </div>
-            <div style="margin-bottom: 14px;">
-              <label style="display:flex;justify-content:space-between;"><span>Length penalty</span><span id="tuning-len-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">1.0</span></label>
-              <input type="range" id="tuning-len" min="0.5" max="2.0" step="0.1" value="1.0" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
-              <div class="help" style="margin-top:2px;">Shorter output &larr; &rarr; Longer output</div>
+            <div id="tuning-status" class="help" style="margin-top: 6px; min-height: 18px;"></div>
+
+            <!-- XTTS Voice Preview -->
+            <div style="margin-top:16px;padding:14px;border-radius:12px;background:var(--surface-hover);border:1px solid var(--border);">
+              <label style="display:block;font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">Preview voice</label>
+              <p class="help" style="margin-bottom:8px;">Type a phrase and hear how it sounds with the current tuning settings.</p>
+              <input type="text" id="tuning-preview-text" placeholder="Hello! Welcome to our business. How can I help you today?" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;margin-bottom:8px;box-sizing:border-box;" />
+              <div style="display:flex;align-items:center;gap:10px;">
+                <button type="button" id="tuning-preview-btn" style="white-space:nowrap;">&#9654; Preview</button>
+                <audio id="tuning-preview-audio" controls style="flex:1;height:36px;min-width:0;display:none;"></audio>
+                <span id="tuning-preview-status" class="help" style="white-space:nowrap;"></span>
+              </div>
             </div>
           </div>
+        </div><!-- /tts-xtts-panel -->
+
+        <!-- ════════════════════════════════════════════════════ -->
+        <!-- Kokoro Panel                                        -->
+        <!-- ════════════════════════════════════════════════════ -->
+        <div id="tts-kokoro-panel" style="display:none;">
+          <label for="kokoro-voice-selector">Voice</label>
+          <select id="kokoro-voice-selector" style="width: 100%; padding: 12px 14px; margin-bottom: 14px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255,255,255,0.03); color: var(--text); font-family: inherit; font-size: 14px;">
+            <optgroup label="American Female">
+              <option value="af_alloy">Alloy</option>
+              <option value="af_aoede">Aoede</option>
+              <option value="af_bella" selected>Bella</option>
+              <option value="af_heart">Heart</option>
+              <option value="af_jessica">Jessica</option>
+              <option value="af_kore">Kore</option>
+              <option value="af_nicole">Nicole</option>
+              <option value="af_nova">Nova</option>
+              <option value="af_river">River</option>
+              <option value="af_sarah">Sarah</option>
+              <option value="af_sky">Sky</option>
+            </optgroup>
+            <optgroup label="American Male">
+              <option value="am_adam">Adam</option>
+              <option value="am_echo">Echo</option>
+              <option value="am_eric">Eric</option>
+              <option value="am_fenrir">Fenrir</option>
+              <option value="am_liam">Liam</option>
+              <option value="am_michael">Michael</option>
+              <option value="am_onyx">Onyx</option>
+              <option value="am_puck">Puck</option>
+            </optgroup>
+            <optgroup label="British Female">
+              <option value="bf_alice">Alice</option>
+              <option value="bf_emma">Emma</option>
+              <option value="bf_isabella">Isabella</option>
+              <option value="bf_lily">Lily</option>
+            </optgroup>
+            <optgroup label="British Male">
+              <option value="bm_daniel">Daniel</option>
+              <option value="bm_fable">Fable</option>
+              <option value="bm_george">George</option>
+              <option value="bm_lewis">Lewis</option>
+            </optgroup>
+          </select>
+
+          <!-- Kokoro Tuning -->
+          <div style="margin-top: 10px; padding-top: 16px; border-top: 1px solid var(--border);">
+            <h3 style="margin: 0 0 4px; font-size: 15px; font-weight: 600; color: var(--text);">Kokoro Voice tuning</h3>
+            <p class="help" style="margin-bottom: 14px;">Adjust the speaking speed of the Kokoro voice.</p>
+
+            <div style="margin-bottom: 14px;">
+              <label style="display:flex;justify-content:space-between;"><span>Speed</span><span id="kokoro-speed-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">1.00</span></label>
+              <input type="range" id="kokoro-speed" min="0.5" max="1.5" step="0.05" value="1.0" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+              <div class="help" style="margin-top:2px;">Slower &larr; &rarr; Faster</div>
+            </div>
+          </div>
+
           <div style="display:flex;gap:10px;margin-top:8px;">
-            <button type="button" id="save-tuning">Save tuning</button>
-            <button type="button" class="secondary" id="reset-tuning">Reset defaults</button>
+            <button type="button" id="save-kokoro-settings">Save Kokoro settings</button>
+            <button type="button" class="secondary" id="reset-kokoro-settings">Reset defaults</button>
           </div>
-          <div id="tuning-status" class="help" style="margin-top: 6px; min-height: 18px;"></div>
-        </div>
+          <div id="kokoro-status" class="help" style="margin-top: 6px; min-height: 18px;"></div>
 
-        <!-- ── Voice Cloning ── -->
-        <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
+          <!-- Kokoro Voice Preview -->
+          <div style="margin-top:16px;padding:14px;border-radius:12px;background:var(--surface-hover);border:1px solid var(--border);">
+            <label style="display:block;font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">Preview voice</label>
+            <p class="help" style="margin-bottom:8px;">Type a phrase and hear how the selected Kokoro voice sounds.</p>
+            <input type="text" id="kokoro-preview-text" placeholder="Hello! Welcome to our business. How can I help you today?" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;margin-bottom:8px;box-sizing:border-box;" />
+            <div style="display:flex;align-items:center;gap:10px;">
+              <button type="button" id="kokoro-preview-btn" style="white-space:nowrap;">&#9654; Preview</button>
+              <audio id="kokoro-preview-audio" controls style="flex:1;height:36px;min-width:0;display:none;"></audio>
+              <span id="kokoro-preview-status" class="help" style="white-space:nowrap;"></span>
+            </div>
+          </div>
+        </div><!-- /tts-kokoro-panel -->
+
+        <!-- ── Voice Cloning (XTTS only) ── -->
+        <div id="tts-xtts-cloning-panel" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);">
           <h3 style="margin: 0 0 4px; font-size: 15px; font-weight: 600; color: var(--text);">Voice cloning</h3>
           <p class="help" style="margin-bottom: 14px;">Record or upload a voice sample to clone. Read clearly for 10-30 seconds in a quiet room for best results.</p>
 
@@ -672,21 +778,62 @@
     </div>
 
     <script>
+      console.log("[Owner Panel] Script loaded");
       const $ = (id) => document.getElementById(id);
       let OWNER_TENANT_ID = "default";
       let ownerAuthToken = "";
       let ownerAuthorized = false;
+      console.log("[Owner Panel] Variables initialized, ownerAuthorized =", ownerAuthorized);
       let forwardingProfilesCache = [];
       let pricingCache = { items: [], notes: "" };
       
       // Voice configuration cache
       let voiceConfig = {
-        ttsMode: "kokoro_http",
+        ttsMode: "coqui_xtts",
         defaultVoiceMode: "preset",
         presetVoice: "default",
         clonedVoices: [], // Array of { id, label, speakerWavUrl }
         activeVoiceId: "preset:default",
+        // Kokoro-specific
+        kokoroVoice: "af_bella",
+        kokoroSpeed: 1.0,
       };
+
+      /* ── TTS Engine panel switching ── */
+      function showTtsPanel(mode) {
+        const xttsPanel = $("tts-xtts-panel");
+        const kokoroPanel = $("tts-kokoro-panel");
+        const cloningPanel = $("tts-xtts-cloning-panel");
+        if (mode === "kokoro_http") {
+          if (xttsPanel) xttsPanel.style.display = "none";
+          if (cloningPanel) cloningPanel.style.display = "none";
+          if (kokoroPanel) kokoroPanel.style.display = "";
+        } else {
+          if (xttsPanel) xttsPanel.style.display = "";
+          if (cloningPanel) cloningPanel.style.display = "";
+          if (kokoroPanel) kokoroPanel.style.display = "none";
+        }
+      }
+
+      async function switchTtsEngine(newMode) {
+        const statusEl = $("tts-engine-status");
+        try {
+          statusEl.textContent = "Switching engine…";
+          statusEl.style.color = "var(--muted)";
+          const payload = { ttsMode: newMode };
+          await ownerFetch("/api/tts/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          voiceConfig.ttsMode = newMode;
+          showTtsPanel(newMode);
+          statusEl.textContent = "Engine switched to " + (newMode === "kokoro_http" ? "Kokoro" : "XTTS") + ".";
+          statusEl.style.color = "var(--success)";
+          setTimeout(() => { if (statusEl.textContent.startsWith("Engine")) statusEl.textContent = ""; }, 3000);
+        } catch (err) {
+          statusEl.textContent = "Failed: " + err.message;
+          statusEl.style.color = "var(--danger)";
+          // Revert selector
+          $("tts-engine-selector").value = voiceConfig.ttsMode;
+        }
+      }
 
       function escapeHtml(str) {
         if (str == null) return "";
@@ -792,6 +939,8 @@
       }
 
       async function loadOwnerData() {
+        const refreshBtn = $("owner-refresh");
+        if (refreshBtn) { refreshBtn.textContent = "Refreshing..."; refreshBtn.disabled = true; }
         try {
           await checkStripeStatus();
           const [tenantsRes, profilesRes, pricingRes, promptsRes, analyticsRes, billingRes] = await Promise.all([
@@ -857,12 +1006,16 @@
             $("owner-businessFaq").value = promptsRes.businessFaq || "";
           }
           if (analyticsRes) {
-            $("stat-calls").textContent = analyticsRes.callCount ?? "—";
-            $("stat-messages").textContent = analyticsRes.callerMessageCount ?? "—";
+            $("stat-calls").textContent = analyticsRes.totalCalls ?? analyticsRes.callCount ?? "—";
+            $("stat-messages").textContent = analyticsRes.totalCallerMessages ?? analyticsRes.callerMessageCount ?? "—";
           }
           if (billingRes) renderBilling(billingRes);
         } catch (err) {
+          console.error("loadOwnerData error:", err);
           $("owner-numbers-status").textContent = "";
+        } finally {
+          const refreshBtn = $("owner-refresh");
+          if (refreshBtn) { refreshBtn.textContent = "Refresh"; refreshBtn.disabled = false; }
         }
       }
 
@@ -1101,13 +1254,16 @@
           const cfg = await ownerFetch("/api/tts/config");
           
           // Parse the config into our local format
-          voiceConfig.ttsMode = cfg.ttsMode || cfg.mode || "kokoro_http";
+          voiceConfig.ttsMode = cfg.ttsMode || cfg.mode || "coqui_xtts";
           voiceConfig.presetVoice = cfg.voiceId || cfg.voice || "default";
           voiceConfig.defaultVoiceMode = cfg.defaultVoiceMode || "preset";
+
+          // Kokoro-specific fields
+          voiceConfig.kokoroVoice = cfg.kokoroVoice || cfg.voice || "af_bella";
+          voiceConfig.kokoroSpeed = typeof cfg.kokoroSpeed === "number" ? cfg.kokoroSpeed : 1.0;
           
           // Handle cloned voice (single) from server
           if (cfg.clonedVoice && cfg.clonedVoice.speakerWavUrl) {
-            // Check if we already have this voice saved
             const existingIdx = voiceConfig.clonedVoices.findIndex(
               v => v.speakerWavUrl === cfg.clonedVoice.speakerWavUrl
             );
@@ -1122,7 +1278,6 @@
           
           // Determine active voice ID
           if (voiceConfig.defaultVoiceMode === "cloned" && voiceConfig.clonedVoices.length > 0) {
-            // Find the active cloned voice
             const activeCloned = voiceConfig.clonedVoices.find(
               v => cfg.clonedVoice && v.speakerWavUrl === cfg.clonedVoice.speakerWavUrl
             );
@@ -1131,6 +1286,14 @@
             voiceConfig.activeVoiceId = `preset:${voiceConfig.presetVoice}`;
           }
           
+          // Set engine selector and show correct panel
+          const engineSel = $("tts-engine-selector");
+          if (engineSel) engineSel.value = voiceConfig.ttsMode;
+          showTtsPanel(voiceConfig.ttsMode);
+
+          // Load Kokoro UI
+          loadKokoroSettings(cfg);
+
           renderVoiceSelector();
           renderClonedVoicesList();
           loadTuningSliders(cfg);
@@ -1305,6 +1468,167 @@
         });
         $("tuning-status").textContent = "Reset to defaults. Click Save to apply.";
         $("tuning-status").style.color = "var(--muted)";
+      }
+
+      async function previewTuning() {
+        const btn = $("tuning-preview-btn");
+        const statusEl = $("tuning-preview-status");
+        const audioEl = $("tuning-preview-audio");
+        const textInput = $("tuning-preview-text");
+
+        const text = textInput.value.trim() || textInput.placeholder;
+
+        // Gather current slider values
+        const payload = { text };
+        TUNING_MAP.forEach(({ slider, key }) => {
+          const el = $(slider);
+          if (el) payload[key] = parseFloat(el.value);
+        });
+
+        btn.disabled = true;
+        btn.textContent = "Generating…";
+        statusEl.textContent = "";
+        audioEl.style.display = "none";
+        if (audioEl.src) { URL.revokeObjectURL(audioEl.src); audioEl.src = ""; }
+
+        try {
+          // Direct fetch (not ownerFetch) because we need the raw binary response
+          const headers = { "Content-Type": "application/json" };
+          if (ownerAuthToken) headers["X-Admin-Key"] = ownerAuthToken;
+          if (OWNER_TENANT_ID) headers["X-Tenant-ID"] = OWNER_TENANT_ID;
+
+          const resp = await fetch("/api/tts/preview", {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload),
+          });
+          if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            throw new Error(errData.message || `Server returned ${resp.status}`);
+          }
+          const blob = await resp.blob();
+          audioEl.src = URL.createObjectURL(blob);
+          audioEl.style.display = "";
+          audioEl.play().catch(() => {});
+          statusEl.textContent = "";
+        } catch (err) {
+          statusEl.textContent = "Preview failed: " + err.message;
+          statusEl.style.color = "var(--danger)";
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "\u25B6 Preview";
+        }
+      }
+
+      /* ── Kokoro Settings ────────────────────────── */
+
+      const KOKORO_DEFAULTS = { kokoroVoice: "af_bella", kokoroSpeed: 1.0 };
+
+      function loadKokoroSettings(cfg) {
+        const voiceSel = $("kokoro-voice-selector");
+        const speedSlider = $("kokoro-speed");
+        const speedLabel = $("kokoro-speed-val");
+        const voice = cfg.kokoroVoice || KOKORO_DEFAULTS.kokoroVoice;
+        const speed = typeof cfg.kokoroSpeed === "number" ? cfg.kokoroSpeed : KOKORO_DEFAULTS.kokoroSpeed;
+        if (voiceSel) voiceSel.value = voice;
+        if (speedSlider) speedSlider.value = speed;
+        if (speedLabel) speedLabel.textContent = speed.toFixed(2);
+        voiceConfig.kokoroVoice = voice;
+        voiceConfig.kokoroSpeed = speed;
+      }
+
+      function bindKokoroControls() {
+        const speedSlider = $("kokoro-speed");
+        if (speedSlider) {
+          speedSlider.addEventListener("input", () => {
+            const lbl = $("kokoro-speed-val");
+            if (lbl) lbl.textContent = parseFloat(speedSlider.value).toFixed(2);
+          });
+        }
+      }
+
+      async function saveKokoroSettings() {
+        const statusEl = $("kokoro-status");
+        try {
+          const voiceSel = $("kokoro-voice-selector");
+          const speedSlider = $("kokoro-speed");
+          const payload = {
+            ttsMode: "kokoro_http",
+            kokoroVoice: voiceSel ? voiceSel.value : KOKORO_DEFAULTS.kokoroVoice,
+            kokoroSpeed: speedSlider ? parseFloat(speedSlider.value) : KOKORO_DEFAULTS.kokoroSpeed,
+          };
+          await ownerFetch("/api/tts/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+          voiceConfig.kokoroVoice = payload.kokoroVoice;
+          voiceConfig.kokoroSpeed = payload.kokoroSpeed;
+          statusEl.textContent = "Kokoro settings saved!";
+          statusEl.style.color = "var(--success)";
+          setTimeout(() => { if (statusEl.textContent === "Kokoro settings saved!") statusEl.textContent = ""; }, 3000);
+        } catch (err) {
+          statusEl.textContent = "Failed: " + err.message;
+          statusEl.style.color = "var(--danger)";
+        }
+      }
+
+      function resetKokoroSettings() {
+        const voiceSel = $("kokoro-voice-selector");
+        const speedSlider = $("kokoro-speed");
+        const speedLabel = $("kokoro-speed-val");
+        if (voiceSel) voiceSel.value = KOKORO_DEFAULTS.kokoroVoice;
+        if (speedSlider) speedSlider.value = KOKORO_DEFAULTS.kokoroSpeed;
+        if (speedLabel) speedLabel.textContent = KOKORO_DEFAULTS.kokoroSpeed.toFixed(2);
+        $("kokoro-status").textContent = "Reset to defaults. Click Save to apply.";
+        $("kokoro-status").style.color = "var(--muted)";
+      }
+
+      async function previewKokoro() {
+        const btn = $("kokoro-preview-btn");
+        const statusEl = $("kokoro-preview-status");
+        const audioEl = $("kokoro-preview-audio");
+        const textInput = $("kokoro-preview-text");
+
+        const text = textInput.value.trim() || textInput.placeholder;
+        const voiceSel = $("kokoro-voice-selector");
+        const speedSlider = $("kokoro-speed");
+
+        const payload = {
+          text,
+          engine: "kokoro",
+          kokoroVoice: voiceSel ? voiceSel.value : "af_bella",
+          kokoroSpeed: speedSlider ? parseFloat(speedSlider.value) : 1.0,
+        };
+
+        btn.disabled = true;
+        btn.textContent = "Generating…";
+        statusEl.textContent = "";
+        audioEl.style.display = "none";
+        if (audioEl.src) { URL.revokeObjectURL(audioEl.src); audioEl.src = ""; }
+
+        try {
+          const headers = { "Content-Type": "application/json" };
+          if (ownerAuthToken) headers["X-Admin-Key"] = ownerAuthToken;
+          if (OWNER_TENANT_ID) headers["X-Tenant-ID"] = OWNER_TENANT_ID;
+
+          const resp = await fetch("/api/tts/preview", {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload),
+          });
+          if (!resp.ok) {
+            const errData = await resp.json().catch(() => ({}));
+            throw new Error(errData.message || `Server returned ${resp.status}`);
+          }
+          const blob = await resp.blob();
+          audioEl.src = URL.createObjectURL(blob);
+          audioEl.style.display = "";
+          audioEl.play().catch(() => {});
+          statusEl.textContent = "";
+        } catch (err) {
+          statusEl.textContent = "Preview failed: " + err.message;
+          statusEl.style.color = "var(--danger)";
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "\u25B6 Preview";
+        }
       }
 
       /* ── Voice Cloning ─────────────────────────── */
@@ -1831,6 +2155,7 @@
       }
 
       document.addEventListener("DOMContentLoaded", () => {
+        console.log("[Owner Panel] DOMContentLoaded event fired");
         // Login via phone + passcode
         $("owner-pass-confirm").addEventListener("click", async () => {
           const phone = ($("owner-phone-input").value || "").trim();
@@ -1862,8 +2187,37 @@
           if (e.key === "Enter") $("owner-pass-confirm").click();
         });
 
-        // Try restoring session from localStorage
+        // Try restoring session: hash token (Electron) → localStorage → login modal
         (async () => {
+          // 1. Check for #token=<key> in URL hash (injected by Electron desktop)
+          const hashParams = new URLSearchParams(window.location.hash.slice(1));
+          const hashToken = hashParams.get("token");
+          if (hashToken) {
+            try {
+              const res = await fetch("/api/admin/tenants", {
+                headers: { "X-Admin-Key": hashToken },
+              });
+              if (res.ok) {
+                const data = await res.json();
+                ownerAuthToken = hashToken;
+                const tenants = data.tenants || [];
+                // Pick the best tenant: prefer one with phone numbers, then non-default, then first
+                const bestTenant = tenants.find(t => t.numbers && t.numbers.length > 0)
+                  || tenants.find(t => t.id !== "default")
+                  || tenants[0];
+                OWNER_TENANT_ID = bestTenant ? bestTenant.id : "default";
+                ownerAuthorized = true;
+                localStorage.setItem("owner_token", ownerAuthToken);
+                localStorage.setItem("owner_tenant", OWNER_TENANT_ID);
+                hideOwnerModal();
+                refreshReadyStatus();
+                checkTelnyxStatus().then(() => loadOwnerData());
+                return;
+              }
+            } catch { /* hash token invalid, fall through */ }
+          }
+
+          // 2. Try restoring from localStorage
           const savedToken = localStorage.getItem("owner_token");
           const savedTenant = localStorage.getItem("owner_tenant");
           if (savedToken && savedTenant) {
@@ -1875,6 +2229,7 @@
                 ownerAuthToken = savedToken;
                 OWNER_TENANT_ID = savedTenant;
                 ownerAuthorized = true;
+                hideOwnerModal();
                 refreshReadyStatus();
                 checkTelnyxStatus().then(() => loadOwnerData());
                 return;
@@ -1924,13 +2279,25 @@
         $("owner-save-business-info").addEventListener("click", () => requireAuth(() => saveOwnerBusinessInfo()));
         $("owner-refresh").addEventListener("click", () => requireAuth(() => loadOwnerData()));
         
-        // Voice settings event listeners
+        // TTS Engine selector
+        $("tts-engine-selector").addEventListener("change", (e) => requireAuth(() => switchTtsEngine(e.target.value)));
+
+        // Voice settings event listeners (XTTS)
         $("save-voice-settings").addEventListener("click", () => requireAuth(() => saveVoiceSettings()));
 
-        // Tuning slider listeners
+        // XTTS Tuning slider listeners
         bindTuningSliders();
         $("save-tuning").addEventListener("click", () => requireAuth(() => saveTuning()));
         $("reset-tuning").addEventListener("click", () => resetTuning());
+        $("tuning-preview-btn").addEventListener("click", () => requireAuth(() => previewTuning()));
+        $("tuning-preview-text").addEventListener("keydown", (e) => { if (e.key === "Enter") requireAuth(() => previewTuning()); });
+
+        // Kokoro listeners
+        bindKokoroControls();
+        $("save-kokoro-settings").addEventListener("click", () => requireAuth(() => saveKokoroSettings()));
+        $("reset-kokoro-settings").addEventListener("click", () => resetKokoroSettings());
+        $("kokoro-preview-btn").addEventListener("click", () => requireAuth(() => previewKokoro()));
+        $("kokoro-preview-text").addEventListener("keydown", (e) => { if (e.key === "Enter") requireAuth(() => previewKokoro()); });
 
         // Voice cloning listeners
         $("vc-record-btn").addEventListener("click", () => requireAuth(() => vcToggleRecording()));

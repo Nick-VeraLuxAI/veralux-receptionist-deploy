@@ -52,6 +52,8 @@ export interface AssistantReplyResult {
   transfer?: AssistantTransferAction;
   /** If set, the runtime will switch voice mode before playing the response. */
   voiceDirective?: AssistantVoiceDirective;
+  /** If true, the runtime will play `text` (goodbye) then hang up the call. */
+  hangup?: boolean;
 }
 
 const ERROR_FALLBACK_TEXT = 'Sorry - I had a problem responding. Can you repeat that?';
@@ -268,11 +270,13 @@ export async function generateAssistantReply(
       text?: unknown;
       transfer?: { to?: unknown; audioUrl?: unknown; timeoutSecs?: unknown };
       voiceDirective?: { mode?: unknown; speakerWavUrl?: unknown };
+      hangup?: unknown;
     };
     const text = typeof data.text === 'string' ? data.text.trim() : '';
     const transfer = parseTransferAction(data.transfer);
     const voiceDirective = parseVoiceDirective(data.voiceDirective);
-    if (!text && !transfer?.to) {
+    const hangup = data.hangup === true;
+    if (!text && !transfer?.to && !hangup) {
       throw new Error('brain reply missing text and transfer');
     }
 
@@ -282,6 +286,7 @@ export async function generateAssistantReply(
     };
     if (transfer) result.transfer = transfer;
     if (voiceDirective) result.voiceDirective = voiceDirective;
+    if (hangup) result.hangup = true;
     return result;
   } catch (error) {
     log.error(
@@ -318,6 +323,7 @@ export async function generateAssistantReplyStream(
   let sawTokens = false;
   let transfer: AssistantTransferAction | undefined;
   let voiceDirective: AssistantVoiceDirective | undefined;
+  let hangup = false;
 
   try {
     log.info(
@@ -414,13 +420,14 @@ export async function generateAssistantReplyStream(
       }
 
       if (event === 'done') {
-        const p = payload as { text?: unknown; transfer?: unknown; voiceDirective?: unknown } | undefined;
+        const p = payload as { text?: unknown; transfer?: unknown; voiceDirective?: unknown; hangup?: unknown } | undefined;
         const text = p && typeof p.text === 'string' ? p.text : '';
         if (text) {
           fullText = text;
         }
         transfer = parseTransferAction(p?.transfer);
         voiceDirective = parseVoiceDirective(p?.voiceDirective);
+        if (p?.hangup === true) hangup = true;
         return false;
       }
 
@@ -456,6 +463,7 @@ export async function generateAssistantReplyStream(
     };
     if (transfer) result.transfer = transfer;
     if (voiceDirective) result.voiceDirective = voiceDirective;
+    if (hangup) result.hangup = true;
     return result;
   } catch (error) {
     log.warn(

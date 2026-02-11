@@ -68,6 +68,7 @@ export async function synthesizeSpeech(
       format: request.format ?? kokoroConfig?.format,
       sampleRate: request.sampleRate ?? kokoroConfig?.sampleRate,
       kokoroUrl: kokoroConfig?.kokoroUrl ?? request.kokoroUrl,
+      kokoroSpeed: request.kokoroSpeed ?? (kokoroConfig as any)?.kokoroSpeed,
     });
   }
 

@@ -17,12 +17,17 @@ const ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
 const SERVICES = [
   { id: 'control',     name: 'Control Plane', container: 'veralux-control',     port: 4000, healthPath: '/health' },
   { id: 'runtime',     name: 'Voice Runtime', container: 'veralux-runtime',      port: 4001, healthPath: '/health/live' },
+  { id: 'brain',       name: 'Brain LLM',     container: 'veralux-brain',        port: 3001, healthPath: '/health' },
   { id: 'whisper',     name: 'Whisper STT',   container: 'veralux-whisper',      port: 9000, healthPath: '/health' },
-  { id: 'xtts',        name: 'XTTS TTS',      container: 'veralux-xtts',         port: 7002, healthPath: '/health' },
+  { id: 'xtts',        name: 'XTTS TTS',      container: 'veralux-xtts',         port: 7002, healthPath: '/health',  ttsEngine: 'coqui_xtts' },
+  { id: 'kokoro',      name: 'Kokoro TTS',    container: 'veralux-kokoro',       port: 7001, healthPath: '/health',  ttsEngine: 'kokoro_http' },
   { id: 'redis',       name: 'Redis',         container: 'veralux-redis',        port: null, healthPath: null },
   { id: 'postgres',    name: 'PostgreSQL',    container: 'veralux-postgres',     port: null, healthPath: null },
   { id: 'cloudflared', name: 'Cloudflared',   container: 'veralux-cloudflared',  port: null, healthPath: null },
 ];
+
+// Active TTS mode (fetched from control-plane)
+let activeTtsMode = 'coqui_xtts';
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let mainWindow = null;
@@ -65,13 +70,13 @@ function httpHealth(port, path, timeoutMs = 4000) {
 
 function dockerInspectHealth(container) {
   return new Promise(resolve => {
-    exec(`docker inspect --format='{{.State.Status}}|{{.State.Health.Status}}|{{.State.StartedAt}}' ${container} 2>/dev/null`, (err, stdout) => {
+    exec(`docker inspect --format='{{.State.Status}}|{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}|{{.State.StartedAt}}' ${container} 2>/dev/null`, (err, stdout) => {
       if (err) return resolve({ status: 'stopped', uptime: null });
       const [state, health, startedAt] = stdout.trim().replace(/'/g, '').split('|');
       const uptime = startedAt ? Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000) : null;
       let status = 'stopped';
       if (state === 'running') {
-        status = (!health || health === 'healthy') ? 'healthy' : (health === 'starting' ? 'starting' : 'unhealthy');
+        status = (!health || health === 'healthy' || health === 'none') ? 'healthy' : (health === 'starting' ? 'starting' : 'unhealthy');
       }
       resolve({ status, uptime });
     });
@@ -87,6 +92,39 @@ async function checkGpu() {
         resolve({ utilization: parseInt(parts[0]), memUsedMB: parseInt(parts[1]), memTotalMB: parseInt(parts[2]) });
       } else resolve(null);
     });
+  });
+}
+
+// ─── Active TTS Mode ──────────────────────────────────────────────────────────
+
+function fetchActiveTtsMode() {
+  return new Promise(resolve => {
+    const adminKey = (() => {
+      try {
+        const env = fs.readFileSync(ENV_PATH, 'utf-8');
+        const m = env.match(/^ADMIN_API_KEY=(.+)$/m);
+        return m ? m[1].trim() : null;
+      } catch { return null; }
+    })();
+    const opts = {
+      hostname: '127.0.0.1', port: 4000, path: '/api/tts/config',
+      method: 'GET', timeout: 3000,
+      headers: {},
+    };
+    if (adminKey) opts.headers['X-Admin-Key'] = adminKey;
+    const req = http.request(opts, res => {
+      let body = '';
+      res.on('data', d => body += d);
+      res.on('end', () => {
+        try {
+          const cfg = JSON.parse(body);
+          resolve(cfg.ttsMode || cfg.mode || 'coqui_xtts');
+        } catch { resolve(activeTtsMode); }
+      });
+    });
+    req.on('error', () => resolve(activeTtsMode));
+    req.on('timeout', () => { req.destroy(); resolve(activeTtsMode); });
+    req.end();
   });
 }
 
@@ -108,10 +146,11 @@ async function pollHealth() {
     };
   });
   await Promise.all(promises);
-  const gpu = await checkGpu();
+  const [gpu, ttsMode] = await Promise.all([checkGpu(), fetchActiveTtsMode()]);
+  activeTtsMode = ttsMode;
   healthState = results;
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('health-update', { services: results, gpu });
+    mainWindow.webContents.send('health-update', { services: results, gpu, activeTtsMode });
   }
   updateTrayIcon();
 }
@@ -186,18 +225,30 @@ function setupIPC() {
   ipcMain.handle('docker:stop-all', () => dockerAction('stop'));
   ipcMain.handle('docker:restart-all', () => dockerAction('restart'));
   ipcMain.handle('docker:restart-service', (_e, container) => {
-    return dockerCompose(['restart', container.replace('veralux-', '')]).then(() => {
-      setTimeout(pollHealth, 2000);
+    return new Promise((resolve, reject) => {
+      exec(`docker restart ${container}`, (err, _stdout, stderr) => {
+        if (err) return reject(new Error(stderr || err.message));
+        setTimeout(pollHealth, 2000);
+        resolve();
+      });
     });
   });
   ipcMain.handle('docker:start-service', (_e, container) => {
-    return dockerCompose(['up', '-d', container.replace('veralux-', '')]).then(() => {
-      setTimeout(pollHealth, 2000);
+    return new Promise((resolve, reject) => {
+      exec(`docker start ${container}`, (err, _stdout, stderr) => {
+        if (err) return reject(new Error(stderr || err.message));
+        setTimeout(pollHealth, 2000);
+        resolve();
+      });
     });
   });
   ipcMain.handle('docker:stop-service', (_e, container) => {
-    return dockerCompose(['stop', container.replace('veralux-', '')]).then(() => {
-      setTimeout(pollHealth, 2000);
+    return new Promise((resolve, reject) => {
+      exec(`docker stop ${container}`, (err, _stdout, stderr) => {
+        if (err) return reject(new Error(stderr || err.message));
+        setTimeout(pollHealth, 2000);
+        resolve();
+      });
     });
   });
 
@@ -246,7 +297,7 @@ function setupIPC() {
   ipcMain.handle('services:list', () => SERVICES);
 
   // Health snapshot
-  ipcMain.handle('health:get', () => healthState);
+  ipcMain.handle('health:get', () => ({ services: healthState, activeTtsMode }));
 
   // Get admin API key for owner panel auth
   ipcMain.handle('auth:admin-key', () => {

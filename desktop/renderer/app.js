@@ -11,6 +11,7 @@ let logsPaused = false;
 let logFilter = '';
 let currentLogContainer = null;
 let ownerLoaded = false;
+let activeTtsMode = 'coqui_xtts';
 
 // ─── Tab Routing ──────────────────────────────────────────────────────────────
 
@@ -40,11 +41,17 @@ async function initDashboard() {
 
 function renderServiceGrid() {
   const grid = $('#service-grid');
-  grid.innerHTML = services.map(svc => `
-    <div class="service-card" data-id="${svc.id}">
+  grid.innerHTML = services.map(svc => {
+    const isTts = !!svc.ttsEngine;
+    const isActive = isTts && svc.ttsEngine === activeTtsMode;
+    const cardClasses = ['service-card'];
+    if (isTts && !isActive) cardClasses.push('tts-inactive');
+    return `
+    <div class="${cardClasses.join(' ')}" data-id="${svc.id}" ${isTts ? `data-tts-engine="${svc.ttsEngine}"` : ''}>
       <div class="service-card-header">
         <div class="status-dot unknown" id="dot-${svc.id}"></div>
         <span class="svc-name">${svc.name}</span>
+        ${isTts ? `<span class="tts-badge ${isActive ? 'tts-active' : 'tts-standby'}" id="tts-badge-${svc.id}">${isActive ? 'Active' : 'Standby'}</span>` : ''}
         <span class="svc-status" id="status-${svc.id}">...</span>
       </div>
       <div class="service-card-meta">
@@ -56,12 +63,32 @@ function renderServiceGrid() {
         <button class="btn btn-sm" onclick="svcAction('restart', '${svc.container}')">Restart</button>
         <button class="btn btn-sm btn-danger" onclick="svcAction('stop', '${svc.container}')">Stop</button>
       </div>
-    </div>
-  `).join('');
+    </div>`;
+  }).join('');
+}
+
+function updateTtsBadges() {
+  for (const svc of services) {
+    if (!svc.ttsEngine) continue;
+    const card = document.querySelector(`.service-card[data-tts-engine="${svc.ttsEngine}"]`);
+    const badge = $(`#tts-badge-${svc.id}`);
+    if (!card || !badge) continue;
+    const isActive = svc.ttsEngine === activeTtsMode;
+    badge.textContent = isActive ? 'Active' : 'Standby';
+    badge.className = `tts-badge ${isActive ? 'tts-active' : 'tts-standby'}`;
+    card.classList.toggle('tts-inactive', !isActive);
+  }
 }
 
 function updateDashboard(data) {
   const { services: svcHealth, gpu } = data;
+
+  // Update active TTS mode if provided
+  if (data.activeTtsMode && data.activeTtsMode !== activeTtsMode) {
+    activeTtsMode = data.activeTtsMode;
+    updateTtsBadges();
+  }
+
   let healthyCount = 0, totalCount = 0;
 
   for (const svc of services) {
@@ -275,7 +302,15 @@ veralux.onDockerActionDone((phase, data) => {
   await initDashboard();
   // Load initial health if available
   const health = await veralux.getHealth();
-  if (health && Object.keys(health).length > 0) {
-    updateDashboard({ services: health, gpu: null });
+  if (health) {
+    // health:get now returns { services, activeTtsMode }
+    if (health.services && Object.keys(health.services).length > 0) {
+      activeTtsMode = health.activeTtsMode || activeTtsMode;
+      updateTtsBadges();
+      updateDashboard({ services: health.services, gpu: null, activeTtsMode });
+    } else if (Object.keys(health).length > 0 && !health.services) {
+      // Backwards compat: old format was flat { serviceId: healthData }
+      updateDashboard({ services: health, gpu: null });
+    }
   }
 })();

@@ -22,23 +22,40 @@ import type {
 } from './types.js';
 
 const PORT = Number(process.env.PORT ?? 3001);
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim();
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim() || 'ollama';
+const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim() || undefined;
 const MODEL = process.env.OPENAI_MODEL?.trim() ?? 'gpt-4o';
+const MAX_TOKENS = Number(process.env.BRAIN_MAX_TOKENS ?? 80);
 
-if (!OPENAI_API_KEY) {
-  console.error('OPENAI_API_KEY is required. Set it in .env or the environment.');
-  process.exit(1);
-}
+const openai = new OpenAI({
+  apiKey: OPENAI_API_KEY,
+  ...(OPENAI_BASE_URL ? { baseURL: OPENAI_BASE_URL } : {}),
+});
 
-const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
+console.log(`Brain config: model=${MODEL}, maxTokens=${MAX_TOKENS}, baseURL=${OPENAI_BASE_URL || 'default (api.openai.com)'}`);
 
 const TRANSFER_TOOL_NAME = 'transfer_call';
+const END_CALL_TOOL_NAME = 'end_call';
 
 function buildSystemPrompt(
   transferProfiles?: TransferProfile[],
   assistantContext?: Record<string, string>,
 ): string {
-  let prompt = `You are a helpful, concise phone assistant. Keep replies short and natural for voice (1-3 sentences). Be warm and professional.`;
+  let prompt = `You are a phone receptionist. Reply in exactly this format:
+
+[short answer]. Anything else I can help with?
+
+Examples:
+- "We close at 5 PM. Anything else I can help with?"
+- "We're at 123 Main Street. Anything else I can help with?"
+- "I'm not sure about that. Anything else I can help with?"
+- "Have a great day! Goodbye."
+
+Rules:
+1. Your answer MUST be one short sentence ending with a period, followed by "Anything else I can help with?"
+2. ONLY use facts from the business info below. If you don't know, say "I'm not sure about that."
+3. If the caller says goodbye or no more questions, just say "Have a great day! Goodbye."
+4. Never start with "We actually" or add filler. Be direct.`;
 
   if (assistantContext && Object.keys(assistantContext).length > 0) {
     prompt += `\n\nUse the following information when answering questions. Answer only from this context when the caller asks about these topics:\n\n`;
@@ -83,6 +100,27 @@ function historyToMessages(history: BrainReplyRequest['history'], transcript: st
   return messages;
 }
 
+function getEndCallToolDefinition(): OpenAI.Chat.ChatCompletionTool {
+  return {
+    type: 'function',
+    function: {
+      name: END_CALL_TOOL_NAME,
+      description:
+        'End the phone call after saying goodbye. Use this when the caller indicates they are done (e.g. "no thanks", "that\'s all", "goodbye", "I\'m good").',
+      parameters: {
+        type: 'object',
+        properties: {
+          goodbye_message: {
+            type: 'string',
+            description: 'A warm goodbye message to say before hanging up (e.g. "Alright, have a great day! Goodbye.").',
+          },
+        },
+        required: ['goodbye_message'],
+      },
+    },
+  };
+}
+
 function getTransferToolDefinition(): OpenAI.Chat.ChatCompletionTool[] {
   return [
     {
@@ -118,6 +156,49 @@ function findProfileByDestination(
   return transferProfiles.find((p) => p.destination === to || p.destination === to.trim());
 }
 
+/**
+ * Detect if the assistant's response is a goodbye/farewell that should end the call.
+ * Checks: the user indicated they're done + the assistant said goodbye (not asking another question).
+ */
+function isGoodbyeResponse(
+  assistantText: string,
+  userTranscript: string,
+  history: BrainReplyRequest['history'],
+): boolean {
+  const reply = assistantText.toLowerCase();
+  const user = userTranscript.toLowerCase();
+
+  // The assistant's reply should contain goodbye-like language
+  const goodbyePhrases = [
+    'goodbye', 'good bye', 'bye', 'have a great day', 'have a good day',
+    'have a nice day', 'have a wonderful day', 'take care', 'talk to you later',
+    'thanks for calling', 'thank you for calling',
+  ];
+  const hasGoodbye = goodbyePhrases.some((p) => reply.includes(p));
+  if (!hasGoodbye) return false;
+
+  // The assistant's reply should NOT end with a question (meaning they're still prompting)
+  const endsWithQuestion = reply.trimEnd().endsWith('?');
+  if (endsWithQuestion) return false;
+
+  // Extra check: the user's last message should indicate they're done
+  const doneIndicators = [
+    'no', 'nope', 'nah', "that's all", 'thats all', "that's it", 'thats it',
+    "i'm good", 'im good', 'all good', 'all set', 'thanks', 'thank you',
+    'bye', 'goodbye', 'good bye', 'have a good', 'nothing else', 'no thanks',
+    'no thank you',
+  ];
+  const userDone = doneIndicators.some((d) => user.includes(d));
+
+  // Also check if the previous assistant message asked "anything else?"
+  const lastAssistant = [...history].reverse().find((t) => t.role === 'assistant');
+  const askedAnythingElse = lastAssistant?.content.toLowerCase().includes('anything else') ||
+    lastAssistant?.content.toLowerCase().includes('help you with') ||
+    lastAssistant?.content.toLowerCase().includes('can i help');
+
+  return userDone || (hasGoodbye && !!askedAnythingElse);
+}
+
 /** POST /reply — non-streaming reply. */
 async function handleReply(req: Request, res: Response): Promise<void> {
   const body = req.body as BrainReplyRequest;
@@ -142,7 +223,7 @@ async function handleReply(req: Request, res: Response): Promise<void> {
       messages,
       tools,
       tool_choice: tools ? 'auto' : undefined,
-      max_tokens: 256,
+      max_tokens: MAX_TOKENS,
     });
 
     const choice = completion.choices?.[0];
@@ -192,6 +273,11 @@ async function handleReply(req: Request, res: Response): Promise<void> {
         content && typeof content === 'string' ? String(content).trim() : response.text;
     }
 
+    // Detect goodbye intent: if the assistant's reply is a farewell (and not a question), signal hangup
+    if (!response.transfer && isGoodbyeResponse(response.text, transcript, history ?? [])) {
+      response.hangup = true;
+    }
+
     res.json(response);
   } catch (err) {
     console.error('OpenAI reply error:', err);
@@ -231,7 +317,7 @@ async function handleReplyStream(req: Request, res: Response): Promise<void> {
       messages,
       tools,
       tool_choice: tools ? 'auto' : undefined,
-      max_tokens: 256,
+      max_tokens: MAX_TOKENS,
       stream: true,
     });
 
@@ -262,10 +348,12 @@ async function handleReplyStream(req: Request, res: Response): Promise<void> {
     }
 
     const toolCalls = Array.from(toolCallsByIndex.values());
-    const transferTool = toolCalls.find((tc) => tc.name === TRANSFER_TOOL_NAME);
     let finalText = fullContent.trim();
     let transfer: BrainTransferAction | undefined;
+    let hangup = false;
 
+    // Check for transfer tool
+    const transferTool = toolCalls.find((tc) => tc.name === TRANSFER_TOOL_NAME);
     if (transferTool?.args) {
       try {
         const args = JSON.parse(transferTool.args) as {
@@ -292,6 +380,11 @@ async function handleReplyStream(req: Request, res: Response): Promise<void> {
 
     const donePayload: BrainReplyResponse = { text: finalText };
     if (transfer) donePayload.transfer = transfer;
+    // Detect goodbye intent from response text
+    if (!transfer && !hangup && isGoodbyeResponse(finalText, transcript, history ?? [])) {
+      hangup = true;
+    }
+    if (hangup) donePayload.hangup = true;
     res.write(`event: done\ndata: ${JSON.stringify(donePayload)}\n\n`);
   } catch (err) {
     console.error('OpenAI stream error:', err);

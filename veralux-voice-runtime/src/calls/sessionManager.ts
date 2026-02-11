@@ -13,7 +13,7 @@ import { CallSession } from './callSession';
 import { CallSessionConfig, CallSessionId } from './types';
 import type { TransportMode, TransportSession } from '../transport/types';
 import type { Pcm16Frame } from '../media/types';
-import { reportCallEnd } from '../controlPlane';
+import { reportCallEnd, reportCallStart, reportCallerMessage } from '../controlPlane';
 import { clearTelnyxCodecSession } from '../audio/codecDecode';
 import { releaseFarEndBuffer } from '../audio/farEndReference';
 import { releaseAecProcessor } from '../audio/aecProcessor';
@@ -155,6 +155,13 @@ export class SessionManager {
         requestId: context.requestId,
       },
       'call session created',
+    );
+
+    // Report call start to control plane (analytics + call registry)
+    void reportCallStart(
+      session.tenantId ?? 'unknown',
+      session.callControlId,
+      session.from,
     );
 
     const transportMode = transport.mode;
