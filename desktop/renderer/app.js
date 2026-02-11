@@ -296,9 +296,62 @@ veralux.onDockerActionDone((phase, data) => {
   else showToast(`${data.action} failed: ${data.error || 'unknown'}`, true);
 });
 
+// ─── EULA / License Gate ──────────────────────────────────────────────────────
+
+async function checkEula() {
+  const result = await veralux.checkEula();
+  if (result.accepted) {
+    hideEula();
+    return true;
+  }
+  // Show the EULA modal
+  const overlay = $('#eula-overlay');
+  const eulaText = $('#eula-text');
+  const checkbox = $('#eula-agree-checkbox');
+  const acceptBtn = $('#btn-eula-accept');
+  const declineBtn = $('#btn-eula-decline');
+
+  eulaText.textContent = result.licenseText;
+  overlay.classList.remove('hidden');
+
+  // Enable accept button only when checkbox is checked
+  checkbox.addEventListener('change', () => {
+    acceptBtn.disabled = !checkbox.checked;
+  });
+
+  return new Promise((resolve) => {
+    acceptBtn.addEventListener('click', async () => {
+      acceptBtn.disabled = true;
+      acceptBtn.textContent = 'Saving...';
+      const saveResult = await veralux.acceptEula();
+      if (saveResult.success) {
+        hideEula();
+        resolve(true);
+      } else {
+        acceptBtn.textContent = 'Accept & Continue';
+        acceptBtn.disabled = false;
+        showToast('Failed to save acceptance: ' + (saveResult.error || 'unknown error'), true);
+      }
+    });
+
+    declineBtn.addEventListener('click', () => {
+      // Close the app if the user declines
+      window.close();
+    });
+  });
+}
+
+function hideEula() {
+  const overlay = $('#eula-overlay');
+  if (overlay) overlay.classList.add('hidden');
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 (async () => {
+  // Gate: user must accept the license agreement before using the app
+  await checkEula();
+
   await initDashboard();
   // Load initial health if available
   const health = await veralux.getHealth();

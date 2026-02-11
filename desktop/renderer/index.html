@@ -81,6 +81,30 @@
     <span id="sb-services"></span>
   </div>
 
+  <!-- EULA / License Agreement Modal -->
+  <div class="eula-overlay" id="eula-overlay">
+    <div class="eula-modal">
+      <div class="eula-header">
+        <img class="eula-logo" src="../assets/icon.png" alt="V" />
+        <h2>VeraLux AI — License Agreement</h2>
+        <p class="eula-subtitle">Please read and accept the following license agreement to continue.</p>
+      </div>
+      <div class="eula-body">
+        <pre class="eula-text" id="eula-text">Loading license...</pre>
+      </div>
+      <div class="eula-footer">
+        <label class="eula-checkbox-label">
+          <input type="checkbox" id="eula-agree-checkbox" />
+          <span>I have read and agree to the terms of this license agreement</span>
+        </label>
+        <div class="eula-actions">
+          <button class="btn btn-danger btn-sm" id="btn-eula-decline">Decline &amp; Exit</button>
+          <button class="btn btn-primary btn-sm" id="btn-eula-accept" disabled>Accept &amp; Continue</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast -->
   <div class="toast hidden" id="toast"></div>
 

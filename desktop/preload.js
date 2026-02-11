@@ -31,4 +31,8 @@ contextBridge.exposeInMainWorld('veralux', {
 
   // Auth
   getAdminKey: () => ipcRenderer.invoke('auth:admin-key'),
+
+  // EULA / License Agreement
+  checkEula:  () => ipcRenderer.invoke('eula:check'),
+  acceptEula: () => ipcRenderer.invoke('eula:accept'),
 });

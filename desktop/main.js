@@ -7,10 +7,13 @@ const path = require('path');
 const { spawn, execSync, exec } = require('child_process');
 const fs = require('fs');
 const http = require('http');
+const crypto = require('crypto');
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const PROJECT_DIR = path.resolve(__dirname, '..');
 const ENV_PATH = path.join(PROJECT_DIR, '.env');
+const LICENSE_PATH = path.join(PROJECT_DIR, 'LICENSE');
+const EULA_ACCEPTANCE_PATH = path.join(__dirname, '.eula-accepted');
 const COMPOSE_PROJECT = 'veralux';
 const ICON_PATH = path.join(__dirname, 'assets', 'icon.png');
 
@@ -298,6 +301,32 @@ function setupIPC() {
 
   // Health snapshot
   ipcMain.handle('health:get', () => ({ services: healthState, activeTtsMode }));
+
+  // ─── EULA / License Agreement ──────────────────────────────────────────────
+  ipcMain.handle('eula:check', () => {
+    try {
+      const licenseText = fs.readFileSync(LICENSE_PATH, 'utf-8');
+      const currentHash = crypto.createHash('sha256').update(licenseText).digest('hex').slice(0, 16);
+      if (fs.existsSync(EULA_ACCEPTANCE_PATH)) {
+        const accepted = fs.readFileSync(EULA_ACCEPTANCE_PATH, 'utf-8').trim();
+        if (accepted === currentHash) return { accepted: true, licenseText };
+      }
+      return { accepted: false, licenseText };
+    } catch {
+      return { accepted: false, licenseText: 'License file not found. Contact nick@veralux.ai.' };
+    }
+  });
+
+  ipcMain.handle('eula:accept', () => {
+    try {
+      const licenseText = fs.readFileSync(LICENSE_PATH, 'utf-8');
+      const currentHash = crypto.createHash('sha256').update(licenseText).digest('hex').slice(0, 16);
+      fs.writeFileSync(EULA_ACCEPTANCE_PATH, currentHash, 'utf-8');
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  });
 
   // Get admin API key for owner panel auth
   ipcMain.handle('auth:admin-key', () => {
