@@ -7,6 +7,14 @@ import fs from "fs";
 import multer from "multer";
 import { z } from "zod";
 import {
+  createWorkflowSchema, updateWorkflowSchema, workflowSettingsSchema,
+  createTenantSchema, configUpdateSchema, promptConfigSchema,
+  ttsConfigSchema, forwardingProfilesSchema, pricingSchema,
+  createAdminKeySchema, secretSchema, capacitySchema,
+  cloudflareTokenSchema, stripeCheckoutSchema, stripePlanSchema,
+  subscriptionSchema,
+} from "./validationSchemas";
+import {
   requestIdMiddleware,
   requestTimeout,
   globalErrorHandler,
@@ -107,6 +115,15 @@ app.use(
   })
 );
 app.use(express.static("public"));
+
+// ────────────────────────────────────────────────
+// Cookie Parser + CSRF Protection
+// ────────────────────────────────────────────────
+import cookieParser from "cookie-parser";
+import { csrfProtection, getCsrfToken } from "./csrf";
+app.use(cookieParser());
+app.use(csrfProtection);
+app.get("/api/csrf-token", getCsrfToken);
 
 // ────────────────────────────────────────────────
 // Production Middleware (request ID, timeout, logging)
@@ -784,6 +801,135 @@ app.post("/api/dev/receptionist-audio", (_req, res) =>
 );
 
 /* ────────────────────────────────────────────────
+   Public Auth — Self-Service Signup & Login
+   ──────────────────────────────────────────────── */
+
+import {
+  signup, login, signupSchema, loginSchema,
+  createInvitation, acceptInvitation, inviteSchema,
+  getUserProfile, listInvitations,
+  forgotPassword, resetPassword, forgotPasswordSchema, resetPasswordSchema,
+  verifyEmail, sendVerification,
+  refreshAccessToken, refreshTokenSchema,
+} from "./tenantProvisioning";
+
+const SAAS_MODE = (process.env.SAAS_MODE || "false").toLowerCase() === "true";
+
+// ── Auth-specific rate limiter (stricter: 10 req / 5 min per IP) ──
+const authRateLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 10,                  // 10 attempts per window
+  keyFn: (req) => req.ip || "anon",
+  useRedis: parseBooleanish(process.env.ADMIN_RATE_USE_REDIS, false),
+});
+
+// Signup (public — only available in SaaS mode)
+app.post("/api/auth/signup", authRateLimiter, asyncHandler(async (req, res) => {
+  if (!SAAS_MODE) {
+    return res.status(404).json({ error: "Signup is disabled in on-premise mode" });
+  }
+  const body = validateBody(signupSchema, req.body);
+  const result = await signup(body);
+  res.status(201).json(result);
+}));
+
+// Login (public)
+app.post("/api/auth/login", authRateLimiter, asyncHandler(async (req, res) => {
+  if (!SAAS_MODE) {
+    return res.status(404).json({ error: "Login via email/password is disabled in on-premise mode" });
+  }
+  const body = validateBody(loginSchema, req.body);
+  const result = await login(body);
+  res.json(result);
+}));
+
+// Get current user profile (authenticated)
+app.get("/api/auth/me", asyncHandler(async (req, res) => {
+  const auth = req as AuthedRequest;
+  if (!auth.ctx?.userId) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+  const profile = await getUserProfile(auth.ctx.userId);
+  if (!profile) return res.status(404).json({ error: "User not found" });
+  res.json(profile);
+}));
+
+// Invite a user to a tenant (authenticated, admin only)
+app.post("/api/admin/invitations", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const body = validateBody(inviteSchema, req.body);
+  const auth = req as AuthedRequest;
+  const result = await createInvitation(tenant.id, body.email, body.role as string, auth.ctx?.userId ?? null);
+  res.status(201).json(result);
+}));
+
+// List invitations for a tenant
+app.get("/api/admin/invitations", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const invitations = await listInvitations(tenant.id);
+  res.json({ invitations });
+}));
+
+// Accept an invitation (authenticated)
+app.post("/api/auth/accept-invite", asyncHandler(async (req, res) => {
+  const { token: inviteToken } = req.body as { token?: string };
+  if (!inviteToken) return res.status(400).json({ error: "Invitation token required" });
+  const auth = req as AuthedRequest;
+  const userId = auth.ctx?.userId;
+  if (!userId) return res.status(401).json({ error: "Not authenticated" });
+  const result = await acceptInvitation(inviteToken, userId);
+  res.json(result);
+}));
+
+// Forgot password (public)
+app.post("/api/auth/forgot-password", authRateLimiter, asyncHandler(async (req, res) => {
+  if (!SAAS_MODE) {
+    return res.status(404).json({ error: "Not available in on-premise mode" });
+  }
+  const body = validateBody(forgotPasswordSchema, req.body);
+  await forgotPassword(body.email);
+  // Always return success to prevent email enumeration
+  res.json({ success: true, message: "If that email exists, a reset link has been sent." });
+}));
+
+// Reset password (public)
+app.post("/api/auth/reset-password", authRateLimiter, asyncHandler(async (req, res) => {
+  if (!SAAS_MODE) {
+    return res.status(404).json({ error: "Not available in on-premise mode" });
+  }
+  const body = validateBody(resetPasswordSchema, req.body);
+  await resetPassword(body.token, body.password);
+  res.json({ success: true, message: "Password has been reset. You can now log in." });
+}));
+
+// Verify email (public, via link)
+app.get("/api/auth/verify-email", asyncHandler(async (req, res) => {
+  const token = req.query.token as string;
+  if (!token) return res.status(400).json({ error: "Verification token required" });
+  const result = await verifyEmail(token);
+  // Redirect to a success page or return JSON
+  res.json({ success: true, email: result.email, message: "Email verified successfully." });
+}));
+
+// Resend verification email (authenticated)
+app.post("/api/auth/resend-verification", asyncHandler(async (req, res) => {
+  const auth = req as AuthedRequest;
+  const userId = auth.ctx?.userId;
+  if (!userId) return res.status(401).json({ error: "Not authenticated" });
+  await sendVerification(userId);
+  res.json({ success: true, message: "Verification email sent." });
+}));
+
+// Refresh access token (public — uses refresh token)
+app.post("/api/auth/refresh", authRateLimiter, asyncHandler(async (req, res) => {
+  const body = validateBody(refreshTokenSchema, req.body);
+  const result = await refreshAccessToken(body.refreshToken);
+  res.json(result);
+}));
+
+/* ────────────────────────────────────────────────
    Health
    ──────────────────────────────────────────────── */
 
@@ -840,6 +986,23 @@ app.get("/ready", async (_req, res) => {
   
   res.json({ status: "ok", checks });
 });
+
+// Prometheus-compatible metrics endpoint (for scraping)
+app.get("/metrics", async (_req, res) => {
+  try {
+    const text = await generateMetrics();
+    res.set("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+    res.send(text);
+  } catch (err: any) {
+    res.status(500).send(`# Error: ${err.message}\n`);
+  }
+});
+
+// System health dashboard data (admin-only)
+app.get("/api/admin/system/health", asyncHandler(async (req, res) => {
+  const health = await getSystemHealth();
+  res.json(health);
+}));
 
 /* ────────────────────────────────────────────────
    Installer admin-auth (used by install.sh)
@@ -1403,6 +1566,44 @@ app.post("/api/admin/stripe/sync", asyncHandler(async (req, res) => {
   await syncSubscriptionFromStripe(tenant.id, (sub as any).stripeSubscriptionId);
   const updated = await getSubscription(tenant.id);
   res.json(updated);
+}));
+
+/* ────────────────────────────────────────────────
+   Admin – Usage Metering & Billing Enforcement
+   ──────────────────────────────────────────────── */
+
+import {
+  getUsage, getUsageHistory, checkUsageLimits, incrementUsage, canAcceptCall,
+} from "./billing/usageMetering";
+import { generateMetrics, getSystemHealth, incrementCounter } from "./monitoring/metrics";
+
+// Get current usage for the tenant
+app.get("/api/admin/usage", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const usage = await getUsage(tenant.id);
+  res.json(usage || {
+    tenantId: tenant.id,
+    period: new Date().toISOString().slice(0, 7),
+    callCount: 0, callMinutes: 0, apiRequests: 0, sttMinutes: 0, ttsCharacters: 0,
+  });
+}));
+
+// Get usage history
+app.get("/api/admin/usage/history", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const months = parseInt(req.query.months as string) || 6;
+  const history = await getUsageHistory(tenant.id, months);
+  res.json({ history });
+}));
+
+// Get subscription status + usage limits
+app.get("/api/admin/billing/status", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const status = await checkUsageLimits(tenant.id);
+  res.json(status);
 }));
 
 /* ────────────────────────────────────────────────
@@ -2239,6 +2440,14 @@ app.post("/api/runtime/calls", adminGuard("admin"), (req, res) => {
     const endingCall = tenant.calls.getCall(callId);
     tenant.calls.deleteCall(callId);
 
+    // Track usage for billing (fire-and-forget)
+    const durationMs = endingCall?.createdAt
+      ? Date.now() - endingCall.createdAt
+      : (req.body.durationMs || 0);
+    const callMinutes = Math.max(1, Math.ceil(durationMs / 60000));
+    incrementUsage(tenantId, "call_count", 1).catch(() => {});
+    incrementUsage(tenantId, "call_minutes", callMinutes).catch(() => {});
+
     // Fire workflow event bus (async, don't block response)
     if (endingCall) {
       const workflowEvent: CallEndedEvent = {
@@ -2246,9 +2455,7 @@ app.post("/api/runtime/calls", adminGuard("admin"), (req, res) => {
         tenantId,
         callId,
         callerId: endingCall.callerId,
-        durationMs: endingCall.createdAt
-          ? Date.now() - endingCall.createdAt
-          : undefined,
+        durationMs,
         turns: endingCall.history as any,
         transcript: req.body.transcript,
         lead: endingCall.lead as any,
@@ -2263,6 +2470,18 @@ app.post("/api/runtime/calls", adminGuard("admin"), (req, res) => {
   }
 
   return res.status(400).json({ error: "invalid_action", validActions: ["start", "update", "end"] });
+});
+
+// Runtime billing check — called by voice runtime before accepting a call
+app.get("/api/runtime/billing/check", adminGuard("admin"), async (req, res) => {
+  const tenantId = req.query.tenantId as string;
+  if (!tenantId) return res.status(400).json({ error: "tenantId required" });
+  try {
+    const result = await canAcceptCall(tenantId);
+    res.json(result);
+  } catch (err: any) {
+    res.json({ allowed: true, reason: "billing_check_error" }); // fail-open
+  }
 });
 
 /* ────────────────────────────────────────────────
@@ -2787,19 +3006,16 @@ app.get("/api/admin/workflows", asyncHandler(async (req, res) => {
 app.post("/api/admin/workflows", asyncHandler(async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);
   if (!tenant) return;
-  const { name, triggerType, triggerConfig, steps, adminLocked } = req.body || {};
-  if (!name || !triggerType) {
-    return res.status(400).json({ error: "name and triggerType are required" });
-  }
+  const body = validateBody(createWorkflowSchema, req.body || {});
   const createdBy = (req as any).adminRole === "admin" ? "admin" : "owner";
   const wf = await createWorkflow({
     tenantId: tenant.id,
-    name,
-    triggerType,
-    triggerConfig: triggerConfig || {},
-    steps: steps || [],
-    createdBy,
-    adminLocked: adminLocked ?? false,
+    name: body.name,
+    triggerType: body.triggerType as any,
+    triggerConfig: (body.triggerConfig ?? {}) as any,
+    steps: (body.steps ?? []) as any,
+    createdBy: body.createdBy ?? createdBy,
+    adminLocked: body.adminLocked,
   });
   res.status(201).json(wf);
 }));
@@ -2809,14 +3025,12 @@ app.put("/api/admin/workflows/:id", asyncHandler(async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);
   if (!tenant) return;
   const { id } = req.params;
-  const existing = await getWorkflow(id);
-  if (!existing || existing.tenantId !== tenant.id) {
+  const existing = await getWorkflow(id, tenant.id);
+  if (!existing) {
     return res.status(404).json({ error: "Workflow not found" });
   }
-  const { name, enabled, triggerType, triggerConfig, steps, adminLocked } = req.body || {};
-  const updated = await updateWorkflow(id, {
-    name, enabled, triggerType, triggerConfig, steps, adminLocked,
-  });
+  const body = validateBody(updateWorkflowSchema, req.body || {});
+  const updated = await updateWorkflow(id, body as any, tenant.id);
   res.json(updated);
 }));
 
@@ -2825,11 +3039,11 @@ app.delete("/api/admin/workflows/:id", asyncHandler(async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);
   if (!tenant) return;
   const { id } = req.params;
-  const existing = await getWorkflow(id);
-  if (!existing || existing.tenantId !== tenant.id) {
+  const existing = await getWorkflow(id, tenant.id);
+  if (!existing) {
     return res.status(404).json({ error: "Workflow not found" });
   }
-  await deleteWorkflow(id);
+  await deleteWorkflow(id, tenant.id);
   res.json({ success: true });
 }));
 
@@ -2838,8 +3052,8 @@ app.post("/api/admin/workflows/:id/test", asyncHandler(async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);
   if (!tenant) return;
   const { id } = req.params;
-  const workflow = await getWorkflow(id);
-  if (!workflow || workflow.tenantId !== tenant.id) {
+  const workflow = await getWorkflow(id, tenant.id);
+  if (!workflow) {
     return res.status(404).json({ error: "Workflow not found" });
   }
   const sampleEvent: CallEndedEvent = {
@@ -2885,7 +3099,7 @@ app.delete("/api/admin/leads/:id", asyncHandler(async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);
   if (!tenant) return;
   const { id } = req.params;
-  const deleted = await deleteLead(id);
+  const deleted = await deleteLead(id, tenant.id);
   if (!deleted) return res.status(404).json({ error: "Lead not found" });
   res.json({ success: true });
 }));
@@ -2902,10 +3116,8 @@ app.get("/api/admin/workflows/settings", asyncHandler(async (req, res) => {
 app.patch("/api/admin/workflows/settings", asyncHandler(async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);
   if (!tenant) return;
-  const { ownerCanEdit } = req.body || {};
-  const settings = await updateWorkflowSettings(tenant.id, {
-    ownerCanEdit: ownerCanEdit !== undefined ? !!ownerCanEdit : undefined,
-  });
+  const body = validateBody(workflowSettingsSchema, req.body || {});
+  const settings = await updateWorkflowSettings(tenant.id, body);
   res.json(settings);
 }));
 

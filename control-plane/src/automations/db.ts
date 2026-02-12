@@ -75,10 +75,14 @@ export async function listWorkflows(tenantId: string): Promise<Workflow[]> {
   }
 }
 
-export async function getWorkflow(id: string): Promise<Workflow | null> {
+export async function getWorkflow(id: string, tenantId?: string): Promise<Workflow | null> {
   const client = await pool.connect();
   try {
-    const res = await client.query("SELECT * FROM workflows WHERE id = $1", [id]);
+    const sql = tenantId
+      ? "SELECT * FROM workflows WHERE id = $1 AND tenant_id = $2"
+      : "SELECT * FROM workflows WHERE id = $1";
+    const params = tenantId ? [id, tenantId] : [id];
+    const res = await client.query(sql, params);
     return res.rows[0] ? rowToWorkflow(res.rows[0]) : null;
   } finally {
     client.release();
@@ -134,7 +138,8 @@ export async function createWorkflow(params: {
 
 export async function updateWorkflow(
   id: string,
-  data: Partial<Pick<Workflow, "name" | "enabled" | "triggerType" | "triggerConfig" | "steps" | "adminLocked">>
+  data: Partial<Pick<Workflow, "name" | "enabled" | "triggerType" | "triggerConfig" | "steps" | "adminLocked">>,
+  tenantId?: string
 ): Promise<Workflow | null> {
   const sets: string[] = [];
   const vals: any[] = [];
@@ -147,15 +152,22 @@ export async function updateWorkflow(
   if (data.steps !== undefined) { sets.push(`steps = $${idx++}`); vals.push(JSON.stringify(data.steps)); }
   if (data.adminLocked !== undefined) { sets.push(`admin_locked = $${idx++}`); vals.push(data.adminLocked); }
 
-  if (sets.length === 0) return getWorkflow(id);
+  if (sets.length === 0) return getWorkflow(id, tenantId);
 
   sets.push(`updated_at = now()`);
   vals.push(id);
 
+  let whereClause = `WHERE id = $${idx}`;
+  if (tenantId) {
+    vals.push(tenantId);
+    idx++;
+    whereClause += ` AND tenant_id = $${idx}`;
+  }
+
   const client = await pool.connect();
   try {
     const res = await client.query(
-      `UPDATE workflows SET ${sets.join(", ")} WHERE id = $${idx} RETURNING *`,
+      `UPDATE workflows SET ${sets.join(", ")} ${whereClause} RETURNING *`,
       vals
     );
     return res.rows[0] ? rowToWorkflow(res.rows[0]) : null;
@@ -164,10 +176,14 @@ export async function updateWorkflow(
   }
 }
 
-export async function deleteWorkflow(id: string): Promise<boolean> {
+export async function deleteWorkflow(id: string, tenantId?: string): Promise<boolean> {
   const client = await pool.connect();
   try {
-    const res = await client.query("DELETE FROM workflows WHERE id = $1", [id]);
+    const sql = tenantId
+      ? "DELETE FROM workflows WHERE id = $1 AND tenant_id = $2"
+      : "DELETE FROM workflows WHERE id = $1";
+    const params = tenantId ? [id, tenantId] : [id];
+    const res = await client.query(sql, params);
     return (res.rowCount ?? 0) > 0;
   } finally {
     client.release();
@@ -198,7 +214,8 @@ export async function createRun(params: {
 
 export async function updateRun(
   id: string,
-  data: Partial<Pick<WorkflowRun, "status" | "stepsCompleted" | "result" | "error">>
+  data: Partial<Pick<WorkflowRun, "status" | "stepsCompleted" | "result" | "error">>,
+  tenantId?: string
 ): Promise<void> {
   const sets: string[] = [];
   const vals: any[] = [];
@@ -216,10 +233,17 @@ export async function updateRun(
   if (sets.length === 0) return;
 
   vals.push(id);
+  let whereClause = `WHERE id = $${idx}`;
+  if (tenantId) {
+    idx++;
+    vals.push(tenantId);
+    whereClause += ` AND tenant_id = $${idx}`;
+  }
+
   const client = await pool.connect();
   try {
     await client.query(
-      `UPDATE workflow_runs SET ${sets.join(", ")} WHERE id = $${idx}`,
+      `UPDATE workflow_runs SET ${sets.join(", ")} ${whereClause}`,
       vals
     );
   } finally {
@@ -300,10 +324,14 @@ export async function listLeads(
   }
 }
 
-export async function deleteLead(id: string): Promise<boolean> {
+export async function deleteLead(id: string, tenantId?: string): Promise<boolean> {
   const client = await pool.connect();
   try {
-    const res = await client.query("DELETE FROM leads WHERE id = $1", [id]);
+    const sql = tenantId
+      ? "DELETE FROM leads WHERE id = $1 AND tenant_id = $2"
+      : "DELETE FROM leads WHERE id = $1";
+    const params = tenantId ? [id, tenantId] : [id];
+    const res = await client.query(sql, params);
     return (res.rowCount ?? 0) > 0;
   } finally {
     client.release();

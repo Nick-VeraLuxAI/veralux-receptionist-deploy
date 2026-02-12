@@ -52,5 +52,9 @@ backups/
 .eula-accepted
 **/.eula-accepted
 
+# SSL certificates (self-signed or Let's Encrypt)
+nginx/certs/
+*.pem
+
 # Misc dev artifacts
 oldenv.txt

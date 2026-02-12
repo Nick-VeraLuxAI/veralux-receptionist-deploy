@@ -4,6 +4,7 @@ import { env } from '../env';
 import { log } from '../log';
 import { tryAcquire } from '../limits/capacity';
 import { loadTenantConfig } from '../tenants/tenantConfig';
+import { checkBillingAllowed } from '../controlPlane';
 import { WebRtcHdTransportSession } from '../transport/webrtcHdTransport';
 import { SessionManager } from '../calls/sessionManager';
 
@@ -79,6 +80,14 @@ export function createWebRtcRouter(sessionManager: SessionManager): Router {
     const tenantConfig = await loadTenantConfig(tenantId);
     if (!tenantConfig) {
       res.status(404).json({ error: 'tenant_config_missing' });
+      return;
+    }
+
+    // Subscription / billing check (SaaS mode — fail-open)
+    const billing = await checkBillingAllowed(tenantId);
+    if (!billing.allowed) {
+      log.warn({ session_id: sessionId, tenant_id: tenantId, requestId, reason: billing.reason }, 'webrtc call rejected: subscription limit');
+      res.status(402).json({ error: 'billing_limit', reason: billing.reason });
       return;
     }
 

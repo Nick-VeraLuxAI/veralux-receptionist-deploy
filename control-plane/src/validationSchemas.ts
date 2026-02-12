@@ -170,6 +170,144 @@ export const paginationSchema = z.object({
 });
 
 // ────────────────────────────────────────────────
+// Workflow Schemas
+// ────────────────────────────────────────────────
+
+export const triggerTypeSchema = z.enum([
+  "call_ended", "after_hours_call", "keyword_detected", "missed_call", "scheduled",
+]);
+
+export const actionTypeSchema = z.enum([
+  "send_email", "send_sms", "fire_webhook", "ai_summarize", "ai_extract", "store_lead",
+]);
+
+export const triggerConfigSchema = z.object({
+  keywords: z.array(z.string()).optional(),
+  cronExpression: z.string().max(100).optional(),
+  businessHoursStart: z.string().max(10).optional(),
+  businessHoursEnd: z.string().max(10).optional(),
+  timezone: z.string().max(50).optional(),
+  maxDurationSeconds: z.number().int().min(0).optional(),
+  minTurns: z.number().int().min(0).optional(),
+}).passthrough();
+
+export const workflowStepSchema = z.object({
+  order: z.number().int().min(0),
+  action: actionTypeSchema,
+  config: z.record(z.any()).default({}),
+});
+
+export const createWorkflowSchema = z.object({
+  name: z.string().min(1, "Name is required").max(200, "Name too long"),
+  triggerType: triggerTypeSchema,
+  triggerConfig: triggerConfigSchema.default({}),
+  steps: z.array(workflowStepSchema).default([]),
+  createdBy: z.string().max(100).optional(),
+  adminLocked: z.boolean().default(false),
+});
+
+export const updateWorkflowSchema = z.object({
+  name: z.string().min(1).max(200).optional(),
+  enabled: z.boolean().optional(),
+  triggerType: triggerTypeSchema.optional(),
+  triggerConfig: triggerConfigSchema.optional(),
+  steps: z.array(workflowStepSchema).optional(),
+  adminLocked: z.boolean().optional(),
+});
+
+export const workflowSettingsSchema = z.object({
+  ownerCanEdit: z.boolean().optional(),
+});
+
+// ────────────────────────────────────────────────
+// Subscription Schemas
+// ────────────────────────────────────────────────
+
+export const subscriptionSchema = z.object({
+  planId: z.string().min(1).max(100).optional(),
+  status: z.enum(["active", "trialing", "past_due", "canceled", "none"]).optional(),
+  showBillingPortal: z.boolean().optional(),
+  adminNotes: z.string().max(5000).optional(),
+}).passthrough();
+
+// ────────────────────────────────────────────────
+// Capacity Schemas
+// ────────────────────────────────────────────────
+
+export const capacitySchema = z.object({
+  maxConcurrentCalls: z.number().int().min(1).max(1000).optional(),
+  maxCallDurationMs: z.number().int().min(60000).max(7200000).optional(),
+  maxCallsPerHour: z.number().int().min(1).max(10000).optional(),
+}).passthrough();
+
+// ────────────────────────────────────────────────
+// Telnyx Schemas
+// ────────────────────────────────────────────────
+
+export const telnyxProvisionSchema = z.object({
+  phone_number: phoneNumberSchema,
+  connection_id: z.string().optional(),
+});
+
+export const telnyxPurchaseSchema = z.object({
+  phone_number: phoneNumberSchema,
+  connection_id: z.string().optional(),
+});
+
+export const telnyxSearchSchema = z.object({
+  country: z.string().length(2).optional().default("US"),
+  state: z.string().max(50).optional(),
+  city: z.string().max(100).optional(),
+  contains: z.string().max(20).optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(10),
+});
+
+// ────────────────────────────────────────────────
+// Stripe Checkout Schemas
+// ────────────────────────────────────────────────
+
+export const stripeCheckoutSchema = z.object({
+  planId: z.string().min(1, "Plan ID is required"),
+  successUrl: urlSchema.optional(),
+  cancelUrl: urlSchema.optional(),
+});
+
+export const stripePlanSchema = z.object({
+  name: z.string().min(1).max(200),
+  stripePriceId: z.string().min(1).max(200),
+  monthlyPrice: z.number().min(0),
+  features: z.array(z.string().max(500)).optional().default([]),
+  maxCalls: z.number().int().min(0).optional(),
+  maxNumbers: z.number().int().min(0).optional(),
+});
+
+// ────────────────────────────────────────────────
+// Runtime Analytics / Calls Schemas
+// ────────────────────────────────────────────────
+
+export const runtimeAnalyticsSchema = z.object({
+  tenantId: tenantIdSchema,
+  event: z.string().min(1).max(100),
+  text: z.string().max(50000).optional(),
+  meta: z.record(z.any()).optional(),
+});
+
+export const runtimeCallSchema = z.object({
+  tenantId: tenantIdSchema,
+  callId: z.string().min(1).max(200),
+  action: z.string().min(1).max(100),
+  callState: z.record(z.any()).optional(),
+});
+
+// ────────────────────────────────────────────────
+// Cloudflare Token Schema
+// ────────────────────────────────────────────────
+
+export const cloudflareTokenSchema = z.object({
+  token: z.string().min(1, "Token is required").max(500, "Token too long"),
+});
+
+// ────────────────────────────────────────────────
 // Export all schemas for convenience
 // ────────────────────────────────────────────────
 
@@ -193,4 +331,17 @@ export const schemas = {
   mapDid: mapDidSchema,
   unmapDid: unmapDidSchema,
   pagination: paginationSchema,
+  createWorkflow: createWorkflowSchema,
+  updateWorkflow: updateWorkflowSchema,
+  workflowSettings: workflowSettingsSchema,
+  subscription: subscriptionSchema,
+  capacity: capacitySchema,
+  telnyxProvision: telnyxProvisionSchema,
+  telnyxPurchase: telnyxPurchaseSchema,
+  telnyxSearch: telnyxSearchSchema,
+  stripeCheckout: stripeCheckoutSchema,
+  stripePlan: stripePlanSchema,
+  runtimeAnalytics: runtimeAnalyticsSchema,
+  runtimeCall: runtimeCallSchema,
+  cloudflareToken: cloudflareTokenSchema,
 };

@@ -18,9 +18,9 @@ export async function executePipeline(job: WorkflowJob): Promise<void> {
   const { workflowId, tenantId, event } = job;
 
   // Load the workflow definition
-  const workflow = await getWorkflow(workflowId);
+  const workflow = await getWorkflow(workflowId, tenantId);
   if (!workflow) {
-    console.warn(`[pipeline] Workflow ${workflowId} not found, skipping`);
+    console.warn(`[pipeline] Workflow ${workflowId} not found for tenant ${tenantId}, skipping`);
     return;
   }
 
@@ -70,7 +70,7 @@ export async function executePipeline(job: WorkflowJob): Promise<void> {
         stepsCompleted: i,
         result: results,
         error: result.error,
-      });
+      }, tenantId);
       break;
     }
 
@@ -90,7 +90,7 @@ export async function executePipeline(job: WorkflowJob): Promise<void> {
       await updateRun(run.id, {
         stepsCompleted: i + 1,
         result: results,
-      });
+      }, tenantId);
 
       console.log(
         `[pipeline] Step ${i + 1}/${steps.length} (${step.action}) completed in ${result.durationMs}ms`
@@ -116,7 +116,7 @@ export async function executePipeline(job: WorkflowJob): Promise<void> {
         stepsCompleted: i,
         result: results,
         error: result.error,
-      });
+      }, tenantId);
       break;
     }
   }
@@ -126,7 +126,7 @@ export async function executePipeline(job: WorkflowJob): Promise<void> {
       status: "completed",
       stepsCompleted: steps.length,
       result: results,
-    });
+    }, tenantId);
     console.log(
       `[pipeline] Workflow "${workflow.name}" completed successfully (${steps.length} steps)`
     );

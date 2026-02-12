@@ -10,6 +10,7 @@ import { startStageTimer } from '../metrics';
 import { storeWav } from '../storage/audioStore';
 import { normalizeE164, resolveTenantId } from '../tenants/tenantResolver';
 import { loadTenantConfig, getWebhookSecret } from '../tenants/tenantConfig';
+import { checkBillingAllowed } from '../controlPlane';
 import { TelnyxClient } from '../telnyx/telnyxClient';
 import {
   extractTelnyxEventMetaFromPayload,
@@ -475,6 +476,24 @@ export function createTelnyxWebhookRouter(sessionManager: SessionManager): Route
               reason: 'tenant_config_missing',
               requestId,
               tenantId,
+            });
+            return;
+          }
+
+          // Subscription / billing check (SaaS mode — fail-open)
+          const billing = await checkBillingAllowed(tenantId);
+          if (!billing.allowed) {
+            log.warn(
+              { call_control_id: callControlId, tenant_id: tenantId, requestId, reason: billing.reason },
+              'call rejected: subscription limit',
+            );
+            await playMessageAndHangup({
+              callControlId,
+              message: 'We are unable to accept your call at this time. Please contact the business directly.',
+              reason: 'billing_limit',
+              requestId,
+              tenantId,
+              ttsConfig: tenantConfig.tts,
             });
             return;
           }

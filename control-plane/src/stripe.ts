@@ -130,6 +130,21 @@ export async function createPortalSession(params: {
 
 // ── Webhook Processing ──────────────────────────
 
+// In-memory set of recently processed event IDs (prevents duplicate processing)
+const processedEventIds = new Set<string>();
+const MAX_PROCESSED_EVENTS = 10000;
+
+function markEventProcessed(eventId: string): boolean {
+  if (processedEventIds.has(eventId)) return false; // Already processed
+  processedEventIds.add(eventId);
+  // Evict oldest entries if set gets too large
+  if (processedEventIds.size > MAX_PROCESSED_EVENTS) {
+    const first = processedEventIds.values().next().value;
+    if (first) processedEventIds.delete(first);
+  }
+  return true; // First time seeing this event
+}
+
 export async function handleStripeWebhook(
   body: Buffer,
   signature: string
@@ -139,6 +154,13 @@ export async function handleStripeWebhook(
   if (!webhookSecret) throw new Error("STRIPE_WEBHOOK_SECRET is not set");
 
   const event = stripe.webhooks.constructEvent(body, signature, webhookSecret);
+
+  // Idempotency: skip if we've already processed this event
+  if (!markEventProcessed(event.id)) {
+    console.log(`[stripe] Skipping duplicate event: ${event.id} (${event.type})`);
+    return { event: event.type };
+  }
+
   const client = await pool.connect();
 
   try {

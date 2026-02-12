@@ -105,6 +105,35 @@ export async function reportCallerMessage(tenantId: string, text: string): Promi
 }
 
 /* ──────────────────────────────────────────────────────────────────────────
+   Billing / subscription check — called before accepting a call
+   ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Check with the control plane whether a tenant's subscription allows
+ * accepting a new call. Fails open (returns allowed=true) on errors
+ * so billing issues don't block all calls.
+ */
+export async function checkBillingAllowed(tenantId: string): Promise<{ allowed: boolean; reason?: string }> {
+  if (!isConfigured()) return { allowed: true };
+  const base = env.CONTROL_PLANE_URL!;
+  try {
+    const resp = await fetch(`${base}/api/runtime/billing/check?tenantId=${encodeURIComponent(tenantId)}`, {
+      method: 'GET',
+      headers: cpHeaders(),
+      signal: AbortSignal.timeout(3000), // 3s timeout — don't hold up call setup
+    });
+    if (!resp.ok) {
+      log.warn({ event: 'billing_check_failed', status: resp.status, tenantId }, 'billing check failed, allowing call');
+      return { allowed: true };
+    }
+    return (await resp.json()) as { allowed: boolean; reason?: string };
+  } catch (err) {
+    log.warn({ err, event: 'billing_check_error', tenantId }, 'billing check error, allowing call');
+    return { allowed: true }; // fail-open
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
    Call end (with transcript) — existing
    ────────────────────────────────────────────────────────────────────────── */
 
