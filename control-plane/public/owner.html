@@ -147,6 +147,7 @@
         border: 1px solid var(--border);
         border-radius: 20px;
         padding: 24px;
+        overflow: hidden;
         margin-bottom: 24px;
         backdrop-filter: blur(20px);
         -webkit-backdrop-filter: blur(20px);
@@ -181,6 +182,15 @@
         color: var(--text-soft);
         margin-bottom: 16px;
         line-height: 1.5;
+      }
+      .owner-panel table td,
+      .owner-panel table th {
+        white-space: nowrap;
+      }
+      .owner-panel table td.wrap-cell {
+        white-space: normal;
+        word-break: normal;
+        overflow-wrap: normal;
       }
       label {
         display: block;
@@ -778,6 +788,20 @@
         if (str == null) return "";
         const s = String(str);
         return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+      }
+
+      /** Format a phone number as (XXX) XXX-XXXX when possible */
+      function fmtPhone(raw) {
+        if (!raw) return "—";
+        const digits = String(raw).replace(/\D/g, "");
+        // US number: 11 digits starting with 1, or 10 digits
+        if (digits.length === 11 && digits[0] === "1") {
+          return `(${digits.slice(1,4)}) ${digits.slice(4,7)}-${digits.slice(7)}`;
+        }
+        if (digits.length === 10) {
+          return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+        }
+        return String(raw); // non-US, return as-is
       }
 
       function setOwnerStatus(msg, isErr = false, checking = false) {
@@ -1795,9 +1819,9 @@
             <tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'table-row':'none'">
               <td style="padding:8px;" class="help">${escapeHtml(date)}</td>
               <td style="padding:8px;" class="help">${escapeHtml(lead.name || "—")}</td>
-              <td style="padding:8px;" class="help">${escapeHtml(lead.phone || "—")}</td>
+              <td style="padding:8px;" class="help">${escapeHtml(fmtPhone(lead.phone))}</td>
               <td style="padding:8px;" class="help">${escapeHtml(lead.email || "—")}</td>
-              <td style="padding:8px;" class="help">${escapeHtml(lead.issue || rx.issue || "—")}</td>
+              <td style="padding:8px;min-width:140px;" class="help wrap-cell">${escapeHtml(lead.issue || rx.issue || "—")}</td>
               <td style="padding:8px;" class="help">${escapeHtml(lead.category || rx.category || "—")}</td>
               <td style="padding:8px;"><span style="color:${pColor};" class="help">${escapeHtml(lead.priority || "normal")}</span></td>
             </tr>
@@ -1813,7 +1837,7 @@
         }).join("");
 
         return `
-          <section class="owner-panel" id="wf-panel-${id}">
+          <section class="owner-panel" id="wf-panel-${id}" style="overflow:hidden;">
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
               <div>
                 <h2 style="margin:0;">${escapeHtml(wf.name)}</h2>
@@ -1821,7 +1845,8 @@
               </div>
               <button type="button" class="secondary" style="padding:8px 16px;font-size:13px;" onclick="exportWorkflowPDF('${escapeHtml(wf.id)}')">Export PDF</button>
             </div>
-            <table style="width:100%;border-collapse:collapse;margin-top:16px;">
+            <div style="overflow-x:auto;margin-top:16px;">
+            <table style="width:100%;border-collapse:collapse;table-layout:auto;">
               <thead>
                 <tr style="text-align:left;border-bottom:1px solid var(--border);">
                   <th class="help" style="padding:6px 8px;">Date</th>
@@ -1835,6 +1860,7 @@
               </thead>
               <tbody>${rows}</tbody>
             </table>
+            </div>
           </section>`;
       }
 
@@ -1872,14 +1898,14 @@
                   </div>
                 </div>
                 ${product && product !== "—" ? `<div style="margin-top:10px;font-size:12px;"><strong style="color:var(--text);">Product/Service Interest:</strong> <span class="help">${escapeHtml(String(product))}</span></div>` : ""}
-                ${lead.phone ? `<div style="margin-top:4px;font-size:12px;"><strong style="color:var(--text);">Caller:</strong> <span class="help">${escapeHtml(lead.phone)}</span></div>` : ""}
+                ${lead.phone ? `<div style="margin-top:4px;font-size:12px;"><strong style="color:var(--text);">Caller:</strong> <span class="help">${escapeHtml(fmtPhone(lead.phone))}</span></div>` : ""}
                 <p style="color:var(--muted);font-size:11px;margin-top:8px;">Click row to collapse</p>
               </td>
             </tr>`;
         }).join("");
 
         return `
-          <section class="owner-panel" id="wf-panel-${id}">
+          <section class="owner-panel" id="wf-panel-${id}" style="overflow:hidden;">
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
               <div>
                 <h2 style="margin:0;">${escapeHtml(wf.name)}</h2>
@@ -1887,7 +1913,8 @@
               </div>
               <button type="button" class="secondary" style="padding:8px 16px;font-size:13px;" onclick="exportWorkflowPDF('${escapeHtml(wf.id)}')">Export PDF</button>
             </div>
-            <table style="width:100%;border-collapse:collapse;margin-top:16px;">
+            <div style="overflow-x:auto;margin-top:16px;">
+            <table style="width:100%;border-collapse:collapse;table-layout:auto;">
               <thead>
                 <tr style="text-align:left;border-bottom:1px solid var(--border);">
                   <th class="help" style="padding:6px 8px;">Date</th>
@@ -1899,6 +1926,7 @@
               </thead>
               <tbody>${rows}</tbody>
             </table>
+            </div>
           </section>`;
       }
 
@@ -1915,7 +1943,7 @@
           let cells = `
             <td style="padding:8px;" class="help">${escapeHtml(date)}</td>
             <td style="padding:8px;" class="help">${escapeHtml(lead.name || "—")}</td>
-            <td style="padding:8px;" class="help">${escapeHtml(lead.phone || "—")}</td>
+            <td style="padding:8px;" class="help">${escapeHtml(fmtPhone(lead.phone))}</td>
             <td style="padding:8px;" class="help">${escapeHtml(lead.issue || "—")}</td>
             <td style="padding:8px;"><span style="color:${pColor};" class="help">${escapeHtml(lead.priority || "normal")}</span></td>`;
 
@@ -1938,7 +1966,7 @@
         }).join("");
 
         return `
-          <section class="owner-panel" id="wf-panel-${id}">
+          <section class="owner-panel" id="wf-panel-${id}" style="overflow:hidden;">
             <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
               <div>
                 <h2 style="margin:0;">${escapeHtml(wf.name)}</h2>
@@ -1946,7 +1974,8 @@
               </div>
               <button type="button" class="secondary" style="padding:8px 16px;font-size:13px;" onclick="exportWorkflowPDF('${escapeHtml(wf.id)}')">Export PDF</button>
             </div>
-            <table style="width:100%;border-collapse:collapse;margin-top:16px;">
+            <div style="overflow-x:auto;margin-top:16px;">
+            <table style="width:100%;border-collapse:collapse;table-layout:auto;">
               <thead>
                 <tr style="text-align:left;border-bottom:1px solid var(--border);">
                   <th class="help" style="padding:6px 8px;">Date</th>
@@ -1958,6 +1987,7 @@
               </thead>
               <tbody>${rows}</tbody>
             </table>
+            </div>
           </section>`;
       }
 
@@ -2025,14 +2055,15 @@
           // Show ungrouped leads (from before workflows were created)
           if (ungrouped.length) {
             html += `
-              <section class="owner-panel">
+              <section class="owner-panel" style="overflow:hidden;">
                 <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
                   <div>
                     <h2 style="margin:0;">Other Leads</h2>
                     <p class="help" style="margin:4px 0 0;">${ungrouped.length} record${ungrouped.length !== 1 ? "s" : ""}</p>
                   </div>
                 </div>
-                <table style="width:100%;border-collapse:collapse;margin-top:16px;">
+                <div style="overflow-x:auto;margin-top:16px;">
+                <table style="width:100%;border-collapse:collapse;table-layout:auto;">
                   <thead>
                     <tr style="text-align:left;border-bottom:1px solid var(--border);">
                       <th class="help" style="padding:6px 8px;">Date</th>
@@ -2049,13 +2080,14 @@
                       return `<tr style="border-bottom:1px solid var(--border);">
                         <td style="padding:8px;" class="help">${escapeHtml(date)}</td>
                         <td style="padding:8px;" class="help">${escapeHtml(lead.name || "—")}</td>
-                        <td style="padding:8px;" class="help">${escapeHtml(lead.phone || "—")}</td>
+                        <td style="padding:8px;" class="help">${escapeHtml(fmtPhone(lead.phone))}</td>
                         <td style="padding:8px;" class="help">${escapeHtml(lead.issue || "—")}</td>
                         <td style="padding:8px;"><span style="color:${pColor};" class="help">${escapeHtml(lead.priority || "normal")}</span></td>
                       </tr>`;
                     }).join("")}
                   </tbody>
                 </table>
+                </div>
               </section>`;
           }
 

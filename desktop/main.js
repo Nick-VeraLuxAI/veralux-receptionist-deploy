@@ -29,8 +29,10 @@ const SERVICES = [
   { id: 'cloudflared', name: 'Cloudflared',   container: 'veralux-cloudflared',  port: null, healthPath: null },
 ];
 
-// Active TTS mode (fetched from control-plane)
-let activeTtsMode = 'coqui_xtts';
+// Active TTS mode (fetched from control-plane; null = not yet resolved)
+let activeTtsMode = null;
+let lastTtsFetchTime = 0;
+const TTS_FETCH_INTERVAL_MS = 60000; // re-check TTS mode every 60s, not every poll
 
 // ─── State ────────────────────────────────────────────────────────────────────
 let mainWindow = null;
@@ -100,35 +102,53 @@ async function checkGpu() {
 
 // ─── Active TTS Mode ──────────────────────────────────────────────────────────
 
-function fetchActiveTtsMode() {
-  return new Promise(resolve => {
-    const adminKey = (() => {
-      try {
-        const env = fs.readFileSync(ENV_PATH, 'utf-8');
-        const m = env.match(/^ADMIN_API_KEY=(.+)$/m);
-        return m ? m[1].trim() : null;
-      } catch { return null; }
-    })();
-    const opts = {
-      hostname: '127.0.0.1', port: 4000, path: '/api/tts/config',
-      method: 'GET', timeout: 3000,
-      headers: {},
-    };
-    if (adminKey) opts.headers['X-Admin-Key'] = adminKey;
+function readAdminKey() {
+  try {
+    const env = fs.readFileSync(ENV_PATH, 'utf-8');
+    const m = env.match(/^ADMIN_API_KEY=(.+)$/m);
+    return m ? m[1].trim() : null;
+  } catch { return null; }
+}
+
+function httpGetJson(pathStr, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const opts = { hostname: '127.0.0.1', port: 4000, path: pathStr, method: 'GET', timeout: 3000, headers };
     const req = http.request(opts, res => {
       let body = '';
       res.on('data', d => body += d);
       res.on('end', () => {
-        try {
-          const cfg = JSON.parse(body);
-          resolve(cfg.ttsMode || cfg.mode || 'coqui_xtts');
-        } catch { resolve(activeTtsMode); }
+        try { resolve(JSON.parse(body)); } catch { reject(new Error('parse error')); }
       });
     });
-    req.on('error', () => resolve(activeTtsMode));
-    req.on('timeout', () => { req.destroy(); resolve(activeTtsMode); });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
     req.end();
   });
+}
+
+async function fetchActiveTtsMode() {
+  try {
+    const adminKey = readAdminKey();
+    const headers = {};
+    if (adminKey) headers['X-Admin-Key'] = adminKey;
+
+    // Resolve the real tenant (first non-default, non-unknown tenant)
+    try {
+      const tenantsRes = await httpGetJson('/api/admin/tenants', headers);
+      const tenantsList = tenantsRes.tenants || [];
+      const realTenant = tenantsList.find(t => t.id !== 'default' && t.id !== 'unknown');
+      if (realTenant) headers['X-Tenant-ID'] = realTenant.id;
+    } catch { /* proceed without tenant header */ }
+
+    const cfg = await httpGetJson('/api/tts/config', headers);
+    const resolved = cfg.ttsMode || cfg.mode || null;
+    if (resolved) return resolved;
+    // API responded but no mode field — keep current value
+    return activeTtsMode;
+  } catch {
+    // API unreachable or rate-limited — keep current value (don't reset to default)
+    return activeTtsMode;
+  }
 }
 
 // ─── Health Polling ───────────────────────────────────────────────────────────
@@ -149,8 +169,14 @@ async function pollHealth() {
     };
   });
   await Promise.all(promises);
-  const [gpu, ttsMode] = await Promise.all([checkGpu(), fetchActiveTtsMode()]);
-  activeTtsMode = ttsMode;
+  const now = Date.now();
+  // Always try to fetch if we haven't resolved TTS yet; otherwise throttle to every 60s
+  const shouldFetchTts = !activeTtsMode || (now - lastTtsFetchTime) >= TTS_FETCH_INTERVAL_MS;
+  const gpuPromise = checkGpu();
+  const ttsPromise = shouldFetchTts ? fetchActiveTtsMode() : Promise.resolve(activeTtsMode);
+  const [gpu, ttsMode] = await Promise.all([gpuPromise, ttsPromise]);
+  if (shouldFetchTts && ttsMode) lastTtsFetchTime = now;
+  if (ttsMode) activeTtsMode = ttsMode;
   healthState = results;
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send('health-update', { services: results, gpu, activeTtsMode });

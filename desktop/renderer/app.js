@@ -11,7 +11,7 @@ let logsPaused = false;
 let logFilter = '';
 let currentLogContainer = null;
 let ownerLoaded = false;
-let activeTtsMode = 'coqui_xtts';
+let activeTtsMode = null; // resolved dynamically from tenant config
 
 // ─── Tab Routing ──────────────────────────────────────────────────────────────
 
@@ -39,19 +39,25 @@ async function initDashboard() {
   renderServiceGrid();
 }
 
+function ttsBadgeState(svc) {
+  if (!svc.ttsEngine) return null;
+  if (!activeTtsMode) return { label: '...', cls: 'tts-standby', inactive: false }; // still resolving
+  const isActive = svc.ttsEngine === activeTtsMode;
+  return { label: isActive ? 'Active' : 'Standby', cls: isActive ? 'tts-active' : 'tts-standby', inactive: !isActive };
+}
+
 function renderServiceGrid() {
   const grid = $('#service-grid');
   grid.innerHTML = services.map(svc => {
-    const isTts = !!svc.ttsEngine;
-    const isActive = isTts && svc.ttsEngine === activeTtsMode;
+    const badge = ttsBadgeState(svc);
     const cardClasses = ['service-card'];
-    if (isTts && !isActive) cardClasses.push('tts-inactive');
+    if (badge && badge.inactive) cardClasses.push('tts-inactive');
     return `
-    <div class="${cardClasses.join(' ')}" data-id="${svc.id}" ${isTts ? `data-tts-engine="${svc.ttsEngine}"` : ''}>
+    <div class="${cardClasses.join(' ')}" data-id="${svc.id}" ${svc.ttsEngine ? `data-tts-engine="${svc.ttsEngine}"` : ''}>
       <div class="service-card-header">
         <div class="status-dot unknown" id="dot-${svc.id}"></div>
         <span class="svc-name">${svc.name}</span>
-        ${isTts ? `<span class="tts-badge ${isActive ? 'tts-active' : 'tts-standby'}" id="tts-badge-${svc.id}">${isActive ? 'Active' : 'Standby'}</span>` : ''}
+        ${badge ? `<span class="tts-badge ${badge.cls}" id="tts-badge-${svc.id}">${badge.label}</span>` : ''}
         <span class="svc-status" id="status-${svc.id}">...</span>
       </div>
       <div class="service-card-meta">
@@ -69,14 +75,14 @@ function renderServiceGrid() {
 
 function updateTtsBadges() {
   for (const svc of services) {
-    if (!svc.ttsEngine) continue;
+    const badge_state = ttsBadgeState(svc);
+    if (!badge_state) continue;
     const card = document.querySelector(`.service-card[data-tts-engine="${svc.ttsEngine}"]`);
     const badge = $(`#tts-badge-${svc.id}`);
     if (!card || !badge) continue;
-    const isActive = svc.ttsEngine === activeTtsMode;
-    badge.textContent = isActive ? 'Active' : 'Standby';
-    badge.className = `tts-badge ${isActive ? 'tts-active' : 'tts-standby'}`;
-    card.classList.toggle('tts-inactive', !isActive);
+    badge.textContent = badge_state.label;
+    badge.className = `tts-badge ${badge_state.cls}`;
+    card.classList.toggle('tts-inactive', badge_state.inactive);
   }
 }
 
@@ -358,9 +364,9 @@ function hideEula() {
   if (health) {
     // health:get now returns { services, activeTtsMode }
     if (health.services && Object.keys(health.services).length > 0) {
-      activeTtsMode = health.activeTtsMode || activeTtsMode;
+      if (health.activeTtsMode) activeTtsMode = health.activeTtsMode;
       updateTtsBadges();
-      updateDashboard({ services: health.services, gpu: null, activeTtsMode });
+      updateDashboard({ services: health.services, gpu: null, activeTtsMode: activeTtsMode });
     } else if (Object.keys(health).length > 0 && !health.services) {
       // Backwards compat: old format was flat { serviceId: healthData }
       updateDashboard({ services: health, gpu: null });
