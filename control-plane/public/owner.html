@@ -210,12 +210,16 @@
         padding-right: 40px;
       }
       select option {
-        background: #0a0f1a;
+        background: var(--bg, #070708);
         color: var(--text);
       }
+      select option:checked {
+        background: var(--accent, #C9A04E);
+        color: #fff;
+      }
       select optgroup {
-        background: #131a2b;
-        color: var(--accent);
+        background: rgba(201, 160, 78, 0.08);
+        color: var(--accent, #C9A04E);
         font-style: normal;
         font-weight: 600;
         padding: 6px 0;

@@ -345,6 +345,16 @@ body {
   font-family: inherit;
 }
 
+.logs-toolbar select option {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.logs-toolbar select option:checked {
+  background: var(--primary);
+  color: #fff;
+}
+
 .logs-toolbar select:focus, .logs-toolbar input:focus {
   outline: none;
   border-color: var(--border-focus);

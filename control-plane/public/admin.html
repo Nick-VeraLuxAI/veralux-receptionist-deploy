@@ -151,6 +151,21 @@
         color: var(--text);
         font-family: inherit;
       }
+      select option {
+        background: var(--bg, #070708);
+        color: var(--text);
+      }
+      select option:checked {
+        background: var(--primary, #C9A04E);
+        color: #fff;
+      }
+      select optgroup {
+        background: rgba(201, 160, 78, 0.08);
+        color: var(--primary, #C9A04E);
+        font-style: normal;
+        font-weight: 600;
+        padding: 6px 0;
+      }
       input:focus,
       select:focus,
       textarea:focus {
