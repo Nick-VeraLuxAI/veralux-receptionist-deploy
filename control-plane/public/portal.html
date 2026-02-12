@@ -623,24 +623,8 @@
           </div>
         </section>
 
-        <!-- Leads -->
-        <section class="owner-panel" id="leads-section">
-          <h2>Leads</h2>
-          <p class="help">Contacts and leads automatically captured from calls.</p>
-          <div id="portal-leads-empty" class="help" style="margin:12px 0;">No leads captured yet.</div>
-          <table id="portal-leads-table" style="display:none; width:100%; border-collapse:collapse; margin-top:12px;">
-            <thead>
-              <tr style="text-align:left; border-bottom:1px solid var(--border);">
-                <th class="help" style="padding:6px 8px;">Name</th>
-                <th class="help" style="padding:6px 8px;">Phone</th>
-                <th class="help" style="padding:6px 8px;">Issue</th>
-                <th class="help" style="padding:6px 8px;">Priority</th>
-                <th class="help" style="padding:6px 8px;">Date</th>
-              </tr>
-            </thead>
-            <tbody id="portal-leads-body"></tbody>
-          </table>
-        </section>
+        <!-- Workflow Data Panels (dynamic per-workflow) -->
+        <div id="workflow-data-panels"></div>
 
         <!-- Workflows (visible when admin enables owner editing) -->
         <section class="owner-panel" id="workflows-section" style="display:none;">
@@ -787,7 +771,7 @@
           loadPricing(),
           loadAnalytics(),
           loadBilling(),
-          loadPortalLeads(),
+          loadWorkflowDataPanels(),
           loadPortalWorkflows(),
           loadVoiceConfig(),
         ]);
@@ -1058,7 +1042,7 @@
         }
       }
 
-      // ── Leads ──
+      // ── Workflow Data Panels ──
       const TRIGGER_LABELS = {
         call_ended: "Call ended",
         after_hours_call: "After hours",
@@ -1067,36 +1051,198 @@
         scheduled: "Scheduled",
       };
 
-      async function loadPortalLeads() {
+      let _wfPanelData = {};
+      const SENTIMENT_COLORS = { positive: "#4CAF50", neutral: "#C9A04E", frustrated: "#e07070", confused: "#e0a040" };
+      const PRIORITY_COLORS = { urgent: "#e07070", high: "#C9A04E", normal: "var(--muted)", low: "#666" };
+
+      function renderTags(arr) {
+        if (!arr || !arr.length) return '<span class="help">—</span>';
+        return arr.map(t => `<span style="display:inline-block;padding:2px 8px;margin:1px 3px;border-radius:8px;background:rgba(201,160,78,0.12);color:#C9A04E;font-size:11px;font-weight:500;">${escapeHtml(String(t))}</span>`).join("");
+      }
+      function renderBadge(text, color) {
+        if (!text) return '<span class="help">—</span>';
+        return `<span style="display:inline-block;padding:2px 10px;border-radius:8px;background:${color || "rgba(255,255,255,0.08)"};color:#fff;font-size:11px;font-weight:600;">${escapeHtml(String(text))}</span>`;
+      }
+      function renderBulletList(arr) {
+        if (!arr || !arr.length) return '<span class="help" style="font-style:italic;">None</span>';
+        return '<ul style="margin:4px 0 4px 16px;padding:0;list-style:disc;">' +
+          arr.map(q => `<li style="margin:3px 0;font-size:13px;color:var(--text);">${escapeHtml(String(q))}</li>`).join("") + '</ul>';
+      }
+      function isInsightsWorkflow(wf) {
+        return (wf.steps || []).some(s => s.action === "ai_extract" && s.config && s.config.fields &&
+          (s.config.fields.includes("questions") || s.config.fields.includes("topics") || s.config.fields.includes("sentiment")));
+      }
+
+      function renderLeadCapturePanel(wf, leads) {
+        const id = wf.id.replace(/[^a-zA-Z0-9_-]/g, "");
+        let rows = leads.map(lead => {
+          const date = lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : "—";
+          const pColor = PRIORITY_COLORS[lead.priority] || "var(--muted)";
+          const rx = lead.rawExtract || {};
+          return `
+            <tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'table-row':'none'">
+              <td style="padding:8px;" class="help">${escapeHtml(date)}</td>
+              <td style="padding:8px;" class="help">${escapeHtml(lead.name || "—")}</td>
+              <td style="padding:8px;" class="help">${escapeHtml(lead.phone || "—")}</td>
+              <td style="padding:8px;" class="help">${escapeHtml(lead.email || "—")}</td>
+              <td style="padding:8px;" class="help">${escapeHtml(lead.issue || rx.issue || "—")}</td>
+              <td style="padding:8px;" class="help">${escapeHtml(lead.category || rx.category || "—")}</td>
+              <td style="padding:8px;"><span style="color:${pColor};" class="help">${escapeHtml(lead.priority || "normal")}</span></td>
+            </tr>
+            <tr style="display:none;">
+              <td colspan="7" style="padding:12px 16px;background:rgba(255,255,255,0.02);border-bottom:1px solid var(--border);">
+                <div style="font-size:12px;color:var(--text-soft);">
+                  ${rx.notes ? `<p><strong>Notes:</strong> ${escapeHtml(String(rx.notes))}</p>` : ""}
+                  ${lead.callId ? `<p><strong>Call ID:</strong> ${escapeHtml(lead.callId)}</p>` : ""}
+                  <p style="color:var(--muted);font-size:11px;margin-top:4px;">Click row to collapse</p>
+                </div>
+              </td>
+            </tr>`;
+        }).join("");
+        return `
+          <section class="owner-panel" id="wf-panel-${id}">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <div><h2 style="margin:0;">${escapeHtml(wf.name)}</h2><p class="help" style="margin:4px 0 0;">${leads.length} record${leads.length !== 1 ? "s" : ""} captured</p></div>
+              <button type="button" class="secondary" style="padding:8px 16px;font-size:13px;" onclick="exportWorkflowPDF('${escapeHtml(wf.id)}')">Export PDF</button>
+            </div>
+            <table style="width:100%;border-collapse:collapse;margin-top:16px;">
+              <thead><tr style="text-align:left;border-bottom:1px solid var(--border);">
+                <th class="help" style="padding:6px 8px;">Date</th><th class="help" style="padding:6px 8px;">Name</th><th class="help" style="padding:6px 8px;">Phone</th>
+                <th class="help" style="padding:6px 8px;">Email</th><th class="help" style="padding:6px 8px;">Issue</th><th class="help" style="padding:6px 8px;">Category</th><th class="help" style="padding:6px 8px;">Priority</th>
+              </tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </section>`;
+      }
+
+      function renderInsightsPanel(wf, leads) {
+        const id = wf.id.replace(/[^a-zA-Z0-9_-]/g, "");
+        let rows = leads.map(lead => {
+          const date = lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : "—";
+          const rx = lead.rawExtract || {};
+          const topics = rx.topics || [];
+          const questions = rx.questions || [];
+          const unanswered = rx.unanswered || [];
+          const intent = rx.intent || lead.issue || "—";
+          const sentiment = rx.sentiment || "—";
+          const sColor = SENTIMENT_COLORS[sentiment] || "rgba(255,255,255,0.15)";
+          const product = rx.product_or_service_interest || "—";
+          return `
+            <tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'table-row':'none'">
+              <td style="padding:8px;" class="help">${escapeHtml(date)}</td>
+              <td style="padding:8px;" class="help">${escapeHtml(lead.name || lead.phone || "Unknown")}</td>
+              <td style="padding:8px;">${renderTags(topics)}</td>
+              <td style="padding:8px;">${renderBadge(intent, "rgba(201,160,78,0.25)")}</td>
+              <td style="padding:8px;">${renderBadge(sentiment, sColor)}</td>
+            </tr>
+            <tr style="display:none;">
+              <td colspan="5" style="padding:16px;background:rgba(255,255,255,0.02);border-bottom:1px solid var(--border);">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:13px;">
+                  <div><strong style="color:var(--text);font-size:12px;">Questions Asked</strong>${renderBulletList(questions)}</div>
+                  <div><strong style="color:#e07070;font-size:12px;">Unanswered / Unsure</strong>${renderBulletList(unanswered)}</div>
+                </div>
+                ${product && product !== "—" ? `<div style="margin-top:10px;font-size:12px;"><strong style="color:var(--text);">Product/Service Interest:</strong> <span class="help">${escapeHtml(String(product))}</span></div>` : ""}
+                ${lead.phone ? `<div style="margin-top:4px;font-size:12px;"><strong style="color:var(--text);">Caller:</strong> <span class="help">${escapeHtml(lead.phone)}</span></div>` : ""}
+                <p style="color:var(--muted);font-size:11px;margin-top:8px;">Click row to collapse</p>
+              </td>
+            </tr>`;
+        }).join("");
+        return `
+          <section class="owner-panel" id="wf-panel-${id}">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <div><h2 style="margin:0;">${escapeHtml(wf.name)}</h2><p class="help" style="margin:4px 0 0;">${leads.length} record${leads.length !== 1 ? "s" : ""} captured</p></div>
+              <button type="button" class="secondary" style="padding:8px 16px;font-size:13px;" onclick="exportWorkflowPDF('${escapeHtml(wf.id)}')">Export PDF</button>
+            </div>
+            <table style="width:100%;border-collapse:collapse;margin-top:16px;">
+              <thead><tr style="text-align:left;border-bottom:1px solid var(--border);">
+                <th class="help" style="padding:6px 8px;">Date</th><th class="help" style="padding:6px 8px;">Caller</th>
+                <th class="help" style="padding:6px 8px;">Topics</th><th class="help" style="padding:6px 8px;">Intent</th><th class="help" style="padding:6px 8px;">Sentiment</th>
+              </tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </section>`;
+      }
+
+      async function loadWorkflowDataPanels() {
+        const container = $("workflow-data-panels");
         try {
-          const data = await apiFetch("/api/admin/leads?limit=100");
-          const leads = data.leads || [];
-          const empty = $("portal-leads-empty");
-          const table = $("portal-leads-table");
-          const body = $("portal-leads-body");
-          if (!leads.length) {
-            empty.style.display = "";
-            table.style.display = "none";
+          const [wfData, leadsData] = await Promise.all([
+            apiFetch("/api/admin/workflows"),
+            apiFetch("/api/admin/leads?limit=200"),
+          ]);
+          const workflows = (wfData.workflows || []).filter(w => w.enabled);
+          const leads = leadsData.leads || [];
+          const dataWorkflows = workflows.filter(wf => (wf.steps || []).some(s => s.action === "store_lead"));
+
+          if (!dataWorkflows.length) {
+            container.innerHTML = `<section class="owner-panel"><h2>Leads</h2><p class="help">Contacts and leads automatically captured from calls.</p><div class="help" style="margin:12px 0;">No leads captured yet.</div></section>`;
             return;
           }
-          empty.style.display = "none";
-          table.style.display = "";
-          body.innerHTML = leads.map(lead => {
-            const priorityColors = { urgent: "#e07070", high: "#C9A04E", normal: "var(--muted)", low: "#666" };
-            const pColor = priorityColors[lead.priority] || "var(--muted)";
-            const date = lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : "—";
-            return `
-              <tr style="border-bottom:1px solid var(--border);">
-                <td style="padding:8px;" class="help">${escapeHtml(lead.name || "—")}</td>
-                <td style="padding:8px;" class="help">${escapeHtml(lead.phone || "—")}</td>
-                <td style="padding:8px;" class="help">${escapeHtml(lead.issue || "—")}</td>
-                <td style="padding:8px;"><span style="color:${pColor};" class="help">${escapeHtml(lead.priority || "normal")}</span></td>
-                <td style="padding:8px;" class="help">${escapeHtml(date)}</td>
-              </tr>`;
-          }).join("");
+
+          const grouped = {};
+          for (const wf of dataWorkflows) grouped[wf.id] = [];
+          const ungrouped = [];
+          for (const lead of leads) {
+            if (lead.sourceWorkflowId && grouped[lead.sourceWorkflowId]) grouped[lead.sourceWorkflowId].push(lead);
+            else ungrouped.push(lead);
+          }
+          _wfPanelData = { workflows: dataWorkflows, grouped, ungrouped };
+
+          let html = "";
+          for (const wf of dataWorkflows) {
+            const wfLeads = grouped[wf.id] || [];
+            if (!wfLeads.length) {
+              const id = wf.id.replace(/[^a-zA-Z0-9_-]/g, "");
+              html += `<section class="owner-panel" id="wf-panel-${id}"><h2>${escapeHtml(wf.name)}</h2><p class="help" style="margin:8px 0;">No data captured yet. Records will appear here after calls.</p></section>`;
+              continue;
+            }
+            if (isInsightsWorkflow(wf)) html += renderInsightsPanel(wf, wfLeads);
+            else if (wf.name.toLowerCase().includes("lead")) html += renderLeadCapturePanel(wf, wfLeads);
+            else html += renderLeadCapturePanel(wf, wfLeads);
+          }
+
+          if (ungrouped.length) {
+            html += `<section class="owner-panel"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;"><div><h2 style="margin:0;">Other Leads</h2><p class="help" style="margin:4px 0 0;">${ungrouped.length} record${ungrouped.length !== 1 ? "s" : ""}</p></div></div>
+              <table style="width:100%;border-collapse:collapse;margin-top:16px;"><thead><tr style="text-align:left;border-bottom:1px solid var(--border);"><th class="help" style="padding:6px 8px;">Date</th><th class="help" style="padding:6px 8px;">Name</th><th class="help" style="padding:6px 8px;">Phone</th><th class="help" style="padding:6px 8px;">Issue</th><th class="help" style="padding:6px 8px;">Priority</th></tr></thead><tbody>
+              ${ungrouped.map(lead => { const date = lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : "—"; const pColor = PRIORITY_COLORS[lead.priority] || "var(--muted)"; return `<tr style="border-bottom:1px solid var(--border);"><td style="padding:8px;" class="help">${escapeHtml(date)}</td><td style="padding:8px;" class="help">${escapeHtml(lead.name || "—")}</td><td style="padding:8px;" class="help">${escapeHtml(lead.phone || "—")}</td><td style="padding:8px;" class="help">${escapeHtml(lead.issue || "—")}</td><td style="padding:8px;"><span style="color:${pColor};" class="help">${escapeHtml(lead.priority || "normal")}</span></td></tr>`; }).join("")}
+              </tbody></table></section>`;
+          }
+          container.innerHTML = html;
         } catch (err) {
-          console.error("loadPortalLeads:", err);
+          console.error("loadWorkflowDataPanels:", err);
+          container.innerHTML = `<section class="owner-panel"><h2>Leads</h2><p class="help" style="color:#e07070;">Failed to load workflow data. Please try refreshing.</p></section>`;
         }
+      }
+
+      // ── PDF Export ──
+      function exportWorkflowPDF(workflowId) {
+        if (typeof window.jspdf === "undefined") { alert("PDF library is still loading. Please try again in a moment."); return; }
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+        const wf = (_wfPanelData.workflows || []).find(w => w.id === workflowId);
+        const leads = (_wfPanelData.grouped || {})[workflowId] || [];
+        if (!wf) { alert("Workflow not found."); return; }
+        if (!leads.length) { alert("No data to export."); return; }
+        const today = new Date().toLocaleDateString();
+        const fileName = (wf.name || "workflow").replace(/[^a-zA-Z0-9 _-]/g, "").replace(/\s+/g, "-").toLowerCase();
+
+        doc.setFontSize(18); doc.setTextColor(201, 160, 78); doc.text("VeraLux AI", 14, 16);
+        doc.setFontSize(14); doc.setTextColor(60, 60, 60); doc.text(wf.name, 14, 24);
+        doc.setFontSize(10); doc.setTextColor(120, 120, 120); doc.text(`${leads.length} record${leads.length !== 1 ? "s" : ""} | Exported ${today}`, 14, 30);
+
+        const isInsights = isInsightsWorkflow(wf);
+        let head, body;
+        if (isInsights) {
+          head = [["Date", "Caller", "Topics", "Intent", "Sentiment", "Questions", "Unanswered", "Product Interest"]];
+          body = leads.map(l => { const rx = l.rawExtract || {}; return [l.createdAt ? new Date(l.createdAt).toLocaleDateString() : "—", l.name || l.phone || "Unknown", (rx.topics || []).join(", ") || "—", rx.intent || "—", rx.sentiment || "—", (rx.questions || []).join("; ") || "—", (rx.unanswered || []).join("; ") || "None", rx.product_or_service_interest || "—"]; });
+        } else {
+          head = [["Date", "Name", "Phone", "Email", "Issue", "Category", "Priority"]];
+          body = leads.map(l => { const rx = l.rawExtract || {}; return [l.createdAt ? new Date(l.createdAt).toLocaleDateString() : "—", l.name || "—", l.phone || "—", l.email || "—", l.issue || rx.issue || "—", l.category || rx.category || "—", l.priority || "normal"]; });
+        }
+        doc.autoTable({ startY: 36, head, body, styles: { fontSize: 8, cellPadding: 3, overflow: "linebreak" }, headStyles: { fillColor: [201, 160, 78], textColor: [255, 255, 255], fontStyle: "bold" }, alternateRowStyles: { fillColor: [245, 245, 245] }, columnStyles: isInsights ? { 5: { cellWidth: 50 }, 6: { cellWidth: 35 } } : {}, margin: { left: 14, right: 14 } });
+        const pageCount = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(160, 160, 160); doc.text(`Page ${i} of ${pageCount} | VeraLux AI Receptionist`, 14, doc.internal.pageSize.height - 8); }
+        doc.save(`${fileName}-${today.replace(/\//g, "-")}.pdf`);
       }
 
       // ── Workflows (read-only for owners unless admin enables editing) ──
@@ -1409,6 +1555,8 @@
         tryRestoreSession();
       });
     </script>
+    <script src="jspdf.umd.min.js"></script>
+    <script src="jspdf.plugin.autotable.min.js"></script>
     <script src="vl-select.js"></script>
   </body>
 </html>
