@@ -139,8 +139,28 @@
         position: relative;
         z-index: 1;
         padding: 32px;
-        max-width: 680px;
+        max-width: 1320px;
         margin: 0 auto;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 24px;
+        align-items: start;
+      }
+      .owner-main .full-width {
+        grid-column: 1 / -1;
+      }
+      #workflow-data-panels {
+        display: flex;
+        flex-direction: column;
+        gap: 24px;
+      }
+      @media (max-width: 860px) {
+        .owner-main {
+          grid-template-columns: 1fr;
+        }
+        .owner-main .full-width {
+          grid-column: auto;
+        }
       }
       .owner-panel {
         background: var(--surface);
@@ -148,7 +168,6 @@
         border-radius: 20px;
         padding: 24px;
         overflow: hidden;
-        margin-bottom: 24px;
         backdrop-filter: blur(20px);
         -webkit-backdrop-filter: blur(20px);
         box-shadow: 0 4px 24px rgba(0,0,0,0.2);
@@ -432,7 +451,7 @@
         <div id="owner-prompts-status" class="help" style="margin-top: 6px; min-height: 18px;"></div>
       </section>
 
-      <section class="owner-panel">
+      <section class="owner-panel full-width">
         <h2>Receptionist voice</h2>
         <p class="help">Choose how your receptionist sounds. Select a TTS engine and configure its settings.</p>
 
@@ -687,10 +706,10 @@
       </section>
 
       <!-- Workflow Data Panels (dynamic per-workflow) -->
-      <div id="workflow-data-panels"></div>
+      <div id="workflow-data-panels" class="full-width"></div>
 
       <!-- Workflows -->
-      <section class="owner-panel" id="owner-workflows-section" style="display:none;">
+      <section class="owner-panel full-width" id="owner-workflows-section" style="display:none;">
         <h2>Automations</h2>
         <p class="help">Active workflow automations for your business.</p>
         <div id="owner-wf-empty" class="help" style="margin:12px 0;">No workflows configured.</div>

@@ -186,8 +186,11 @@ async function loadOwnerPanel() {
 }
 
 $('#btn-reload-owner').addEventListener('click', () => {
+  const frame = $('#owner-frame');
+  // Force reload by clearing src first, then reloading
+  frame.src = 'about:blank';
   ownerLoaded = false;
-  loadOwnerPanel();
+  setTimeout(() => loadOwnerPanel(), 100);
 });
 
 // ─── Logs ─────────────────────────────────────────────────────────────────────
