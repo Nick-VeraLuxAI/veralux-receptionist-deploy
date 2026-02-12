@@ -771,15 +771,17 @@ export class CallSession {
       return;
     }
     try {
-      this.markEnded('transfer');
+      // Send the transfer command to Telnyx BEFORE marking the call inactive,
+      // otherwise the transport will skip the API call due to inactive state.
       await this.transport.transfer(to, options);
       log.info(
         { event: 'call_transfer_requested', to, ...this.logContext },
         'call transfer requested',
       );
+      // Now mark ended — Telnyx will send call.bridged or call.hangup from here.
+      this.markEnded('transfer');
     } catch (error) {
       log.error({ err: error, to, ...this.logContext }, 'call transfer failed');
-      this.active = true; // revert markEnded so session can continue
       throw error;
     }
   }

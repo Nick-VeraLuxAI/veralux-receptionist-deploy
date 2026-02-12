@@ -340,12 +340,13 @@
       <main class="owner-main">
         <!-- Forwarding profiles -->
         <section class="owner-panel">
-          <h2>When to transfer calls</h2>
-          <p class="help">Who should the receptionist transfer callers to? Add your team members.</p>
+          <h2>Call Forwarding</h2>
+          <p class="help">Add the people the receptionist can forward calls to. Include a role and brief description so the AI knows when to route each call.</p>
           <div class="row">
             <input type="text" id="fp-name" class="sm" placeholder="Name" />
             <input type="text" id="fp-number" class="mid" placeholder="+15551234567" />
-            <input type="text" id="fp-role" class="mid" placeholder="Role (e.g. Owner)" />
+            <input type="text" id="fp-role" class="sm" placeholder="Role (e.g. Owner)" />
+            <input type="text" id="fp-desc" class="mid" placeholder="Brief description (e.g. Handles pricing &amp; estimates)" />
             <button type="button" id="fp-add">Add</button>
           </div>
           <ul id="fp-list" class="owner-list"></ul>
@@ -911,25 +912,28 @@
       function renderForwarding() {
         const ul = $("fp-list");
         if (!forwardingProfiles.length) { ul.innerHTML = "<li style='color:var(--muted)'>No team members yet</li>"; return; }
-        ul.innerHTML = forwardingProfiles.map((p, i) =>
-          `<li>
-            <span><strong>${escapeHtml(p.name)}</strong> — ${escapeHtml(p.number)} <span style="color:var(--muted)">(${escapeHtml(p.role || "—")})</span></span>
+        ul.innerHTML = forwardingProfiles.map((p, i) => {
+          const descHtml = p.description ? ` &mdash; <span style="color:var(--muted)">${escapeHtml(p.description)}</span>` : "";
+          return `<li>
+            <span><strong>${escapeHtml(p.name)}</strong> — ${escapeHtml(p.number)} <span style="color:var(--accent)">(${escapeHtml(p.role || "—")})</span>${descHtml}</span>
             <button class="secondary remove" onclick="removeForwarding(${i})">Remove</button>
-          </li>`
-        ).join("");
+          </li>`;
+        }).join("");
       }
 
       async function addForwarding() {
         const name = $("fp-name").value.trim();
         const number = $("fp-number").value.trim();
         const role = $("fp-role").value.trim();
+        const description = $("fp-desc").value.trim();
         if (!name || !number) return;
 
-        forwardingProfiles.push({ id: crypto.randomUUID(), name, number, role });
+        forwardingProfiles.push({ id: crypto.randomUUID(), name, number, role, description });
         await saveForwarding();
         $("fp-name").value = "";
         $("fp-number").value = "";
         $("fp-role").value = "";
+        $("fp-desc").value = "";
       }
 
       async function removeForwarding(idx) {

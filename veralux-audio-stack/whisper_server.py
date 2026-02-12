@@ -26,9 +26,14 @@ MAX_CONCURRENT = int(os.getenv("WHISPER_MAX_CONCURRENT", "2"))
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
 WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
 WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
-WHISPER_BEAM_SIZE = int(os.getenv("WHISPER_BEAM_SIZE", "1"))
+WHISPER_BEAM_SIZE = int(os.getenv("WHISPER_BEAM_SIZE", "5"))
 WHISPER_LANGUAGE = os.getenv("WHISPER_LANGUAGE", "en")
 WHISPER_VAD_FILTER = os.getenv("WHISPER_VAD_FILTER", "true").lower() in {"1", "true", "yes"}
+WHISPER_INITIAL_PROMPT = os.getenv(
+    "WHISPER_INITIAL_PROMPT",
+    "Phone call with a receptionist. The caller may ask to speak with the owner, "
+    "manager, schedule an appointment, ask about business hours, services, or pricing.",
+)
 WHISPER_ALLOW_FALLBACK = os.getenv("WHISPER_ALLOW_FALLBACK", "true").lower() in {"1", "true", "yes"}
 
 # Load Whisper model once at startup (configurable for future GPU use).
@@ -61,6 +66,7 @@ def _transcribe_file(path: str) -> str:
         beam_size=WHISPER_BEAM_SIZE,
         language=WHISPER_LANGUAGE,
         vad_filter=WHISPER_VAD_FILTER,
+        initial_prompt=WHISPER_INITIAL_PROMPT or None,
     )
     text_chunks = [seg.text for seg in segments]
     return "".join(text_chunks).strip()

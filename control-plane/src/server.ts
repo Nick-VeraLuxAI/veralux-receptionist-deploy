@@ -533,6 +533,7 @@ async function syncLLMContextToRuntime(tenant: TenantContext): Promise<void> {
           name: p.name,
           number: p.number,
           role: p.role,
+          description: (p as any).description || "",
         })),
         pricing: {
           items: tenant.pricing.items.map((item) => ({
@@ -550,6 +551,27 @@ async function syncLLMContextToRuntime(tenant: TenantContext): Promise<void> {
           voicePrompt: prompts.voicePrompt,
         },
       },
+      // Map forwarding profiles to the runtime's transferProfiles format
+      // so the brain/LLM can route calls to the right person
+      transferProfiles: tenant.forwardingProfiles
+        .filter((p) => p.number)
+        .map((p) => {
+          // Normalize destination to E.164 format (e.g. "2089164911" → "+12089164911")
+          let destination = p.number;
+          try { destination = normalizeE164(p.number); } catch { /* keep original if normalization fails */ }
+          // Build responsibilities from description (preferred), then role, then name
+          const descText = ((p as any).description || "").trim();
+          const roleText = (p.role || "").trim();
+          const respSource = descText || roleText || p.name;
+          return {
+            id: p.id,
+            name: roleText || p.name,
+            holder: p.name,
+            responsibilities: respSource.split(/[,&]/).map((s: string) => s.trim()).filter(Boolean),
+            description: descText,
+            destination,
+          };
+        }),
     };
 
     await publishTenantConfig(tenant.id, updatedConfig);

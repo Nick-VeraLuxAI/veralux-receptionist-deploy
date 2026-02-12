@@ -215,14 +215,18 @@ async function handleReply(req: Request, res: Response): Promise<void> {
     ...historyToMessages(history ?? [], transcript),
   ];
 
-  const tools = transferProfiles?.length ? getTransferToolDefinition() : undefined;
+  // Always include end_call tool; add transfer tool when profiles exist
+  const tools: OpenAI.Chat.ChatCompletionTool[] = [
+    getEndCallToolDefinition(),
+    ...(transferProfiles?.length ? getTransferToolDefinition() : []),
+  ];
 
   try {
     const completion = await openai.chat.completions.create({
       model: MODEL,
       messages,
       tools,
-      tool_choice: tools ? 'auto' : undefined,
+      tool_choice: 'auto',
       max_tokens: MAX_TOKENS,
     });
 
@@ -235,7 +239,21 @@ async function handleReply(req: Request, res: Response): Promise<void> {
     const message = choice.message;
     const response: BrainReplyResponse = { text: 'Got it. How can I help?' };
 
-    // Check for tool call (transfer)
+    // Check for end_call tool call
+    const endCallTool = message.tool_calls?.find((tc) => tc.function?.name === END_CALL_TOOL_NAME);
+    if (endCallTool?.function?.arguments) {
+      try {
+        const args = JSON.parse(endCallTool.function.arguments) as { goodbye_message?: string };
+        response.text = args.goodbye_message?.trim() || 'Have a great day! Goodbye.';
+      } catch {
+        response.text = 'Have a great day! Goodbye.';
+      }
+      response.hangup = true;
+      res.json(response);
+      return;
+    }
+
+    // Check for transfer tool call
     const toolCall = message.tool_calls?.find((tc) => tc.function?.name === TRANSFER_TOOL_NAME);
     if (toolCall?.function?.arguments) {
       try {
@@ -273,8 +291,8 @@ async function handleReply(req: Request, res: Response): Promise<void> {
         content && typeof content === 'string' ? String(content).trim() : response.text;
     }
 
-    // Detect goodbye intent: if the assistant's reply is a farewell (and not a question), signal hangup
-    if (!response.transfer && isGoodbyeResponse(response.text, transcript, history ?? [])) {
+    // Fallback: detect goodbye intent heuristically if the tool wasn't called
+    if (!response.transfer && !response.hangup && isGoodbyeResponse(response.text, transcript, history ?? [])) {
       response.hangup = true;
     }
 
@@ -309,14 +327,18 @@ async function handleReplyStream(req: Request, res: Response): Promise<void> {
     ...historyToMessages(history ?? [], transcript),
   ];
 
-  const tools = transferProfiles?.length ? getTransferToolDefinition() : undefined;
+  // Always include end_call tool; add transfer tool when profiles exist
+  const tools: OpenAI.Chat.ChatCompletionTool[] = [
+    getEndCallToolDefinition(),
+    ...(transferProfiles?.length ? getTransferToolDefinition() : []),
+  ];
 
   try {
     const stream = await openai.chat.completions.create({
       model: MODEL,
       messages,
       tools,
-      tool_choice: tools ? 'auto' : undefined,
+      tool_choice: 'auto',
       max_tokens: MAX_TOKENS,
       stream: true,
     });
@@ -352,27 +374,41 @@ async function handleReplyStream(req: Request, res: Response): Promise<void> {
     let transfer: BrainTransferAction | undefined;
     let hangup = false;
 
-    // Check for transfer tool
-    const transferTool = toolCalls.find((tc) => tc.name === TRANSFER_TOOL_NAME);
-    if (transferTool?.args) {
+    // Check for end_call tool
+    const endCallTool = toolCalls.find((tc) => tc.name === END_CALL_TOOL_NAME);
+    if (endCallTool?.args) {
       try {
-        const args = JSON.parse(transferTool.args) as {
-          to?: string;
-          message_to_caller?: string;
-        };
-        const to = typeof args.to === 'string' && args.to.trim() ? args.to.trim() : undefined;
-        if (to) {
-          finalText =
-            typeof args.message_to_caller === 'string' && args.message_to_caller.trim()
-              ? args.message_to_caller.trim()
-              : 'One moment while I transfer you.';
-          transfer = { to };
-          const profile = findProfileByDestination(transferProfiles, to);
-          if (profile?.audioUrl) transfer.audioUrl = profile.audioUrl;
-          if (profile?.timeoutSecs) transfer.timeoutSecs = profile.timeoutSecs;
-        }
+        const args = JSON.parse(endCallTool.args) as { goodbye_message?: string };
+        finalText = args.goodbye_message?.trim() || finalText || 'Have a great day! Goodbye.';
       } catch {
-        // keep finalText from content
+        if (!finalText) finalText = 'Have a great day! Goodbye.';
+      }
+      hangup = true;
+    }
+
+    // Check for transfer tool
+    if (!hangup) {
+      const transferTool = toolCalls.find((tc) => tc.name === TRANSFER_TOOL_NAME);
+      if (transferTool?.args) {
+        try {
+          const args = JSON.parse(transferTool.args) as {
+            to?: string;
+            message_to_caller?: string;
+          };
+          const to = typeof args.to === 'string' && args.to.trim() ? args.to.trim() : undefined;
+          if (to) {
+            finalText =
+              typeof args.message_to_caller === 'string' && args.message_to_caller.trim()
+                ? args.message_to_caller.trim()
+                : 'One moment while I transfer you.';
+            transfer = { to };
+            const profile = findProfileByDestination(transferProfiles, to);
+            if (profile?.audioUrl) transfer.audioUrl = profile.audioUrl;
+            if (profile?.timeoutSecs) transfer.timeoutSecs = profile.timeoutSecs;
+          }
+        } catch {
+          // keep finalText from content
+        }
       }
     }
 
@@ -380,7 +416,7 @@ async function handleReplyStream(req: Request, res: Response): Promise<void> {
 
     const donePayload: BrainReplyResponse = { text: finalText };
     if (transfer) donePayload.transfer = transfer;
-    // Detect goodbye intent from response text
+    // Fallback: detect goodbye intent heuristically if the tool wasn't called
     if (!transfer && !hangup && isGoodbyeResponse(finalText, transcript, history ?? [])) {
       hangup = true;
     }

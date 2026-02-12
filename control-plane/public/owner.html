@@ -344,12 +344,13 @@
 
     <main class="owner-main">
       <section class="owner-panel">
-        <h2>When to transfer calls</h2>
-        <p class="help">Who should the receptionist transfer callers to? Add yourself or your team (name, number, role).</p>
+        <h2>Call Forwarding</h2>
+        <p class="help">Add the people the receptionist can forward calls to. Include a role and brief description so the AI knows when to route each call.</p>
         <div class="row">
           <input type="text" id="fp-name" class="sm" placeholder="Name" />
           <input type="text" id="fp-number" class="mid" placeholder="+15551234567" />
-          <input type="text" id="fp-role" class="mid" placeholder="Role (e.g. Owner)" />
+          <input type="text" id="fp-role" class="sm" placeholder="Role (e.g. Owner)" />
+          <input type="text" id="fp-desc" class="mid" placeholder="Brief description (e.g. Handles pricing &amp; estimates)" />
           <button type="button" id="fp-add">Add</button>
         </div>
         <ul id="forwarding-profiles-list" class="owner-list"></ul>
@@ -1063,8 +1064,9 @@
         }
         forwardingProfilesCache.forEach((p, i) => {
           const li = document.createElement("li");
+          const descHtml = p.description ? ` &mdash; <span class="help">${escapeHtml(p.description)}</span>` : "";
           li.innerHTML = `
-            <span><strong>${escapeHtml(p.name)}</strong> ${escapeHtml(p.number)} <span class=\"help\">${escapeHtml(p.role || "")}</span></span>
+            <span><strong>${escapeHtml(p.name)}</strong> ${escapeHtml(p.number)} <span class="help" style="color:var(--accent)">${escapeHtml(p.role || "")}</span>${descHtml}</span>
             <button type="button" class="secondary remove" data-i="${i}">Remove</button>
           `;
           li.querySelector("button").onclick = () => {
@@ -1924,9 +1926,10 @@
           const name = ($("fp-name").value || "").trim();
           const number = ($("fp-number").value || "").trim();
           const role = ($("fp-role").value || "").trim();
+          const description = ($("fp-desc").value || "").trim();
           if (!name) return;
-          forwardingProfilesCache.push({ id: "id_" + Date.now(), name, number, role });
-          $("fp-name").value = $("fp-number").value = $("fp-role").value = "";
+          forwardingProfilesCache.push({ id: "id_" + Date.now(), name, number, role, description });
+          $("fp-name").value = $("fp-number").value = $("fp-role").value = $("fp-desc").value = "";
           renderForwarding();
         });
         $("fp-save").addEventListener("click", () => requireAuth(() => saveForwarding()));

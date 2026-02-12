@@ -672,12 +672,13 @@
 
       <div class="tab-content" data-tab="forwarding">
         <section class="panel">
-          <h2>Call forwarding profiles</h2>
-          <p class="small muted">Who to transfer callers to (number, name, role). The receptionist uses this to offer the right contact.</p>
+          <h2>Call Forwarding</h2>
+          <p class="small muted">Add the people the receptionist can forward calls to. Include a role and brief description so the AI knows when to route each call.</p>
           <div class="row" style="gap: 8px; flex-wrap: wrap; margin: 10px 0">
-            <input id="fp-name" type="text" placeholder="Name (e.g. Sales)" style="min-width: 120px" />
+            <input id="fp-name" type="text" placeholder="Name" style="min-width: 120px" />
             <input id="fp-number" type="text" placeholder="Number (e.g. +15551234567)" style="min-width: 140px" />
-            <input id="fp-role" type="text" placeholder="Role / what they do" style="min-width: 160px" />
+            <input id="fp-role" type="text" placeholder="Role (e.g. Owner)" style="min-width: 120px" />
+            <input id="fp-desc" type="text" placeholder="Brief description (e.g. Handles pricing &amp; estimates)" style="min-width: 200px" />
             <button type="button" id="fp-add">Add profile</button>
           </div>
           <ul id="forwarding-profiles-list" style="list-style: none; padding: 0; margin: 8px 0"></ul>
@@ -3141,7 +3142,7 @@
           li.innerHTML = `
             <div class="flex-between">
               <div>
-                <strong>${escapeHtml(p.name)}</strong> ${escapeHtml(p.number)} <span class="small">${escapeHtml(p.role)}</span>
+                <strong>${escapeHtml(p.name)}</strong> ${escapeHtml(p.number)} <span class="small" style="color:var(--accent,#C9A04E)">${escapeHtml(p.role)}</span>${p.description ? ` &mdash; <span class="small">${escapeHtml(p.description)}</span>` : ""}
               </div>
               <button type="button" class="secondary" data-fp-index="${i}">Remove</button>
             </div>
@@ -3527,11 +3528,13 @@
             const name = ($("fp-name")?.value || "").trim();
             const number = ($("fp-number")?.value || "").trim();
             const role = ($("fp-role")?.value || "").trim();
+            const description = ($("fp-desc")?.value || "").trim();
             if (!name) return;
-            forwardingProfilesCache.push({ id: "id_" + Date.now(), name, number, role });
+            forwardingProfilesCache.push({ id: "id_" + Date.now(), name, number, role, description });
             if ($("fp-name")) $("fp-name").value = "";
             if ($("fp-number")) $("fp-number").value = "";
             if ($("fp-role")) $("fp-role").value = "";
+            if ($("fp-desc")) $("fp-desc").value = "";
             renderForwardingProfiles();
           });
         }

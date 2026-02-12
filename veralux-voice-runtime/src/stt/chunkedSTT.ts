@@ -356,6 +356,7 @@ export class ChunkedSTT {
   private vadSpeechStreak = 0;
   private vadSilenceStreak = 0;
   private vadSpeechNow = false;
+  private vadLastProb = 0;
 
   // VAD hysteresis thresholds (prevents flapping)
   private readonly vadSpeechFramesRequired = clamp(safeNum(process.env.STT_VAD_SPEECH_FRAMES_REQUIRED, 2), 1, 20);
@@ -1099,6 +1100,7 @@ export class ChunkedSTT {
       if (pcmForVad) {
         const res = await this.vad.pushPcm16le16k(pcmForVad);
         if (res) {
+          this.vadLastProb = res.prob;
           this.vadSpeechNow = !!res.isSpeech;
           if (res.isSpeech) {
             this.vadSpeechStreak += 1;
@@ -1118,7 +1120,16 @@ export class ChunkedSTT {
       else vadSpeechDecision = this.vadSpeechNow;
     }
 
-    const isSpeech = this.disableGates ? true : (vadSpeechDecision ?? (gateRms && gatePeak));
+    // Speech decision: require amplitude gates AND VAD when VAD is active.
+    // If VAD is not ready or not enabled, fall back to gates only.
+    // When VAD says no-speech but gates detect strong audio, trust the gates
+    // (telephony audio can cause low VAD probabilities due to compression artifacts).
+    const gatesSaysSpeech = gateRms && gatePeak;
+    const isSpeech = this.disableGates
+      ? true
+      : vadSpeechDecision !== null
+        ? (vadSpeechDecision && gatesSaysSpeech) || (gatesSaysSpeech && !vadSpeechDecision && stats.rms > this.speechRmsFloor * 4)
+        : gatesSaysSpeech;
 
     if (isSpeech && !gatedForPlayback) {
       this.sawSpeech = true;
@@ -1203,6 +1214,7 @@ export class ChunkedSTT {
           is_speech: isSpeech,
           vad_enabled: this.vadEnabled && this.vadReady,
           vad_raw: this.vadSpeechNow,
+          vad_prob: Math.round(this.vadLastProb * 1000) / 1000,
           vad_speech_streak: this.vadSpeechStreak,
           vad_silence_streak: this.vadSilenceStreak,
           vad_speech_req: this.vadSpeechFramesRequired,

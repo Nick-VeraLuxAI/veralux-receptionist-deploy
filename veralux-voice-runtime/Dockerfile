@@ -46,6 +46,10 @@ COPY veralux-voice-runtime/ veralux-voice-runtime/
 WORKDIR /app/veralux-voice-runtime
 RUN npm run build
 
+# Copy Silero VAD model into dist/ so the runtime can find it at runtime
+RUN mkdir -p dist/stt/vad/models && \
+    cp -f src/stt/vad/models/silero_vad.onnx dist/stt/vad/models/silero_vad.onnx 2>/dev/null || true
+
 # Strip devDependencies after the build completes to shrink the final image.
 WORKDIR /app
 RUN npm prune -w veralux-voice-runtime -w @veralux/shared --omit=dev

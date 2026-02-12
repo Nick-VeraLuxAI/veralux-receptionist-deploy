@@ -367,6 +367,18 @@ export function createTelnyxWebhookRouter(sessionManager: SessionManager): Route
     try {
       switch (eventType) {
         case 'call.initiated': {
+          // Ignore outbound calls (B-leg of transfers). Only handle inbound calls.
+          const direction =
+            (payload as { direction?: string } | undefined)?.direction ??
+            (payloadEnvelope as { data?: { payload?: { direction?: string } } } | undefined)?.data?.payload?.direction;
+          if (direction === 'outgoing') {
+            log.info(
+              { event: 'outbound_call_ignored', call_control_id: callControlId, direction, requestId },
+              'ignoring outbound call (transfer B-leg)',
+            );
+            return;
+          }
+
           const debugEnabled = tenantDebugEnabled();
           const envelope =
             payloadEnvelope && typeof payloadEnvelope === 'object' ? payloadEnvelope : undefined;
