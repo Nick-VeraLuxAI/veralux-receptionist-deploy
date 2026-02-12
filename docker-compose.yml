@@ -65,6 +65,9 @@ services:
       - INSTALLER_USERNAME=${INSTALLER_USERNAME:-VeraLux}
       - INSTALLER_PASSWORD=${INSTALLER_PASSWORD:-}
       - ADMIN_ALLOWED_ORIGINS=${ADMIN_ALLOWED_ORIGINS:-http://localhost:4000}
+      - ADMIN_RATE_USE_REDIS=true
+      - ADMIN_RATE_MAX=${ADMIN_RATE_MAX:-100}
+      - ADMIN_RATE_WINDOW_MS=${ADMIN_RATE_WINDOW_MS:-300000}
       # Stripe
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
       - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
@@ -223,8 +226,8 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY:-ollama}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-http://host.docker.internal:11434/v1}
       - OPENAI_MODEL=${BRAIN_MODEL:-llama3.2:3b}
-    ports:
-      - "${BRAIN_PORT:-3001}:3001"
+    # ports:
+    #   - "${BRAIN_PORT:-3001}:3001"  # Internal only — accessible via Docker network
     networks:
       - veralux-network
 
@@ -370,8 +373,8 @@ services:
       - WHISPER_MODEL=${WHISPER_MODEL:-medium}
       - WHISPER_DEVICE=cuda
       - WHISPER_COMPUTE_TYPE=float16
-    ports:
-      - "${WHISPER_PORT:-9000}:9000"
+    # ports:
+    #   - "${WHISPER_PORT:-9000}:9000"  # Internal only — accessible via Docker network
     networks:
       veralux-network:
         aliases:
@@ -407,8 +410,8 @@ services:
       - VOICE_ID=${KOKORO_VOICE_ID:-default}
       - ONNX_PROVIDER=CUDAExecutionProvider
       - PIP_EXTRA=onnxruntime-gpu
-    ports:
-      - "${KOKORO_PORT:-7001}:7001"
+    # ports:
+    #   - "${KOKORO_PORT:-7001}:7001"  # Internal only — accessible via Docker network
     networks:
       veralux-network:
         aliases:
@@ -444,8 +447,8 @@ services:
       - LANGUAGE=${XTTS_LANGUAGE:-en}
       - COQUI_TOS_AGREED=1
       - XTTS_USE_GPU=true
-    ports:
-      - "${XTTS_PORT:-7002}:7002"
+    # ports:
+    #   - "${XTTS_PORT:-7002}:7002"  # Internal only — accessible via Docker network
     networks:
       veralux-network:
         aliases:
@@ -483,8 +486,8 @@ services:
     environment:
       - MODEL_SIZE=${WHISPER_MODEL_SIZE:-base}
       - CUDA_VISIBLE_DEVICES=""
-    ports:
-      - "${WHISPER_PORT:-9000}:9000"
+    # ports:
+    #   - "${WHISPER_PORT:-9000}:9000"  # Internal only — accessible via Docker network
     networks:
       veralux-network:
         aliases:
@@ -517,8 +520,8 @@ services:
     environment:
       - VOICE_ID=${KOKORO_VOICE_ID:-default}
       - CUDA_VISIBLE_DEVICES=""
-    ports:
-      - "${KOKORO_PORT:-7001}:7001"
+    # ports:
+    #   - "${KOKORO_PORT:-7001}:7001"  # Internal only — accessible via Docker network
     networks:
       veralux-network:
         aliases:
@@ -552,8 +555,8 @@ services:
       - LANGUAGE=${XTTS_LANGUAGE:-en}
       - CUDA_VISIBLE_DEVICES=""
       - COQUI_TOS_AGREED=1
-    ports:
-      - "${XTTS_PORT:-7002}:7002"
+    # ports:
+    #   - "${XTTS_PORT:-7002}:7002"  # Internal only — accessible via Docker network
     networks:
       veralux-network:
         aliases:

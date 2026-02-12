@@ -68,5 +68,6 @@ RUN chown -R veralux:veralux /app
 USER veralux
 
 EXPOSE 4000
+STOPSIGNAL SIGTERM
 
 ENTRYPOINT ["/app/control-plane/scripts/docker-entrypoint.sh"]

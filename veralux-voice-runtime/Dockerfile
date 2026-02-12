@@ -82,5 +82,6 @@ USER veralux
 WORKDIR /app/veralux-voice-runtime
 
 EXPOSE 4001
+STOPSIGNAL SIGTERM
 
 CMD ["node", "dist/index.js"]

@@ -12,8 +12,10 @@ const LOOPBACK_PATTERNS = [
 
 function isLoopback(req: Request): boolean {
   const ip = req.ip || req.socket?.remoteAddress || "";
-  // Docker bridge IPs (172.x.x.x) are also internal
-  return LOOPBACK_PATTERNS.includes(ip) || ip.startsWith("::ffff:172.") || ip.startsWith("172.");
+  if (LOOPBACK_PATTERNS.includes(ip)) return true;
+  // Docker bridge IPs — requests from the host machine via Docker port mapping
+  if (ip.startsWith("::ffff:172.") || ip.startsWith("172.")) return true;
+  return false;
 }
 
 interface Bucket {

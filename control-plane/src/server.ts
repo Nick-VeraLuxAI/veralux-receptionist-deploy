@@ -296,14 +296,10 @@ const ADMIN_ALLOWED_ORIGINS = (process.env.ADMIN_ALLOWED_ORIGINS || "")
   .filter(Boolean);
 
 function isAllowedOrigin(origin?: string): boolean {
-  // In production without an origin header, log a warning but allow for backward compatibility
-  // This allows server-to-server calls (e.g., from runtime) that don't set Origin
-  if (!origin) {
-    if (IS_PROD && process.env.REQUIRE_CORS_ORIGIN === "true") {
-      return false;
-    }
-    return true;
-  }
+  // No Origin header = non-browser request (e.g., Electron main process, service-to-service, curl).
+  // These are protected by the admin API key / JWT auth — allow them through CORS.
+  if (!origin) return true;
+  // If an Origin header IS present, it must match the allowlist (prevents cross-site browser attacks)
   if (!ADMIN_ALLOWED_ORIGINS.length) return !IS_PROD; // prod requires allowlist
   return ADMIN_ALLOWED_ORIGINS.includes(origin);
 }
@@ -3037,7 +3033,7 @@ function shutdown(signal: string) {
     setTimeout(() => {
       console.error("[shutdown] Force exiting after timeout.");
       process.exit(1);
-    }, 8000).unref();
+    }, 30000).unref();
   } catch (e) {
     console.error("[shutdown] error:", e);
     process.exit(1);
