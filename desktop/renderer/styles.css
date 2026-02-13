@@ -158,6 +158,13 @@ body {
 .btn-danger { border-color: var(--danger); color: var(--danger); }
 .btn-danger:hover { background: var(--danger-glow); }
 
+.btn-recovery {
+  border-color: var(--warning);
+  color: var(--warning);
+  margin-left: auto;
+}
+.btn-recovery:hover { background: rgba(251, 191, 36, 0.15); border-color: var(--warning); }
+
 .btn-sm { padding: 5px 10px; font-size: 12px; }
 
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -565,6 +572,105 @@ body {
 .eula-actions .btn {
   padding: 8px 20px;
   font-size: 13px;
+}
+
+/* ─── Recovery Modal ─────────────────────────────────────────────────────── */
+.recovery-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.recovery-overlay.hidden { display: none; }
+
+.recovery-modal {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  width: 500px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+
+.recovery-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+}
+
+.recovery-header h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--warning);
+}
+
+.recovery-icon {
+  font-size: 22px;
+  color: var(--warning);
+}
+
+.recovery-body {
+  padding: 16px 20px;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.recovery-desc {
+  font-size: 13px;
+  color: var(--text-soft);
+  margin-bottom: 14px;
+  line-height: 1.5;
+}
+
+.recovery-log {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-family: "Cascadia Code", "Fira Code", monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  min-height: 80px;
+  max-height: 220px;
+  overflow-y: auto;
+  color: var(--text-soft);
+}
+
+.recovery-log .step {
+  display: block;
+  padding: 2px 0;
+}
+.recovery-log .step.done    { color: var(--success); }
+.recovery-log .step.warn    { color: var(--warning); }
+.recovery-log .step.error   { color: var(--danger); }
+.recovery-log .step.active  { color: var(--primary); }
+.recovery-log .step.active::before { content: ""; }
+
+.recovery-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.recovery-footer .btn-danger {
+  background: var(--danger);
+  color: #070708;
+  border-color: transparent;
+  font-weight: 600;
+}
+.recovery-footer .btn-danger:hover { opacity: 0.9; }
+.recovery-footer .btn-danger:disabled {
+  background: var(--danger);
+  opacity: 0.4;
 }
 
 /* ─── Scrollbar ──────────────────────────────────────────────────────────── */

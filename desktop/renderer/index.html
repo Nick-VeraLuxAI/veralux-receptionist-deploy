@@ -32,6 +32,7 @@
         <button class="btn btn-success btn-sm" id="btn-start-all">Start All</button>
         <button class="btn btn-danger btn-sm" id="btn-stop-all">Stop All</button>
         <button class="btn btn-sm" id="btn-restart-all">Restart All</button>
+        <button class="btn btn-recovery btn-sm" id="btn-recovery" title="Kill port conflicts, tear down, and restart all services">Recovery Mode</button>
         <div class="status-summary" id="status-summary"></div>
       </div>
       <div class="gpu-bar" id="gpu-bar" style="display:none">
@@ -101,6 +102,24 @@
           <button class="btn btn-danger btn-sm" id="btn-eula-decline">Decline &amp; Exit</button>
           <button class="btn btn-primary btn-sm" id="btn-eula-accept" disabled>Accept &amp; Continue</button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recovery Modal -->
+  <div class="recovery-overlay hidden" id="recovery-overlay">
+    <div class="recovery-modal">
+      <div class="recovery-header">
+        <span class="recovery-icon">&#9888;</span>
+        <h3>Recovery Mode</h3>
+      </div>
+      <div class="recovery-body">
+        <p class="recovery-desc">This will kill any processes blocking required ports, tear down all containers, and restart every service from scratch.</p>
+        <div class="recovery-log" id="recovery-log"></div>
+      </div>
+      <div class="recovery-footer">
+        <button class="btn btn-danger btn-sm" id="btn-recovery-confirm">Start Recovery</button>
+        <button class="btn btn-sm" id="btn-recovery-cancel">Cancel</button>
       </div>
     </div>
   </div>

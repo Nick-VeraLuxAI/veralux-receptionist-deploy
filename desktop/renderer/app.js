@@ -172,6 +172,102 @@ $('#btn-start-all').addEventListener('click', () => { veralux.startAll(); showTo
 $('#btn-stop-all').addEventListener('click', () => { veralux.stopAll(); showToast('Stopping all services...'); });
 $('#btn-restart-all').addEventListener('click', () => { veralux.restartAll(); showToast('Restarting all services...'); });
 
+// ─── Recovery Mode ────────────────────────────────────────────────────────────
+
+$('#btn-recovery').addEventListener('click', () => {
+  const overlay = $('#recovery-overlay');
+  const log = $('#recovery-log');
+  const confirmBtn = $('#btn-recovery-confirm');
+  const cancelBtn = $('#btn-recovery-cancel');
+
+  // Reset modal state
+  log.innerHTML = '<span class="step" style="color:var(--muted)">Waiting to start...</span>';
+  confirmBtn.disabled = false;
+  confirmBtn.textContent = 'Start Recovery';
+  cancelBtn.disabled = false;
+  cancelBtn.textContent = 'Cancel';
+  overlay.classList.remove('hidden');
+});
+
+$('#btn-recovery-cancel').addEventListener('click', () => {
+  $('#recovery-overlay').classList.add('hidden');
+});
+
+$('#btn-recovery-confirm').addEventListener('click', async () => {
+  const confirmBtn = $('#btn-recovery-confirm');
+  const cancelBtn = $('#btn-recovery-cancel');
+  const log = $('#recovery-log');
+
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = 'Recovering...';
+  cancelBtn.disabled = true;
+  log.innerHTML = '';
+
+  addRecoveryStep('Initiating recovery...', 'active');
+
+  try {
+    const result = await veralux.recovery();
+    // Final result handled by progress listener
+  } catch (err) {
+    addRecoveryStep(`Error: ${err.message}`, 'error');
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = 'Retry';
+    cancelBtn.disabled = false;
+  }
+});
+
+function addRecoveryStep(message, cls = '') {
+  const log = $('#recovery-log');
+  const el = document.createElement('span');
+  el.className = `step ${cls}`;
+  el.textContent = message;
+  log.appendChild(el);
+  log.scrollTop = log.scrollHeight;
+}
+
+// Listen for tray-triggered recovery
+veralux.onTriggerRecovery(() => {
+  $('#btn-recovery').click();
+});
+
+veralux.onRecoveryProgress((data) => {
+  const confirmBtn = $('#btn-recovery-confirm');
+  const cancelBtn = $('#btn-recovery-cancel');
+
+  switch (data.step) {
+    case 'scanning':
+      addRecoveryStep(data.message, 'active');
+      break;
+    case 'killed':
+      if (data.killed && data.killed.length > 0) {
+        for (const k of data.killed) {
+          addRecoveryStep(`  Killed PID ${k.pid} (${k.name}) on port ${k.port}`, 'warn');
+        }
+      }
+      addRecoveryStep(data.message, data.killed?.length > 0 ? 'warn' : 'done');
+      break;
+    case 'teardown':
+    case 'waiting':
+    case 'starting':
+      addRecoveryStep(data.message, 'active');
+      break;
+    case 'teardown-warn':
+      addRecoveryStep(data.message, 'warn');
+      break;
+    case 'done':
+      addRecoveryStep(data.message, data.success ? 'done' : 'warn');
+      confirmBtn.textContent = 'Done';
+      cancelBtn.disabled = false;
+      cancelBtn.textContent = 'Close';
+      if (data.success) {
+        showToast('Recovery complete — all services running');
+      } else {
+        showToast(`Recovery finished — ${data.running}/${data.total} services running`, true);
+      }
+      break;
+  }
+});
+
 // ─── Owner Panel ──────────────────────────────────────────────────────────────
 
 async function loadOwnerPanel() {

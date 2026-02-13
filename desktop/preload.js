@@ -9,6 +9,9 @@ contextBridge.exposeInMainWorld('veralux', {
   restartService:  (container) => ipcRenderer.invoke('docker:restart-service', container),
   startService:    (container) => ipcRenderer.invoke('docker:start-service', container),
   stopService:     (container) => ipcRenderer.invoke('docker:stop-service', container),
+  recovery:        () => ipcRenderer.invoke('docker:recovery'),
+  onRecoveryProgress: (cb) => ipcRenderer.on('recovery-progress', (_e, data) => cb(data)),
+  onTriggerRecovery: (cb) => ipcRenderer.on('trigger-recovery', () => cb()),
 
   // Services
   listServices: () => ipcRenderer.invoke('services:list'),

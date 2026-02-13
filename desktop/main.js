@@ -227,6 +227,8 @@ function createTray() {
     { label: 'Stop All', click: () => dockerAction('stop') },
     { label: 'Restart All', click: () => dockerAction('restart') },
     { type: 'separator' },
+    { label: 'Recovery Mode', click: () => { mainWindow?.show(); mainWindow?.focus(); mainWindow?.webContents.send('trigger-recovery'); } },
+    { type: 'separator' },
     { label: 'Quit', click: () => { app.isQuitting = true; app.quit(); } },
   ]);
   tray.setContextMenu(contextMenu);
@@ -277,6 +279,86 @@ function setupIPC() {
         if (err) return reject(new Error(stderr || err.message));
         setTimeout(pollHealth, 2000);
         resolve();
+      });
+    });
+  });
+
+  // ── Recovery Mode ────────────────────────────────────────────────────────
+  ipcMain.handle('docker:recovery', () => {
+    return new Promise((resolve) => {
+      if (mainWindow) mainWindow.webContents.send('recovery-progress', { step: 'scanning', message: 'Scanning for port conflicts...' });
+
+      const REQUIRED_PORTS = [4000, 4001, 80, 443, 4040];
+      const killed = [];
+
+      // Step 1: Find and kill port squatters
+      for (const port of REQUIRED_PORTS) {
+        try {
+          const pids = execSync(`lsof -ti :${port} 2>/dev/null || true`, { encoding: 'utf-8' }).trim();
+          if (!pids) continue;
+          for (const pidStr of pids.split('\n')) {
+            const pid = parseInt(pidStr.trim(), 10);
+            if (isNaN(pid)) continue;
+            // Skip Docker's own processes
+            try {
+              const procName = execSync(`ps -p ${pid} -o comm= 2>/dev/null || echo unknown`, { encoding: 'utf-8' }).trim();
+              if (['docker-proxy', 'docker', 'dockerd', 'containerd', 'containerd-shim'].includes(procName)) continue;
+              try {
+                process.kill(pid, 'SIGKILL');
+                killed.push({ port, pid, name: procName });
+              } catch { /* couldn't kill — may need elevated perms */ }
+            } catch { /* skip */ }
+          }
+        } catch { /* lsof may not be installed */ }
+      }
+
+      if (mainWindow) mainWindow.webContents.send('recovery-progress', {
+        step: 'killed',
+        message: killed.length > 0
+          ? `Cleared ${killed.length} conflicting process${killed.length !== 1 ? 'es' : ''}`
+          : 'No port conflicts found',
+        killed,
+      });
+
+      // Step 2: Tear down containers
+      if (mainWindow) mainWindow.webContents.send('recovery-progress', { step: 'teardown', message: 'Tearing down all containers...' });
+
+      exec(`docker compose -p ${COMPOSE_PROJECT} -f ${path.join(PROJECT_DIR, 'docker-compose.yml')} down --remove-orphans 2>&1`, { cwd: PROJECT_DIR }, (downErr) => {
+        if (downErr && mainWindow) {
+          mainWindow.webContents.send('recovery-progress', { step: 'teardown-warn', message: 'Teardown had warnings (continuing)' });
+        }
+
+        // Step 3: Brief pause for ports to free
+        if (mainWindow) mainWindow.webContents.send('recovery-progress', { step: 'waiting', message: 'Waiting for ports to clear...' });
+
+        setTimeout(() => {
+          // Step 4: Bring everything back up
+          if (mainWindow) mainWindow.webContents.send('recovery-progress', { step: 'starting', message: 'Starting all services...' });
+
+          exec(`docker compose -p ${COMPOSE_PROJECT} -f ${path.join(PROJECT_DIR, 'docker-compose.yml')} up -d 2>&1`, { cwd: PROJECT_DIR }, (upErr, upOut) => {
+            // Step 5: Verify
+            setTimeout(() => {
+              exec(`docker compose -p ${COMPOSE_PROJECT} -f ${path.join(PROJECT_DIR, 'docker-compose.yml')} ps --format '{{.Name}} {{.Status}}' 2>/dev/null`, { cwd: PROJECT_DIR }, (psErr, psOut) => {
+                const lines = (psOut || '').trim().split('\n').filter(Boolean);
+                const running = lines.filter(l => l.toLowerCase().includes('up')).length;
+                const total = lines.length;
+
+                if (mainWindow) mainWindow.webContents.send('recovery-progress', {
+                  step: 'done',
+                  message: running === total && total > 0
+                    ? `Recovery complete — ${running}/${total} services running`
+                    : `Recovery finished — ${running}/${total} services running`,
+                  success: running === total && total > 0,
+                  running,
+                  total,
+                });
+
+                setTimeout(pollHealth, 3000);
+                resolve({ killed, running, total, success: running === total && total > 0 });
+              });
+            }, 8000); // Wait for services to start
+          });
+        }, 2000); // Wait for ports to clear
       });
     });
   });
