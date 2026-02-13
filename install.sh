@@ -333,7 +333,7 @@ write_env_file() {
     local jwt_secret="${6:-}"
     local cloudflare_token="${7:-}"
     local llm_provider="${8:-openai}"
-    local openai_model="${9:-gpt-4o-mini}"
+    local openai_model="${9:-llama3.2:3b}"
     local local_llm_url="${10:-}"
     
     cat > .env << ENVFILE
@@ -655,9 +655,10 @@ main() {
             fi
             echo ""
             OPENAI_MODEL=$("$GUM_BIN" choose --header "Which model?" \
-                "gpt-4o-mini (fast, cost-effective — recommended)" \
-                "gpt-4o (most capable)" \
-                "gpt-4-turbo (balanced)")
+                "llama3.2:3b (local Ollama — default)" \
+                "llama3.1:8b (local Ollama — more capable)" \
+                "gpt-4o-mini (OpenAI cloud — fast)" \
+                "gpt-4o (OpenAI cloud — most capable)")
             # Extract just the model name
             OPENAI_MODEL=$(echo "$OPENAI_MODEL" | awk '{print $1}')
             echo -e "${GREEN}✓${NC} Cloud API mode: ${OPENAI_MODEL}"
@@ -722,7 +723,7 @@ main() {
     echo ""
     # Default LLM vars if not set (Online/Offline paths default to openai)
     LLM_PROVIDER="${LLM_PROVIDER:-openai}"
-    OPENAI_MODEL="${OPENAI_MODEL:-gpt-4o-mini}"
+    OPENAI_MODEL="${OPENAI_MODEL:-llama3.2:3b}"
     LOCAL_LLM_URL="${LOCAL_LLM_URL:-}"
     
     "$GUM_BIN" spin --spinner dot --title "Saving configuration..." -- \

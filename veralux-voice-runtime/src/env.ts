@@ -236,7 +236,7 @@ const EnvSchema = z.object({
   PLAYBACK_ENABLE_HIGHPASS: z.preprocess(stringToBoolean, z.boolean().default(true)),
 
   /* ───────────────────────── Brain / LLM ───────────────────────── */
-  /** When true, use local default brain (keyword rules). When false or unset, use BRAIN_URL if set (e.g. GPT-4o API). */
+  /** When true, use local default brain (keyword rules). When false or unset, use BRAIN_URL if set (e.g. brain-llm service). */
   BRAIN_USE_LOCAL: z.preprocess(stringToBoolean, z.boolean().default(false)),
   BRAIN_URL: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   BRAIN_TIMEOUT_MS: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(8000)),

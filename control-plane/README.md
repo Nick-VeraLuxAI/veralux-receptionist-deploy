@@ -30,7 +30,7 @@ This repo is the VeraLux control plane (admin + onboarding + config). The low-la
 
 ## LLM provider selection
 - Default: local llama.cpp-style endpoint at `LOCAL_LLM_URL` (defaults to `http://127.0.0.1:8080/completion`).
-- To use OpenAI, set `LLM_PROVIDER=openai` and provide `OPENAI_API_KEY`; optionally set `OPENAI_MODEL` and `OPENAI_BASE_URL` (defaults to `gpt-4o-mini` and `https://api.openai.com/v1/chat/completions`).
+- To use an OpenAI-compatible API, set `LLM_PROVIDER=openai` and provide `OPENAI_API_KEY`; optionally set `OPENAI_MODEL` and `OPENAI_BASE_URL` (defaults to `llama3.2:3b` via local Ollama).
 
 ## Runtime STT/TTS config
 - STT/TTS settings live in `RuntimeTenantConfig` and are consumed by the voice runtime.

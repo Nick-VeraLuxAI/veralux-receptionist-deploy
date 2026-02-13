@@ -11,7 +11,7 @@ export interface LocalLLMOutput {
 
 const DEFAULT_LLM_URL = "http://127.0.0.1:8080/completion";
 const DEFAULT_OPENAI_URL = "https://api.openai.com/v1/chat/completions";
-const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
+const DEFAULT_OPENAI_MODEL = "llama3.2:3b";
 
 function getConfigStore(
   opts?: Partial<{ tenantId?: string; config?: LLMConfigStore }>

@@ -199,7 +199,7 @@ export async function aiSummarize(
     config.prompt ??
     "You are an assistant that summarizes phone call transcripts. Provide a concise summary including key points, action items, and any follow-up needed.";
 
-  const model = config.model || process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const model = config.model || process.env.OPENAI_MODEL || "llama3.2:3b";
 
   const resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -257,7 +257,7 @@ export async function aiExtract(
     config.prompt ??
     `You are a data extraction assistant. Extract the following fields from the phone call transcript: ${fields.join(", ")}. Return a JSON object with these fields. If a field is not found, use null.`;
 
-  const model = config.model || process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const model = config.model || process.env.OPENAI_MODEL || "llama3.2:3b";
 
   const resp = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",

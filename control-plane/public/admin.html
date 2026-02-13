@@ -494,7 +494,7 @@
 
             <div id="openai-fields">
               <label for="openaiModel">Model</label>
-              <input id="openaiModel" name="openaiModel" type="text" placeholder="gpt-4o-mini" />
+              <input id="openaiModel" name="openaiModel" type="text" placeholder="llama3.2:3b" />
 
               <label for="openaiApiKey">API key (kept server-side, never shown)</label>
               <input id="openaiApiKey" name="openaiApiKey" type="password" autocomplete="off" placeholder="sk-..." />
@@ -1476,7 +1476,7 @@
         const providerLabel = cfg.provider === "openai" ? "OpenAI (ChatGPT)" : "Local LLM";
         $("summary-provider").textContent = providerLabel;
         $("summary-model").textContent = cfg.provider === "openai"
-          ? `Model: ${cfg.openaiModel || "gpt-4o-mini"}`
+          ? `Model: ${cfg.openaiModel || "llama3.2:3b"}`
           : cfg.localUrl ? `URL: ${cfg.localUrl}` : "";
         $("api-key-status").textContent = cfg.hasOpenAIApiKey
           ? "API key is configured"
@@ -1670,7 +1670,7 @@
 
         const llmProvider = data.llm.provider === "openai" ? "OpenAI (ChatGPT)" : "Local LLM";
         const llmDetails = data.llm.provider === "openai"
-          ? [`Provider: ${llmProvider}`, `Model: ${data.llm.model || "gpt-4o-mini"}`, `API Key: ${data.llm.hasOpenAIApiKey ? "Configured" : "Missing"}`]
+          ? [`Provider: ${llmProvider}`, `Model: ${data.llm.model || "llama3.2:3b"}`, `API Key: ${data.llm.hasOpenAIApiKey ? "Configured" : "Missing"}`]
           : [`Provider: ${llmProvider}`, `URL: ${data.llm.localUrl || "-"}`];
         container.appendChild(
           healthCard("LLM", data.llm.status, llmDetails)

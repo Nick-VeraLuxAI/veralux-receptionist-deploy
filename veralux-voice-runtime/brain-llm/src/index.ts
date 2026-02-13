@@ -1,5 +1,5 @@
 /**
- * Brain service for veralux-voice-runtime: GPT-4o backend with transfer support.
+ * Brain LLM service for veralux-voice-runtime: OpenAI-compatible backend with transfer support.
  * Receives POST /reply (and /reply/stream) from the runtime and returns { text, transfer? }.
  * Loads .env from this dir first, then parent .env (root) so OPENAI_API_KEY can live in one place.
  */
@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config(); // brain-gpt4o/.env
+dotenv.config(); // brain-llm/.env
 dotenv.config({ path: path.resolve(__dirname, '../../.env') }); // root .env (overrides / supplies OPENAI_API_KEY)
 
 import express, { Request, Response } from 'express';
@@ -24,7 +24,7 @@ import type {
 const PORT = Number(process.env.PORT ?? 3001);
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim() || 'ollama';
 const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim() || undefined;
-const MODEL = process.env.OPENAI_MODEL?.trim() ?? 'gpt-4o';
+const MODEL = process.env.OPENAI_MODEL?.trim() ?? 'llama3.2:3b';
 const MAX_TOKENS = Number(process.env.BRAIN_MAX_TOKENS ?? 80);
 
 const openai = new OpenAI({
@@ -443,5 +443,5 @@ app.get('/health', (_req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`brain-gpt4o listening on port ${PORT} (model: ${MODEL})`);
+  console.log(`brain-llm listening on port ${PORT} (model: ${MODEL})`);
 });

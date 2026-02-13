@@ -5,7 +5,7 @@
     "shared",
     "control-plane",
     "veralux-voice-runtime",
-    "veralux-voice-runtime/brain-gpt4o"
+    "veralux-voice-runtime/brain-llm"
   ],
   "scripts": {
     "build:shared": "npm run build -w @veralux/shared",

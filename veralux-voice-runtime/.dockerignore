@@ -4,8 +4,8 @@
 .cursor
 node_modules
 dist
-brain-gpt4o/node_modules
-brain-gpt4o/dist
+brain-llm/node_modules
+brain-llm/dist
 *.log
 debuglog*.txt
 debuglogs*.txt
