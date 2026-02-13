@@ -86,12 +86,12 @@
 | **Telnyx → Webhook** | 50–150 ms | Network hop from Telnyx to Cloudflare tunnel |
 | **VAD (Silero)** | 5–15 ms | Voice activity detection on audio chunk |
 | **STT (Whisper)** | 200–800 ms | Speech-to-text transcription (GPU-accelerated) |
-| **LLM (Brain)** | 300–1,500 ms | AI response generation (GPT-4o via API) |
+| **LLM (Brain)** | 200–1,000 ms | AI response generation (Llama 3.2 3B via Ollama, local) |
 | **TTS (Kokoro)** | 100–400 ms | Text-to-speech synthesis (GPU-accelerated) |
 | **Audio Delivery** | 20–50 ms | Stream synthesized audio back to caller |
 | **Total Turn** | **~0.7 – 3.0 s** | End-to-end from user speech to AI response |
 
-> **Note:** LLM latency depends on OpenAI API response time (external). All other stages are local GPU-accelerated processing.
+> **Note:** All processing stages run locally on the GPU. No external AI API calls are made during call handling.
 
 ---
 
@@ -128,9 +128,11 @@
 - **Integrations:** Telnyx (calls), Whisper (STT), Kokoro/XTTS (TTS), Brain (LLM)
 
 ### 3. Brain LLM Proxy (`veralux-brain`)
-- **Role:** Routes LLM requests to OpenAI GPT-4o
-- **Tech:** Node.js proxy
-- **External Dependency:** OpenAI API (requires internet)
+- **Role:** Routes LLM requests to local Ollama instance
+- **Tech:** Node.js proxy → Ollama (OpenAI-compatible API)
+- **Model:** Llama 3.2 (3B parameter)
+- **Endpoint:** `http://host.docker.internal:11434/v1`
+- **Processing:** Fully local, no external API calls
 
 ### 4. Whisper STT (`veralux-whisper`)
 - **Role:** Speech-to-text transcription
@@ -171,10 +173,10 @@
 
 | Service | Purpose | Required |
 |---------|---------|----------|
-| **OpenAI API** | GPT-4o for conversational AI | Yes (for LLM responses) |
+| **Ollama** | Llama 3.2 3B — local LLM inference | Yes (runs on host at port 11434) |
 | **Telnyx** | Phone calls, SIP, DID numbers | Yes (for telephony) |
 | **Cloudflare Tunnel** | Public webhook ingress | Yes (for receiving calls) |
-| **Internet** | API access + tunnel | Yes |
+| **Internet** | Telnyx webhooks + tunnel | Yes (for telephony only — AI runs locally) |
 
 ---
 
