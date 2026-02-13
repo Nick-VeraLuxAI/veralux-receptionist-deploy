@@ -14,7 +14,7 @@
     "tenantcfg": "tsx scripts/tenantcfg.ts",
     "register-tenant": "tsx scripts/register-tenant.ts",
     "whisper:replay": "tsx scripts/whisper_replay.ts",
-    "test": "tsx --test",
+    "test": "tsx --test tests/capacity.test.ts tests/mediaIngest.test.ts tests/preroll.test.ts tests/sessionManager.test.ts tests/telnyxClient.test.ts tests/telnyxVerify.test.ts tests/tenantConfig.test.ts tests/wavGuard.test.ts",
     "test:integration": "tsx --test tests/callFlow.integration.test.ts",
     "load-test": "tsx scripts/load-test.ts",
     "load-test:calls": "tsx scripts/concurrent-calls-test.ts",
