@@ -178,7 +178,7 @@ export const triggerTypeSchema = z.enum([
 ]);
 
 export const actionTypeSchema = z.enum([
-  "send_email", "send_sms", "fire_webhook", "ai_summarize", "ai_extract", "store_lead",
+  "send_email", "send_sms", "fire_webhook", "ai_summarize", "ai_extract", "ai_extract_quote", "build_quote", "store_lead",
 ]);
 
 export const triggerConfigSchema = z.object({

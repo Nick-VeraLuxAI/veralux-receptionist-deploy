@@ -311,22 +311,25 @@ export async function storeLead(
 ): Promise<{ leadId: string }> {
   const callEvent = ctx.event as CallEndedEvent;
 
-  // Get data from a previous AI extract step if specified
+  // Get data from a previous AI extract or build_quote step if specified
   let extractedData: Record<string, any> = {};
   if (config.fromStep !== undefined && ctx.stepOutputs[config.fromStep]) {
-    extractedData = ctx.stepOutputs[config.fromStep]?.extracted ?? {};
+    const prev = ctx.stepOutputs[config.fromStep];
+    // build_quote outputs { quote: {...} }, ai_extract outputs { extracted: {...} }
+    extractedData = prev?.quote ?? prev?.extracted ?? {};
   }
 
   // Also check the event's lead data
   const eventLead = callEvent.lead ?? {};
 
   // Merge: config overrides > extracted > event lead
+  // Quote data uses customerName/customerPhone/customerEmail fields
   const leadData = {
     tenantId: ctx.tenantId,
     callId: callEvent.callId ?? undefined,
-    name: config.name || extractedData.name || eventLead.name || undefined,
-    phone: config.phone || extractedData.phone || eventLead.phone || callEvent.callerId || undefined,
-    email: config.email || extractedData.email || eventLead.email || undefined,
+    name: config.name || extractedData.customerName || extractedData.name || eventLead.name || undefined,
+    phone: config.phone || extractedData.customerPhone || extractedData.phone || eventLead.phone || callEvent.callerId || undefined,
+    email: config.email || extractedData.customerEmail || extractedData.email || eventLead.email || undefined,
     issue: config.issue || extractedData.issue || eventLead.issue || undefined,
     category: config.category || extractedData.category || eventLead.category || undefined,
     priority: config.priority || extractedData.priority || "normal",
@@ -339,7 +342,202 @@ export async function storeLead(
   return { leadId: lead.id };
 }
 
+// ── ai_extract_quote ─────────────────────────────
+
+export async function aiExtractQuote(
+  ctx: PipelineContext,
+  config: {
+    priceList?: Array<{ name: string; type: string; unitPrice: number; unit: string }>;
+    taxRate?: number;
+    model?: string;
+  }
+): Promise<{ extracted: Record<string, any> }> {
+  const callEvent = ctx.event as CallEndedEvent;
+  const transcript =
+    callEvent.transcript ??
+    callEvent.turns?.map(t => `${t.role}: ${t.content}`).join("\n") ??
+    "";
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  const baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1/chat/completions";
+  if (!apiKey) {
+    return { extracted: { error: "LLM API key not configured" } };
+  }
+
+  const priceList = config.priceList ?? [];
+  const priceListText = priceList.length > 0
+    ? `\n\nAvailable products/services and pricing:\n${priceList.map(p => `- ${p.name} (${p.type}): $${p.unitPrice} per ${p.unit}`).join("\n")}`
+    : "";
+
+  const systemPrompt = `You are a quote extraction assistant. Analyze the phone call transcript and extract information needed to build a quote.${priceListText}
+
+Return a JSON object with:
+{
+  "customerName": "string or null",
+  "customerPhone": "string or null",
+  "customerEmail": "string or null",
+  "lineItems": [
+    {
+      "description": "item/service name",
+      "type": "service or product",
+      "quantity": number,
+      "unitPrice": number,
+      "unit": "hour/each/sqft/etc"
+    }
+  ],
+  "notes": "any special requirements, delivery notes, or context from the call"
+}
+
+Match requested items to the price list when possible. If the caller mentions something not on the price list, include it with unitPrice: 0 and a note. Estimate quantities from context clues in the conversation.`;
+
+  const model = config.model || process.env.OPENAI_MODEL || "llama3.2:3b";
+
+  // Determine endpoint — Ollama uses a different path structure
+  const endpoint = baseUrl.includes("/v1") ? baseUrl.replace(/\/v1\/?$/, "/v1/chat/completions") : baseUrl;
+
+  const resp = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: `Extract quote details from this call transcript:\n\n${transcript}` },
+      ],
+      max_tokens: 1000,
+      temperature: 0,
+      response_format: { type: "json_object" },
+    }),
+  });
+
+  if (!resp.ok) {
+    const errText = await resp.text();
+    console.error("[actions/ai_extract_quote] LLM error:", errText);
+    return { extracted: { error: `AI quote extraction error: ${resp.status}` } };
+  }
+
+  const data = await resp.json() as any;
+  const content = data.choices?.[0]?.message?.content?.trim() ?? "{}";
+
+  try {
+    const parsed = JSON.parse(content);
+    // Also carry caller info from the event
+    if (!parsed.customerPhone && callEvent.callerId) {
+      parsed.customerPhone = callEvent.callerId;
+    }
+    return { extracted: parsed };
+  } catch {
+    return { extracted: { raw: content } };
+  }
+}
+
+// ── build_quote ──────────────────────────────────
+
+export async function buildQuote(
+  ctx: PipelineContext,
+  config: {
+    fromStep?: number;
+    taxRate?: number;
+    priceList?: Array<{ name: string; type: string; unitPrice: number; unit: string }>;
+  }
+): Promise<{ quote: Record<string, any> }> {
+  // Get raw extracted data from the previous ai_extract_quote step
+  let extractedData: Record<string, any> = {};
+  if (config.fromStep !== undefined && ctx.stepOutputs[config.fromStep]) {
+    extractedData = ctx.stepOutputs[config.fromStep]?.extracted ?? {};
+  }
+
+  const priceList = config.priceList ?? [];
+  const taxRate = config.taxRate ?? 0;
+
+  // Build a lookup map from price list
+  const priceMap = new Map<string, { unitPrice: number; unit: string; type: string }>();
+  for (const item of priceList) {
+    priceMap.set(item.name.toLowerCase(), { unitPrice: item.unitPrice, unit: item.unit, type: item.type });
+  }
+
+  // Validate and enforce real prices for line items
+  const rawItems = extractedData.lineItems ?? [];
+  const lineItems: Array<{
+    description: string;
+    type: string;
+    quantity: number;
+    unitPrice: number;
+    unit: string;
+    total: number;
+  }> = [];
+
+  for (const item of rawItems) {
+    const qty = Math.max(Number(item.quantity) || 1, 0);
+    // Try to match to price list for accurate pricing
+    const matched = priceMap.get((item.description || "").toLowerCase());
+    const unitPrice = matched ? matched.unitPrice : (Number(item.unitPrice) || 0);
+    const unit = matched ? matched.unit : (item.unit || "each");
+    const type = matched ? matched.type : (item.type || "service");
+
+    lineItems.push({
+      description: item.description || "Unnamed item",
+      type,
+      quantity: qty,
+      unitPrice,
+      unit,
+      total: Math.round(qty * unitPrice * 100) / 100,
+    });
+  }
+
+  const subtotal = Math.round(lineItems.reduce((sum, item) => sum + item.total, 0) * 100) / 100;
+  const tax = Math.round(subtotal * taxRate * 100) / 100;
+  const grandTotal = Math.round((subtotal + tax) * 100) / 100;
+
+  // Generate quote number: Q-YYYYMMDD-XXXX
+  const now = new Date();
+  const datePart = now.toISOString().slice(0, 10).replace(/-/g, "");
+  const randPart = crypto.randomBytes(2).toString("hex").toUpperCase();
+  const quoteNumber = `Q-${datePart}-${randPart}`;
+
+  const quote = {
+    quoteNumber,
+    customerName: extractedData.customerName || null,
+    customerPhone: extractedData.customerPhone || null,
+    customerEmail: extractedData.customerEmail || null,
+    lineItems,
+    subtotal,
+    taxRate,
+    tax,
+    grandTotal,
+    notes: extractedData.notes || null,
+    status: "draft",
+    createdAt: now.toISOString(),
+  };
+
+  return { quote };
+}
+
 // ── Template interpolation ───────────────────────
+
+/**
+ * Recursively flatten an object for template interpolation.
+ * { quote: { quoteNumber: "Q-123" } } with prefix "step.1"
+ * → { "{{step.1.quote.quoteNumber}}": "Q-123", "{{step.1.quote}}": "[object Object]" }
+ */
+function flattenForInterpolation(
+  obj: Record<string, any>,
+  prefix: string,
+  out: Record<string, string>,
+  depth = 0
+): void {
+  if (depth > 3) return; // Prevent infinite recursion
+  for (const [key, value] of Object.entries(obj)) {
+    const path = `${prefix}.${key}`;
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      flattenForInterpolation(value, path, out, depth + 1);
+    }
+    out[`{{${path}}}`] = Array.isArray(value) ? value.join(", ") : String(value ?? "");
+  }
+}
 
 /**
  * Simple template interpolation for email/SMS bodies.
@@ -359,11 +557,27 @@ function interpolate(template: string, ctx: PipelineContext): string {
       "(no transcript)",
   };
 
-  // Also substitute step outputs like {{step.1.summary}}
+  // Also substitute step outputs like {{step.1.summary}} and nested like {{step.1.quote.quoteNumber}}
   for (const [order, output] of Object.entries(ctx.stepOutputs)) {
     if (typeof output === "object" && output !== null) {
-      for (const [key, value] of Object.entries(output)) {
-        replacements[`{{step.${order}.${key}}}`] = String(value ?? "");
+      flattenForInterpolation(output, `step.${order}`, replacements);
+    }
+  }
+
+  // Also support {{extracted.customerEmail}} from the most recent extract step
+  for (const [_order, output] of Object.entries(ctx.stepOutputs)) {
+    if (output?.extracted && typeof output.extracted === "object") {
+      for (const [k, v] of Object.entries(output.extracted)) {
+        if (!replacements[`{{extracted.${k}}}`]) {
+          replacements[`{{extracted.${k}}}`] = String(v ?? "");
+        }
+      }
+    }
+    if (output?.quote && typeof output.quote === "object") {
+      for (const [k, v] of Object.entries(output.quote as Record<string, any>)) {
+        if (!replacements[`{{extracted.${k}}}`]) {
+          replacements[`{{extracted.${k}}}`] = String(v ?? "");
+        }
       }
     }
   }
@@ -386,5 +600,7 @@ export const actionHandlers: Record<
   fire_webhook: fireWebhook as any,
   ai_summarize: aiSummarize as any,
   ai_extract: aiExtract as any,
+  ai_extract_quote: aiExtractQuote as any,
+  build_quote: buildQuote as any,
   store_lead: storeLead as any,
 };

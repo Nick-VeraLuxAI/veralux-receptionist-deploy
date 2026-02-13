@@ -3094,6 +3094,36 @@ app.get("/api/admin/leads", asyncHandler(async (req, res) => {
   res.json({ leads });
 }));
 
+// Email a quote to a customer
+app.post("/api/admin/quotes/:id/email", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const { id } = req.params;
+  const { to, notifyStaff } = req.body as { to?: string; notifyStaff?: string };
+
+  const { getLead } = await import("./automations");
+  const lead = await getLead(id, tenant.id);
+  if (!lead) return res.status(404).json({ error: "Quote not found" });
+
+  const quoteData = lead.rawExtract as any;
+  if (!quoteData?.quoteNumber) return res.status(400).json({ error: "This lead is not a quote" });
+
+  const recipientEmail = to || quoteData.customerEmail || lead.email;
+  if (!recipientEmail) return res.status(400).json({ error: "No email address available for this quote" });
+
+  const { sendQuoteEmail, sendQuoteNotificationEmail } = await import("./email");
+  const tenantName = tenant.meta?.name || tenant.id;
+
+  const sent = await sendQuoteEmail(recipientEmail, quoteData, tenantName);
+
+  // Optionally notify staff
+  if (notifyStaff) {
+    await sendQuoteNotificationEmail(notifyStaff, quoteData, tenantName);
+  }
+
+  res.json({ sent, to: recipientEmail });
+}));
+
 // Delete a lead
 app.delete("/api/admin/leads/:id", asyncHandler(async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);

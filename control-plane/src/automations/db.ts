@@ -324,6 +324,20 @@ export async function listLeads(
   }
 }
 
+export async function getLead(id: string, tenantId?: string): Promise<Lead | null> {
+  const client = await pool.connect();
+  try {
+    const sql = tenantId
+      ? "SELECT * FROM leads WHERE id = $1 AND tenant_id = $2"
+      : "SELECT * FROM leads WHERE id = $1";
+    const params = tenantId ? [id, tenantId] : [id];
+    const res = await client.query(sql, params);
+    return res.rows.length > 0 ? rowToLead(res.rows[0]) : null;
+  } finally {
+    client.release();
+  }
+}
+
 export async function deleteLead(id: string, tenantId?: string): Promise<boolean> {
   const client = await pool.connect();
   try {

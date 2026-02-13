@@ -708,6 +708,38 @@
       <!-- Workflow Data Panels (dynamic per-workflow) -->
       <div id="workflow-data-panels" class="full-width"></div>
 
+      <!-- Price List Editor -->
+      <section class="owner-panel full-width" id="price-list-section" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+          <div>
+            <h2 style="margin:0;">Price List</h2>
+            <p class="help" style="margin:4px 0 0;">Manage pricing for AI-generated quotes. These prices are used during phone calls.</p>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <label class="help" style="font-size:12px;">Tax Rate:
+              <input type="number" id="price-list-tax-rate" value="0" min="0" max="1" step="0.01" style="width:70px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-panel);color:var(--text);font-size:12px;margin-left:4px;">
+            </label>
+            <button type="button" class="secondary" style="padding:6px 14px;font-size:13px;" onclick="addPriceListRow()">+ Add Item</button>
+            <button type="button" style="padding:6px 14px;font-size:13px;background:#C9A04E;color:#1a1a2e;border:none;border-radius:6px;cursor:pointer;font-weight:600;" onclick="savePriceList()">Save</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto;margin-top:16px;">
+          <table id="price-list-table" style="width:100%;border-collapse:collapse;table-layout:auto;">
+            <thead>
+              <tr style="text-align:left;border-bottom:1px solid var(--border);">
+                <th class="help" style="padding:6px 8px;">Name</th>
+                <th class="help" style="padding:6px 8px;">Type</th>
+                <th class="help" style="padding:6px 8px;">Unit Price ($)</th>
+                <th class="help" style="padding:6px 8px;">Unit</th>
+                <th class="help" style="padding:6px 8px;width:60px;"></th>
+              </tr>
+            </thead>
+            <tbody id="price-list-body"></tbody>
+          </table>
+        </div>
+        <p id="price-list-status" class="help" style="margin-top:8px;font-size:12px;display:none;"></p>
+      </section>
+
       <!-- Workflows -->
       <section class="owner-panel full-width" id="owner-workflows-section" style="display:none;">
         <h2>Automations</h2>
@@ -933,9 +965,10 @@
             ownerFetch("/api/admin/analytics").catch(() => null),
             ownerFetch("/api/admin/subscription").catch(() => null),
           ]);
-          // Load workflow data panels and workflow list in background
+          // Load workflow data panels, workflow list, and price list in background
           loadWorkflowDataPanels();
           loadOwnerWorkflows();
+          loadPriceList();
           
           // Also load voice config
           loadVoiceConfig().catch(() => {});
@@ -1828,6 +1861,10 @@
           (s.config.fields.includes("questions") || s.config.fields.includes("topics") || s.config.fields.includes("sentiment")));
       }
 
+      function isQuoteWorkflow(wf) {
+        return (wf.steps || []).some(s => s.action === "ai_extract_quote" || s.action === "build_quote");
+      }
+
       function renderLeadCapturePanel(wf, leads) {
         const id = wf.id.replace(/[^a-zA-Z0-9_-]/g, "");
         let rows = leads.map(lead => {
@@ -1949,6 +1986,232 @@
           </section>`;
       }
 
+      function renderQuotePanel(wf, leads) {
+        const id = wf.id.replace(/[^a-zA-Z0-9_-]/g, "");
+        let rows = leads.map(lead => {
+          const rx = lead.rawExtract || {};
+          const q = rx.quoteNumber ? rx : (rx.quote || rx);
+          const date = lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : "—";
+          const items = q.lineItems || [];
+          const itemSummary = items.length > 0
+            ? items.slice(0, 3).map(i => escapeHtml(i.description || "Item")).join(", ") + (items.length > 3 ? ` +${items.length - 3} more` : "")
+            : "—";
+          const statusColor = q.status === "sent" ? "#34d399" : q.status === "accepted" ? "#4CAF50" : "#C9A04E";
+
+          // Build expanded row with line item detail table
+          let detailRows = items.map(i => `
+            <tr style="border-bottom:1px solid rgba(255,255,255,0.05);">
+              <td style="padding:6px 10px;font-size:12px;" class="help">${escapeHtml(i.description || "—")}</td>
+              <td style="padding:6px 10px;font-size:12px;text-transform:capitalize;" class="help">${escapeHtml(i.type || "—")}</td>
+              <td style="padding:6px 10px;font-size:12px;text-align:center;" class="help">${i.quantity || 1} ${escapeHtml(i.unit || "")}</td>
+              <td style="padding:6px 10px;font-size:12px;text-align:right;" class="help">$${(i.unitPrice || 0).toFixed(2)}</td>
+              <td style="padding:6px 10px;font-size:12px;text-align:right;font-weight:600;" class="help">$${(i.total || 0).toFixed(2)}</td>
+            </tr>
+          `).join("");
+
+          const detailHtml = `
+            <table style="width:100%;border-collapse:collapse;margin:8px 0;">
+              <thead>
+                <tr style="border-bottom:1px solid var(--border);">
+                  <th style="padding:6px 10px;text-align:left;font-size:11px;color:var(--muted);">Item</th>
+                  <th style="padding:6px 10px;text-align:left;font-size:11px;color:var(--muted);">Type</th>
+                  <th style="padding:6px 10px;text-align:center;font-size:11px;color:var(--muted);">Qty</th>
+                  <th style="padding:6px 10px;text-align:right;font-size:11px;color:var(--muted);">Unit Price</th>
+                  <th style="padding:6px 10px;text-align:right;font-size:11px;color:var(--muted);">Total</th>
+                </tr>
+              </thead>
+              <tbody>${detailRows}</tbody>
+              <tfoot>
+                <tr style="border-top:1px solid var(--border);">
+                  <td colspan="4" style="padding:6px 10px;text-align:right;font-size:12px;font-weight:600;">Subtotal:</td>
+                  <td style="padding:6px 10px;text-align:right;font-size:12px;">$${(q.subtotal || 0).toFixed(2)}</td>
+                </tr>
+                ${(q.tax || 0) > 0 ? `<tr>
+                  <td colspan="4" style="padding:4px 10px;text-align:right;font-size:12px;font-weight:600;">Tax:</td>
+                  <td style="padding:4px 10px;text-align:right;font-size:12px;">$${(q.tax || 0).toFixed(2)}</td>
+                </tr>` : ""}
+                <tr>
+                  <td colspan="4" style="padding:6px 10px;text-align:right;font-size:14px;font-weight:700;color:#C9A04E;">Total:</td>
+                  <td style="padding:6px 10px;text-align:right;font-size:14px;font-weight:700;color:#C9A04E;">$${(q.grandTotal || 0).toFixed(2)}</td>
+                </tr>
+              </tfoot>
+            </table>
+            ${q.notes ? `<p style="font-size:12px;color:var(--text-soft);margin:8px 0;"><strong>Notes:</strong> ${escapeHtml(String(q.notes))}</p>` : ""}
+            <div style="margin-top:10px;display:flex;gap:8px;">
+              <button type="button" class="secondary" style="padding:5px 14px;font-size:12px;" onclick="emailQuote('${escapeHtml(lead.id)}','${escapeHtml(q.customerEmail || lead.email || "")}')">Email Quote</button>
+              <button type="button" class="secondary" style="padding:5px 14px;font-size:12px;" onclick="exportSingleQuotePDF('${escapeHtml(lead.id)}')">Download PDF</button>
+            </div>
+            <p style="color:var(--muted);font-size:11px;margin-top:6px;">Click row to collapse</p>
+          `;
+
+          return `
+            <tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'table-row':'none'">
+              <td style="padding:8px;" class="help">${escapeHtml(date)}</td>
+              <td style="padding:8px;font-family:monospace;font-size:12px;" class="help">${escapeHtml(q.quoteNumber || "—")}</td>
+              <td style="padding:8px;" class="help">${escapeHtml(q.customerName || lead.name || "—")}</td>
+              <td style="padding:8px;" class="help">${escapeHtml(fmtPhone(q.customerPhone || lead.phone))}</td>
+              <td style="padding:8px;max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" class="help">${itemSummary}</td>
+              <td style="padding:8px;text-align:right;font-weight:600;" class="help">$${(q.grandTotal || 0).toFixed(2)}</td>
+              <td style="padding:8px;"><span style="display:inline-block;padding:2px 10px;border-radius:8px;background:${statusColor};color:#fff;font-size:11px;font-weight:600;text-transform:capitalize;">${escapeHtml(q.status || "draft")}</span></td>
+            </tr>
+            <tr style="display:none;" data-quote-id="${escapeHtml(lead.id)}">
+              <td colspan="7" style="padding:12px 16px;background:rgba(255,255,255,0.02);border-bottom:1px solid var(--border);">
+                <div style="font-size:12px;color:var(--text-soft);">${detailHtml}</div>
+              </td>
+            </tr>`;
+        }).join("");
+
+        // Calculate totals for the panel header
+        const totalValue = leads.reduce((sum, l) => {
+          const q = (l.rawExtract || {});
+          return sum + (q.grandTotal || 0);
+        }, 0);
+
+        return `
+          <section class="owner-panel" id="wf-panel-${id}" style="overflow:hidden;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <div>
+                <h2 style="margin:0;">${escapeHtml(wf.name)}</h2>
+                <p class="help" style="margin:4px 0 0;">${leads.length} quote${leads.length !== 1 ? "s" : ""} | Total value: <strong style="color:#C9A04E;">$${totalValue.toFixed(2)}</strong></p>
+              </div>
+              <div style="display:flex;gap:8px;">
+                <button type="button" class="secondary" style="padding:8px 16px;font-size:13px;" onclick="exportWorkflowPDF('${escapeHtml(wf.id)}')">Export All (PDF)</button>
+              </div>
+            </div>
+            <div style="overflow-x:auto;margin-top:16px;">
+            <table style="width:100%;border-collapse:collapse;table-layout:auto;">
+              <thead>
+                <tr style="text-align:left;border-bottom:1px solid var(--border);">
+                  <th class="help" style="padding:6px 8px;white-space:nowrap;">Date</th>
+                  <th class="help" style="padding:6px 8px;white-space:nowrap;">Quote #</th>
+                  <th class="help" style="padding:6px 8px;white-space:nowrap;">Customer</th>
+                  <th class="help" style="padding:6px 8px;white-space:nowrap;">Phone</th>
+                  <th class="help" style="padding:6px 8px;white-space:nowrap;">Items</th>
+                  <th class="help" style="padding:6px 8px;white-space:nowrap;text-align:right;">Total</th>
+                  <th class="help" style="padding:6px 8px;white-space:nowrap;">Status</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+            </div>
+          </section>`;
+      }
+
+      // ── Email a quote ──
+      async function emailQuote(leadId, defaultEmail) {
+        const to = prompt("Send quote to email:", defaultEmail);
+        if (!to) return;
+        try {
+          const resp = await ownerFetch("/api/admin/quotes/" + leadId + "/email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ to }),
+          });
+          if (resp.sent) {
+            alert("Quote emailed to " + to);
+          } else {
+            alert("Email queued (SMTP may not be configured — check server logs).");
+          }
+        } catch (err) {
+          alert("Failed to email quote: " + (err.message || err));
+        }
+      }
+
+      // ── Export single quote as PDF ──
+      function exportSingleQuotePDF(leadId) {
+        if (typeof window.jspdf === "undefined") {
+          alert("PDF library is still loading. Please try again in a moment.");
+          return;
+        }
+        // Find the lead in stored data
+        let lead = null;
+        for (const wfId in (_wfPanelData.grouped || {})) {
+          lead = (_wfPanelData.grouped[wfId] || []).find(l => l.id === leadId);
+          if (lead) break;
+        }
+        if (!lead) { alert("Quote not found."); return; }
+
+        const rx = lead.rawExtract || {};
+        const q = rx.quoteNumber ? rx : (rx.quote || rx);
+        const items = q.lineItems || [];
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: "mm", format: "a4" });
+
+        // Header
+        doc.setFontSize(22);
+        doc.setTextColor(201, 160, 78);
+        doc.text("QUOTE", 14, 20);
+        doc.setFontSize(10);
+        doc.setTextColor(120, 120, 120);
+        doc.text(q.quoteNumber || "—", 14, 27);
+        doc.text("Date: " + (lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : "—"), 14, 33);
+
+        // Customer info
+        doc.setFontSize(12);
+        doc.setTextColor(60, 60, 60);
+        doc.text("Bill To:", 14, 44);
+        doc.setFontSize(10);
+        doc.text(q.customerName || "—", 14, 50);
+        doc.text(q.customerPhone || lead.phone || "—", 14, 55);
+        doc.text(q.customerEmail || lead.email || "—", 14, 60);
+
+        // Line items table
+        doc.autoTable({
+          startY: 68,
+          head: [["Item", "Type", "Qty", "Unit Price", "Total"]],
+          body: items.map(i => [
+            i.description || "—",
+            i.type || "—",
+            (i.quantity || 1) + " " + (i.unit || ""),
+            "$" + (i.unitPrice || 0).toFixed(2),
+            "$" + (i.total || 0).toFixed(2),
+          ]),
+          styles: { fontSize: 9, cellPadding: 4 },
+          headStyles: { fillColor: [201, 160, 78], textColor: [255, 255, 255], fontStyle: "bold" },
+          alternateRowStyles: { fillColor: [248, 248, 248] },
+          columnStyles: {
+            3: { halign: "right" },
+            4: { halign: "right" },
+          },
+          margin: { left: 14, right: 14 },
+        });
+
+        // Totals
+        const finalY = doc.lastAutoTable.finalY + 5;
+        doc.setFontSize(10);
+        doc.setTextColor(60, 60, 60);
+        doc.text("Subtotal:", 140, finalY, { align: "right" });
+        doc.text("$" + (q.subtotal || 0).toFixed(2), 195, finalY, { align: "right" });
+
+        if ((q.tax || 0) > 0) {
+          doc.text("Tax:", 140, finalY + 6, { align: "right" });
+          doc.text("$" + (q.tax || 0).toFixed(2), 195, finalY + 6, { align: "right" });
+        }
+
+        const totalY = (q.tax || 0) > 0 ? finalY + 14 : finalY + 6;
+        doc.setFontSize(14);
+        doc.setTextColor(201, 160, 78);
+        doc.setFont(undefined, "bold");
+        doc.text("Total:", 140, totalY, { align: "right" });
+        doc.text("$" + (q.grandTotal || 0).toFixed(2), 195, totalY, { align: "right" });
+
+        // Notes
+        if (q.notes) {
+          doc.setFont(undefined, "normal");
+          doc.setFontSize(9);
+          doc.setTextColor(120, 120, 120);
+          doc.text("Notes: " + q.notes, 14, totalY + 12, { maxWidth: 180 });
+        }
+
+        // Footer
+        doc.setFontSize(8);
+        doc.setTextColor(160, 160, 160);
+        doc.text("This quote is valid for 30 days. | Generated by VeraLux AI", 14, doc.internal.pageSize.height - 10);
+
+        doc.save(`quote-${(q.quoteNumber || "draft").replace(/[^a-zA-Z0-9-]/g, "")}.pdf`);
+      }
+
       function renderGenericPanel(wf, leads) {
         const id = wf.id.replace(/[^a-zA-Z0-9_-]/g, "");
         const sampleRx = leads.find(l => l.rawExtract && Object.keys(l.rawExtract).length)?.rawExtract || {};
@@ -2062,7 +2325,9 @@
                 </section>`;
               continue;
             }
-            if (isInsightsWorkflow(wf)) {
+            if (isQuoteWorkflow(wf)) {
+              html += renderQuotePanel(wf, wfLeads);
+            } else if (isInsightsWorkflow(wf)) {
               html += renderInsightsPanel(wf, wfLeads);
             } else if (wf.name.toLowerCase().includes("lead")) {
               html += renderLeadCapturePanel(wf, wfLeads);
@@ -2150,9 +2415,27 @@
         doc.text(`${leads.length} record${leads.length !== 1 ? "s" : ""} | Exported ${today}`, 14, 30);
 
         const isInsights = isInsightsWorkflow(wf);
+        const isQuote = isQuoteWorkflow(wf);
 
         let head, body;
-        if (isInsights) {
+        if (isQuote) {
+          head = [["Date", "Quote #", "Customer", "Phone", "Items", "Subtotal", "Tax", "Total", "Status"]];
+          body = leads.map(l => {
+            const rx = l.rawExtract || {};
+            const q = rx.quoteNumber ? rx : (rx.quote || rx);
+            return [
+              l.createdAt ? new Date(l.createdAt).toLocaleDateString() : "—",
+              q.quoteNumber || "—",
+              q.customerName || l.name || "—",
+              q.customerPhone || l.phone || "—",
+              (q.lineItems || []).map(i => i.description).join(", ") || "—",
+              "$" + (q.subtotal || 0).toFixed(2),
+              "$" + (q.tax || 0).toFixed(2),
+              "$" + (q.grandTotal || 0).toFixed(2),
+              q.status || "draft",
+            ];
+          });
+        } else if (isInsights) {
           head = [["Date", "Caller", "Topics", "Intent", "Sentiment", "Questions", "Unanswered", "Product Interest"]];
           body = leads.map(l => {
             const rx = l.rawExtract || {};
@@ -2242,6 +2525,116 @@
           `).join("");
         } catch (err) {
           console.error("loadOwnerWorkflows:", err);
+        }
+      }
+
+      // ── Price List Editor ──
+      let _priceListWorkflowId = null;
+      let _priceListStepOrder = null;
+
+      function addPriceListRow(item) {
+        const tbody = $("price-list-body");
+        const tr = document.createElement("tr");
+        tr.style.borderBottom = "1px solid var(--border)";
+        tr.innerHTML = `
+          <td style="padding:4px 6px;"><input type="text" value="${escapeHtml((item && item.name) || "")}" placeholder="Item name" style="width:100%;padding:5px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-panel);color:var(--text);font-size:13px;" class="pl-name"></td>
+          <td style="padding:4px 6px;">
+            <select style="padding:5px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-panel);color:var(--text);font-size:13px;" class="pl-type">
+              <option value="service"${(!item || item.type === "service") ? " selected" : ""}>Service</option>
+              <option value="product"${(item && item.type === "product") ? " selected" : ""}>Product</option>
+            </select>
+          </td>
+          <td style="padding:4px 6px;"><input type="number" value="${(item && item.unitPrice) || ""}" placeholder="0.00" min="0" step="0.01" style="width:90px;padding:5px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-panel);color:var(--text);font-size:13px;" class="pl-price"></td>
+          <td style="padding:4px 6px;"><input type="text" value="${escapeHtml((item && item.unit) || "each")}" placeholder="each" style="width:80px;padding:5px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-panel);color:var(--text);font-size:13px;" class="pl-unit"></td>
+          <td style="padding:4px 6px;text-align:center;"><button type="button" style="background:none;border:none;color:#e07070;cursor:pointer;font-size:16px;padding:4px 8px;" onclick="this.closest('tr').remove()" title="Remove">&times;</button></td>
+        `;
+        tbody.appendChild(tr);
+      }
+
+      function getPriceListData() {
+        const rows = document.querySelectorAll("#price-list-body tr");
+        const items = [];
+        for (const row of rows) {
+          const name = (row.querySelector(".pl-name").value || "").trim();
+          if (!name) continue;
+          items.push({
+            name,
+            type: row.querySelector(".pl-type").value,
+            unitPrice: parseFloat(row.querySelector(".pl-price").value) || 0,
+            unit: (row.querySelector(".pl-unit").value || "each").trim(),
+          });
+        }
+        return items;
+      }
+
+      async function loadPriceList() {
+        try {
+          const wfData = await ownerFetch("/api/admin/workflows");
+          const workflows = wfData.workflows || [];
+          // Find quote workflows
+          const quoteWf = workflows.find(wf =>
+            (wf.steps || []).some(s => s.action === "ai_extract_quote" || s.action === "build_quote")
+          );
+          if (!quoteWf) {
+            $("price-list-section").style.display = "none";
+            return;
+          }
+          $("price-list-section").style.display = "";
+          _priceListWorkflowId = quoteWf.id;
+
+          // Find the ai_extract_quote step (it holds the priceList config)
+          const extractStep = (quoteWf.steps || []).find(s => s.action === "ai_extract_quote");
+          if (extractStep) {
+            _priceListStepOrder = extractStep.order;
+            const priceList = (extractStep.config && extractStep.config.priceList) || [];
+            const taxRate = (extractStep.config && extractStep.config.taxRate) || 0;
+            // Populate table
+            $("price-list-body").innerHTML = "";
+            for (const item of priceList) addPriceListRow(item);
+            $("price-list-tax-rate").value = taxRate;
+          }
+        } catch (err) {
+          console.error("loadPriceList:", err);
+        }
+      }
+
+      async function savePriceList() {
+        if (!_priceListWorkflowId) { alert("No quote workflow found."); return; }
+        const items = getPriceListData();
+        const taxRate = parseFloat($("price-list-tax-rate").value) || 0;
+        const statusEl = $("price-list-status");
+
+        try {
+          // Get current workflow
+          const wfData = await ownerFetch("/api/admin/workflows");
+          const wf = (wfData.workflows || []).find(w => w.id === _priceListWorkflowId);
+          if (!wf) { alert("Quote workflow not found."); return; }
+
+          // Update steps: set priceList + taxRate on ai_extract_quote and build_quote steps
+          const updatedSteps = (wf.steps || []).map(s => {
+            if (s.action === "ai_extract_quote") {
+              return { ...s, config: { ...s.config, priceList: items, taxRate } };
+            }
+            if (s.action === "build_quote") {
+              return { ...s, config: { ...s.config, priceList: items, taxRate } };
+            }
+            return s;
+          });
+
+          await ownerFetch("/api/admin/workflows/" + _priceListWorkflowId, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ steps: updatedSteps }),
+          });
+
+          statusEl.textContent = "Price list saved successfully.";
+          statusEl.style.display = "";
+          statusEl.style.color = "#34d399";
+          setTimeout(() => { statusEl.style.display = "none"; }, 3000);
+        } catch (err) {
+          statusEl.textContent = "Failed to save: " + (err.message || err);
+          statusEl.style.display = "";
+          statusEl.style.color = "#e07070";
         }
       }
 

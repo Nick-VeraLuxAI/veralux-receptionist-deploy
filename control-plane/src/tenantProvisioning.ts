@@ -462,6 +462,53 @@ async function setupDefaultWorkflows(tenantId: string): Promise<void> {
       ]
     );
 
+    // Default quote builder workflow
+    await client.query(
+      `INSERT INTO workflows (tenant_id, name, trigger_type, trigger_config, steps, created_by, enabled)
+       VALUES ($1, $2, $3, $4, $5, $6, true)
+       ON CONFLICT DO NOTHING`,
+      [
+        tenantId,
+        "Quote Builder",
+        "call_ended",
+        JSON.stringify({}),
+        JSON.stringify([
+          {
+            order: 0,
+            action: "ai_extract_quote",
+            config: {
+              priceList: [
+                { name: "Consultation", type: "service", unitPrice: 150, unit: "hour" },
+                { name: "Service Call", type: "service", unitPrice: 95, unit: "visit" },
+              ],
+              taxRate: 0.08,
+            },
+          },
+          { order: 1, action: "build_quote", config: { fromStep: 0, taxRate: 0.08 } },
+          { order: 2, action: "store_lead", config: { fromStep: 1, category: "quote" } },
+          {
+            order: 3,
+            action: "send_email",
+            config: {
+              to: "{{extracted.customerEmail}}",
+              subject: "Your Quote from VeraLux",
+              body: "Thank you for your inquiry. Your quote {{step.1.quote.quoteNumber}} for ${{step.1.quote.grandTotal}} is attached. Please contact us with any questions.",
+            },
+          },
+          {
+            order: 4,
+            action: "send_email",
+            config: {
+              to: "staff@veralux.ai",
+              subject: "New Quote Generated",
+              body: "A new quote {{step.1.quote.quoteNumber}} has been created.\n\nCustomer: {{step.1.quote.customerName}}\nTotal: ${{step.1.quote.grandTotal}}\n\nLog in to the owner panel to review.",
+            },
+          },
+        ]),
+        "system",
+      ]
+    );
+
     console.log(`[provisioning] Default workflows created for tenant: ${tenantId}`);
   } finally {
     client.release();
