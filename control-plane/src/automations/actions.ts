@@ -342,12 +342,52 @@ export async function storeLead(
   return { leadId: lead.id };
 }
 
+// ── Tenant pricing helpers ───────────────────────
+
+/**
+ * Fetch the tenant's pricing data from the database.
+ */
+async function fetchTenantPricing(tenantId: string): Promise<{
+  items: Array<{ name: string; price: string; description?: string }>;
+  notes?: string;
+}> {
+  try {
+    const result = await pool.query(
+      "SELECT pricing FROM tenant_configs WHERE tenant_id = $1",
+      [tenantId]
+    );
+    if (result.rows.length > 0 && result.rows[0].pricing) {
+      const pricing = result.rows[0].pricing;
+      return {
+        items: Array.isArray(pricing.items) ? pricing.items : [],
+        notes: pricing.notes || undefined,
+      };
+    }
+  } catch (err) {
+    console.error("[actions] Failed to fetch tenant pricing:", err);
+  }
+  return { items: [] };
+}
+
+/**
+ * Parse a price string like "$2.50/sqft", "$150/hour", "$49.99 each" into numeric amount and unit.
+ */
+function parsePriceString(price: string): { amount: number; unit: string } {
+  if (!price) return { amount: 0, unit: "each" };
+  // Extract numeric value
+  const numMatch = price.match(/[\d,]+\.?\d*/);
+  const amount = numMatch ? parseFloat(numMatch[0].replace(/,/g, "")) : 0;
+  // Extract unit (text after / or after the number)
+  const unitMatch = price.match(/\/\s*(\w+)/) || price.match(/per\s+(\w+)/i) || price.match(/\d\s+(\w+)/);
+  const unit = unitMatch ? unitMatch[1] : "each";
+  return { amount, unit };
+}
+
 // ── ai_extract_quote ─────────────────────────────
 
 export async function aiExtractQuote(
   ctx: PipelineContext,
   config: {
-    priceList?: Array<{ name: string; type: string; unitPrice: number; unit: string }>;
     taxRate?: number;
     model?: string;
   }
@@ -364,9 +404,10 @@ export async function aiExtractQuote(
     return { extracted: { error: "LLM API key not configured" } };
   }
 
-  const priceList = config.priceList ?? [];
-  const priceListText = priceList.length > 0
-    ? `\n\nAvailable products/services and pricing:\n${priceList.map(p => `- ${p.name} (${p.type}): $${p.unitPrice} per ${p.unit}`).join("\n")}`
+  // Fetch the tenant's existing pricing from the database
+  const tenantPricing = await fetchTenantPricing(ctx.tenantId);
+  const priceListText = tenantPricing.items.length > 0
+    ? `\n\nAvailable products/services and pricing:\n${tenantPricing.items.map(p => `- ${p.name}: ${p.price}${p.description ? ` (${p.description})` : ""}`).join("\n")}`
     : "";
 
   const systemPrompt = `You are a quote extraction assistant. Analyze the phone call transcript and extract information needed to build a quote.${priceListText}
@@ -441,7 +482,6 @@ export async function buildQuote(
   config: {
     fromStep?: number;
     taxRate?: number;
-    priceList?: Array<{ name: string; type: string; unitPrice: number; unit: string }>;
   }
 ): Promise<{ quote: Record<string, any> }> {
   // Get raw extracted data from the previous ai_extract_quote step
@@ -450,13 +490,21 @@ export async function buildQuote(
     extractedData = ctx.stepOutputs[config.fromStep]?.extracted ?? {};
   }
 
-  const priceList = config.priceList ?? [];
   const taxRate = config.taxRate ?? 0;
 
-  // Build a lookup map from price list
+  // Fetch the tenant's existing pricing to validate against
+  const tenantPricing = await fetchTenantPricing(ctx.tenantId);
+
+  // Build a lookup map from existing tenant pricing
+  // Parse price strings like "$2.50/sqft" or "$150/hour" into numeric values
   const priceMap = new Map<string, { unitPrice: number; unit: string; type: string }>();
-  for (const item of priceList) {
-    priceMap.set(item.name.toLowerCase(), { unitPrice: item.unitPrice, unit: item.unit, type: item.type });
+  for (const item of tenantPricing.items) {
+    const parsed = parsePriceString(item.price);
+    priceMap.set(item.name.toLowerCase(), {
+      unitPrice: parsed.amount,
+      unit: parsed.unit,
+      type: item.description?.toLowerCase().includes("product") ? "product" : "service",
+    });
   }
 
   // Validate and enforce real prices for line items

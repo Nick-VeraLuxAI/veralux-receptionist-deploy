@@ -708,38 +708,6 @@
       <!-- Workflow Data Panels (dynamic per-workflow) -->
       <div id="workflow-data-panels" class="full-width"></div>
 
-      <!-- Price List Editor -->
-      <section class="owner-panel full-width" id="price-list-section" style="display:none;">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-          <div>
-            <h2 style="margin:0;">Price List</h2>
-            <p class="help" style="margin:4px 0 0;">Manage pricing for AI-generated quotes. These prices are used during phone calls.</p>
-          </div>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <label class="help" style="font-size:12px;">Tax Rate:
-              <input type="number" id="price-list-tax-rate" value="0" min="0" max="1" step="0.01" style="width:70px;padding:4px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-panel);color:var(--text);font-size:12px;margin-left:4px;">
-            </label>
-            <button type="button" class="secondary" style="padding:6px 14px;font-size:13px;" onclick="addPriceListRow()">+ Add Item</button>
-            <button type="button" style="padding:6px 14px;font-size:13px;background:#C9A04E;color:#1a1a2e;border:none;border-radius:6px;cursor:pointer;font-weight:600;" onclick="savePriceList()">Save</button>
-          </div>
-        </div>
-        <div style="overflow-x:auto;margin-top:16px;">
-          <table id="price-list-table" style="width:100%;border-collapse:collapse;table-layout:auto;">
-            <thead>
-              <tr style="text-align:left;border-bottom:1px solid var(--border);">
-                <th class="help" style="padding:6px 8px;">Name</th>
-                <th class="help" style="padding:6px 8px;">Type</th>
-                <th class="help" style="padding:6px 8px;">Unit Price ($)</th>
-                <th class="help" style="padding:6px 8px;">Unit</th>
-                <th class="help" style="padding:6px 8px;width:60px;"></th>
-              </tr>
-            </thead>
-            <tbody id="price-list-body"></tbody>
-          </table>
-        </div>
-        <p id="price-list-status" class="help" style="margin-top:8px;font-size:12px;display:none;"></p>
-      </section>
-
       <!-- Workflows -->
       <section class="owner-panel full-width" id="owner-workflows-section" style="display:none;">
         <h2>Automations</h2>
@@ -965,10 +933,9 @@
             ownerFetch("/api/admin/analytics").catch(() => null),
             ownerFetch("/api/admin/subscription").catch(() => null),
           ]);
-          // Load workflow data panels, workflow list, and price list in background
+          // Load workflow data panels and workflow list in background
           loadWorkflowDataPanels();
           loadOwnerWorkflows();
-          loadPriceList();
           
           // Also load voice config
           loadVoiceConfig().catch(() => {});
@@ -2525,116 +2492,6 @@
           `).join("");
         } catch (err) {
           console.error("loadOwnerWorkflows:", err);
-        }
-      }
-
-      // ── Price List Editor ──
-      let _priceListWorkflowId = null;
-      let _priceListStepOrder = null;
-
-      function addPriceListRow(item) {
-        const tbody = $("price-list-body");
-        const tr = document.createElement("tr");
-        tr.style.borderBottom = "1px solid var(--border)";
-        tr.innerHTML = `
-          <td style="padding:4px 6px;"><input type="text" value="${escapeHtml((item && item.name) || "")}" placeholder="Item name" style="width:100%;padding:5px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-panel);color:var(--text);font-size:13px;" class="pl-name"></td>
-          <td style="padding:4px 6px;">
-            <select style="padding:5px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-panel);color:var(--text);font-size:13px;" class="pl-type">
-              <option value="service"${(!item || item.type === "service") ? " selected" : ""}>Service</option>
-              <option value="product"${(item && item.type === "product") ? " selected" : ""}>Product</option>
-            </select>
-          </td>
-          <td style="padding:4px 6px;"><input type="number" value="${(item && item.unitPrice) || ""}" placeholder="0.00" min="0" step="0.01" style="width:90px;padding:5px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-panel);color:var(--text);font-size:13px;" class="pl-price"></td>
-          <td style="padding:4px 6px;"><input type="text" value="${escapeHtml((item && item.unit) || "each")}" placeholder="each" style="width:80px;padding:5px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg-panel);color:var(--text);font-size:13px;" class="pl-unit"></td>
-          <td style="padding:4px 6px;text-align:center;"><button type="button" style="background:none;border:none;color:#e07070;cursor:pointer;font-size:16px;padding:4px 8px;" onclick="this.closest('tr').remove()" title="Remove">&times;</button></td>
-        `;
-        tbody.appendChild(tr);
-      }
-
-      function getPriceListData() {
-        const rows = document.querySelectorAll("#price-list-body tr");
-        const items = [];
-        for (const row of rows) {
-          const name = (row.querySelector(".pl-name").value || "").trim();
-          if (!name) continue;
-          items.push({
-            name,
-            type: row.querySelector(".pl-type").value,
-            unitPrice: parseFloat(row.querySelector(".pl-price").value) || 0,
-            unit: (row.querySelector(".pl-unit").value || "each").trim(),
-          });
-        }
-        return items;
-      }
-
-      async function loadPriceList() {
-        try {
-          const wfData = await ownerFetch("/api/admin/workflows");
-          const workflows = wfData.workflows || [];
-          // Find quote workflows
-          const quoteWf = workflows.find(wf =>
-            (wf.steps || []).some(s => s.action === "ai_extract_quote" || s.action === "build_quote")
-          );
-          if (!quoteWf) {
-            $("price-list-section").style.display = "none";
-            return;
-          }
-          $("price-list-section").style.display = "";
-          _priceListWorkflowId = quoteWf.id;
-
-          // Find the ai_extract_quote step (it holds the priceList config)
-          const extractStep = (quoteWf.steps || []).find(s => s.action === "ai_extract_quote");
-          if (extractStep) {
-            _priceListStepOrder = extractStep.order;
-            const priceList = (extractStep.config && extractStep.config.priceList) || [];
-            const taxRate = (extractStep.config && extractStep.config.taxRate) || 0;
-            // Populate table
-            $("price-list-body").innerHTML = "";
-            for (const item of priceList) addPriceListRow(item);
-            $("price-list-tax-rate").value = taxRate;
-          }
-        } catch (err) {
-          console.error("loadPriceList:", err);
-        }
-      }
-
-      async function savePriceList() {
-        if (!_priceListWorkflowId) { alert("No quote workflow found."); return; }
-        const items = getPriceListData();
-        const taxRate = parseFloat($("price-list-tax-rate").value) || 0;
-        const statusEl = $("price-list-status");
-
-        try {
-          // Get current workflow
-          const wfData = await ownerFetch("/api/admin/workflows");
-          const wf = (wfData.workflows || []).find(w => w.id === _priceListWorkflowId);
-          if (!wf) { alert("Quote workflow not found."); return; }
-
-          // Update steps: set priceList + taxRate on ai_extract_quote and build_quote steps
-          const updatedSteps = (wf.steps || []).map(s => {
-            if (s.action === "ai_extract_quote") {
-              return { ...s, config: { ...s.config, priceList: items, taxRate } };
-            }
-            if (s.action === "build_quote") {
-              return { ...s, config: { ...s.config, priceList: items, taxRate } };
-            }
-            return s;
-          });
-
-          await ownerFetch("/api/admin/workflows/" + _priceListWorkflowId, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ steps: updatedSteps }),
-          });
-
-          statusEl.textContent = "Price list saved successfully.";
-          statusEl.style.display = "";
-          statusEl.style.color = "#34d399";
-          setTimeout(() => { statusEl.style.display = "none"; }, 3000);
-        } catch (err) {
-          statusEl.textContent = "Failed to save: " + (err.message || err);
-          statusEl.style.display = "";
-          statusEl.style.color = "#e07070";
         }
       }
 

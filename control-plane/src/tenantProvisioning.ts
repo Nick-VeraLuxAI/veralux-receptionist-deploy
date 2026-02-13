@@ -473,17 +473,7 @@ async function setupDefaultWorkflows(tenantId: string): Promise<void> {
         "call_ended",
         JSON.stringify({}),
         JSON.stringify([
-          {
-            order: 0,
-            action: "ai_extract_quote",
-            config: {
-              priceList: [
-                { name: "Consultation", type: "service", unitPrice: 150, unit: "hour" },
-                { name: "Service Call", type: "service", unitPrice: 95, unit: "visit" },
-              ],
-              taxRate: 0.08,
-            },
-          },
+          { order: 0, action: "ai_extract_quote", config: { taxRate: 0.08 } },
           { order: 1, action: "build_quote", config: { fromStep: 0, taxRate: 0.08 } },
           { order: 2, action: "store_lead", config: { fromStep: 1, category: "quote" } },
           {
