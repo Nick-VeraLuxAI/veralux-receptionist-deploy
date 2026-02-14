@@ -1074,6 +1074,13 @@
               <span>Allow business owners to create/edit workflows</span>
             </label>
           </div>
+          <div style="display:flex; align-items:center; gap:10px; margin-top:10px; padding-top:10px; border-top:1px solid rgba(246,243,236,0.06);">
+            <label for="wf-custom-branding" style="margin:0; cursor:pointer; display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" id="wf-custom-branding" style="width:18px;height:18px;accent-color:#C9A04E;cursor:pointer;" />
+              <span>Allow business owners to customize branding</span>
+            </label>
+            <span class="small muted">(Logo, colors, and company name on PDFs, emails, and documents)</span>
+          </div>
         </section>
 
         <!-- Workflow List -->
@@ -2795,6 +2802,7 @@
         try {
           const settings = await fetchJSON("/api/admin/workflows/settings");
           $("wf-owner-edit").checked = settings.ownerCanEdit === true;
+          $("wf-custom-branding").checked = settings.customBrandingEnabled === true;
         } catch (err) {
           console.error("loadWorkflowSettings:", err);
         }
@@ -3748,6 +3756,20 @@
               body: JSON.stringify({ ownerCanEdit: wfOwnerEdit.checked }),
             });
             setStatus(wfOwnerEdit.checked ? "Owner workflow editing enabled" : "Owner workflow editing disabled", "ok");
+          } catch (err) {
+            setStatus("Failed: " + err.message, "err");
+          }
+        });
+
+        const wfCustomBranding = $("wf-custom-branding");
+        if (wfCustomBranding) wfCustomBranding.addEventListener("change", async () => {
+          try {
+            await fetchJSON("/api/admin/workflows/settings", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ customBrandingEnabled: wfCustomBranding.checked }),
+            });
+            setStatus(wfCustomBranding.checked ? "Custom branding enabled for owner" : "Custom branding disabled for owner", "ok");
           } catch (err) {
             setStatus("Failed: " + err.message, "err");
           }

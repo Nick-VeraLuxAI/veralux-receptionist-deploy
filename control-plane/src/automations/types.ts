@@ -146,4 +146,5 @@ export interface PipelineContext {
 
 export interface WorkflowSettings {
   ownerCanEdit: boolean;
+  customBrandingEnabled: boolean;
 }

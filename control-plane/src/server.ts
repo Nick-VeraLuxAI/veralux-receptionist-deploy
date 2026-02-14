@@ -58,7 +58,7 @@ import {
   type AdminRole,
 } from "./auth";
 import { secretStore } from "./secretStore";
-import { listAuditLogs, upsertUserBySub, listMembershipsForUser, closePool, pingPool, getSubscription, upsertSubscription, pool as dbPool } from "./db";
+import { listAuditLogs, upsertUserBySub, listMembershipsForUser, closePool, pingPool, getSubscription, upsertSubscription, pool as dbPool, type BrandingConfig } from "./db";
 import { rateLimit } from "./rateLimit";
 import { closeRedis as closeRateLimitRedis } from "./redis";
 import { normalizePhoneNumber } from "./utils/phone";
@@ -166,6 +166,43 @@ const voiceRecordingUpload = multer({
       cb(null, true);
     } else {
       cb(new Error("Only WAV files are allowed"));
+    }
+  },
+});
+
+// ────────────────────────────────────────────────
+// Logo Upload Configuration
+// ────────────────────────────────────────────────
+const LOGOS_DIR = process.env.LOGOS_DIR || path.join(__dirname, "..", "public", "uploads", "logos");
+
+if (!fs.existsSync(LOGOS_DIR)) {
+  fs.mkdirSync(LOGOS_DIR, { recursive: true });
+}
+
+const logoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, LOGOS_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname) || ".png";
+    cb(null, `logo-${uniqueSuffix}${ext}`);
+  },
+});
+
+const LOGO_MAX_SIZE_MB = parseInt(process.env.LOGO_MAX_SIZE_MB || "5", 10);
+
+const logoUpload = multer({
+  storage: logoStorage,
+  limits: {
+    fileSize: LOGO_MAX_SIZE_MB * 1024 * 1024,
+  },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/svg+xml"];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PNG, JPEG, WebP, and SVG images are allowed"));
     }
   },
 });
@@ -1344,6 +1381,76 @@ app.post("/api/admin/pricing", async (req, res) => {
   await syncLLMContextToRuntime(updated);
   res.json(updated.pricing);
 });
+
+/* ────────────────────────────────────────────────
+   Admin – Branding (logo, colors, company name)
+   ──────────────────────────────────────────────── */
+
+app.get("/api/admin/branding", (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  res.json(tenant.branding || {});
+});
+
+app.post("/api/admin/branding", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  const { companyName, primaryColor, secondaryColor, accentColor, logoUrl } = req.body || {};
+  const update: BrandingConfig = {};
+
+  if (companyName !== undefined) update.companyName = String(companyName).trim().slice(0, 200);
+  if (primaryColor !== undefined) update.primaryColor = String(primaryColor).trim().slice(0, 20);
+  if (secondaryColor !== undefined) update.secondaryColor = String(secondaryColor).trim().slice(0, 20);
+  if (accentColor !== undefined) update.accentColor = String(accentColor).trim().slice(0, 20);
+  if (logoUrl !== undefined) update.logoUrl = String(logoUrl).trim().slice(0, 500);
+
+  const updated = tenants.setBranding(tenant.id, update);
+  if (!updated) return res.status(404).json({ error: "tenant_not_found" });
+  res.json(updated.branding);
+}));
+
+// Upload a logo image
+app.post("/api/admin/branding/logo", logoUpload.single("logo"), asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  const file = (req as any).file;
+  if (!file) return res.status(400).json({ error: "No logo file provided" });
+
+  // Delete old logo file if it exists on disk
+  const oldLogo = tenant.branding?.logoUrl;
+  if (oldLogo && oldLogo.startsWith("/uploads/logos/")) {
+    const oldPath = path.join(__dirname, "..", "public", oldLogo);
+    if (fs.existsSync(oldPath)) {
+      try { fs.unlinkSync(oldPath); } catch { /* ignore */ }
+    }
+  }
+
+  const logoUrl = `/uploads/logos/${file.filename}`;
+  const updated = tenants.setBranding(tenant.id, { logoUrl });
+  if (!updated) return res.status(404).json({ error: "tenant_not_found" });
+
+  res.json({ logoUrl, branding: updated.branding });
+}));
+
+// Delete logo
+app.delete("/api/admin/branding/logo", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  const oldLogo = tenant.branding?.logoUrl;
+  if (oldLogo && oldLogo.startsWith("/uploads/logos/")) {
+    const oldPath = path.join(__dirname, "..", "public", oldLogo);
+    if (fs.existsSync(oldPath)) {
+      try { fs.unlinkSync(oldPath); } catch { /* ignore */ }
+    }
+  }
+
+  const updated = tenants.setBranding(tenant.id, { logoUrl: "" });
+  if (!updated) return res.status(404).json({ error: "tenant_not_found" });
+  res.json(updated.branding);
+}));
 
 /* ────────────────────────────────────────────────
    Admin – Subscription / Billing
@@ -3114,11 +3221,11 @@ app.post("/api/admin/quotes/:id/email", asyncHandler(async (req, res) => {
   const { sendQuoteEmail, sendQuoteNotificationEmail } = await import("./email");
   const tenantName = tenant.meta?.name || tenant.id;
 
-  const sent = await sendQuoteEmail(recipientEmail, quoteData, tenantName);
+  const sent = await sendQuoteEmail(recipientEmail, quoteData, tenantName, tenant.branding || {});
 
   // Optionally notify staff
   if (notifyStaff) {
-    await sendQuoteNotificationEmail(notifyStaff, quoteData, tenantName);
+    await sendQuoteNotificationEmail(notifyStaff, quoteData, tenantName, tenant.branding || {});
   }
 
   res.json({ sent, to: recipientEmail });

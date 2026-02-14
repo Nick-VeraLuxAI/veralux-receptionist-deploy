@@ -361,7 +361,7 @@ export async function getWorkflowSettings(tenantId: string): Promise<WorkflowSet
       "SELECT workflow_settings FROM tenant_configs WHERE tenant_id = $1",
       [tenantId]
     );
-    return res.rows[0]?.workflow_settings ?? { ownerCanEdit: false };
+    return res.rows[0]?.workflow_settings ?? { ownerCanEdit: false, customBrandingEnabled: false };
   } finally {
     client.release();
   }

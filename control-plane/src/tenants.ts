@@ -12,6 +12,7 @@ import {
   type AnalyticsRow,
   type CallRow,
   type ConfigRow,
+  type BrandingConfig,
 } from "./db";
 import { secretStore } from "./secretStore";
 import { normalizePhoneNumber } from "./utils/phone";
@@ -45,6 +46,8 @@ export interface TenantContext {
   forwardingProfiles: ForwardingProfile[];
   /** Pricing information – used by LLM */
   pricing: PricingInfo;
+  /** Branding: logo, colors, display name for documents/emails */
+  branding: BrandingConfig;
 }
 
 
@@ -65,6 +68,7 @@ function toConfigRow(tenantId: string, ctx: TenantContext): ConfigRow {
     tts: serialized.tts,
     forwarding_profiles: ctx.forwardingProfiles,
     pricing: ctx.pricing,
+    branding: ctx.branding,
   };
 }
 
@@ -145,6 +149,9 @@ export class TenantRegistry {
         ? parseForwardingProfiles(configRow.forwarding_profiles)
         : [];
       const pricing = configRow ? parsePricingInfo(configRow.pricing) : { ...DEFAULT_PRICING };
+      const branding: BrandingConfig = (configRow?.branding && typeof configRow.branding === "object")
+        ? configRow.branding as BrandingConfig
+        : {};
 
       // hydrate OpenAI key from secret store
       const secretKey = await secretStore.getSecret(tenantRow.id, "openai_api_key");
@@ -200,6 +207,7 @@ export class TenantRegistry {
         analytics,
         forwardingProfiles,
         pricing,
+        branding,
       };
 
 
@@ -268,6 +276,7 @@ export class TenantRegistry {
       analytics,
       forwardingProfiles: [],
       pricing: { ...DEFAULT_PRICING },
+      branding: {},
     };
 
     this.tenants.set(id, ctx);
@@ -370,6 +379,19 @@ export class TenantRegistry {
     ctx.pricing = pricing;
     this.persistConfig(tenantId);
     return ctx;
+  }
+
+  setBranding(tenantId: string, branding: BrandingConfig): TenantContext | undefined {
+    const ctx = this.tenants.get(tenantId);
+    if (!ctx) return undefined;
+    ctx.branding = { ...ctx.branding, ...branding };
+    this.persistConfig(tenantId);
+    return ctx;
+  }
+
+  getBranding(tenantId: string): BrandingConfig {
+    const ctx = this.tenants.get(tenantId);
+    return ctx?.branding ?? {};
   }
 
   persistCalls(tenantId: string): void {

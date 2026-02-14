@@ -428,6 +428,79 @@
         <div id="owner-business-info-status" class="help" style="margin-top: 6px; min-height: 18px;"></div>
       </section>
 
+      <section class="owner-panel" id="brand-settings-section" style="display:none;">
+        <h2>Brand settings</h2>
+        <p class="help">Customize how your business appears on quotes, emails, and exported documents. Upload your logo and pick your brand colors.</p>
+
+        <label for="brand-company-name">Company display name</label>
+        <input type="text" id="brand-company-name" placeholder="e.g. King-Sod Landscaping" />
+        <p class="help" style="margin-top:2px;">Used on PDFs, emails, and documents instead of the default.</p>
+
+        <!-- Logo upload -->
+        <label style="margin-top:14px;">Company logo</label>
+        <div id="brand-logo-preview" style="margin-bottom:10px;display:none;">
+          <div style="display:flex;align-items:center;gap:14px;">
+            <img id="brand-logo-img" src="" alt="Logo" style="max-height:64px;max-width:200px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,0.05);padding:6px;" />
+            <button type="button" class="secondary" id="brand-logo-remove" style="font-size:12px;padding:6px 12px;">Remove</button>
+          </div>
+        </div>
+        <div id="brand-logo-drop-zone" style="border:2px dashed var(--border);border-radius:12px;padding:20px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;">
+          <input type="file" id="brand-logo-input" accept=".png,.jpg,.jpeg,.webp,.svg" style="display:none;" />
+          <p class="help" style="margin:0;">Drag & drop your logo here, or <span style="color:var(--accent);text-decoration:underline;">click to browse</span></p>
+          <p class="help" style="margin:4px 0 0;font-size:12px;">PNG, JPEG, WebP, or SVG — Max 5 MB</p>
+        </div>
+        <div id="brand-logo-status" class="help" style="margin-top:6px;min-height:18px;"></div>
+
+        <!-- Brand colors -->
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:16px;">
+          <div>
+            <label for="brand-primary-color">Primary color</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input type="color" id="brand-primary-color" value="#C9A04E" style="width:42px;height:36px;border:1px solid var(--border);border-radius:8px;background:transparent;cursor:pointer;padding:2px;" />
+              <input type="text" id="brand-primary-color-hex" value="#C9A04E" maxlength="7" style="width:80px;font-family:'JetBrains Mono',monospace;font-size:13px;padding:6px 8px;" />
+            </div>
+            <p class="help" style="margin-top:2px;font-size:11px;">Headings, accents</p>
+          </div>
+          <div>
+            <label for="brand-secondary-color">Secondary color</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input type="color" id="brand-secondary-color" value="#1a1a2e" style="width:42px;height:36px;border:1px solid var(--border);border-radius:8px;background:transparent;cursor:pointer;padding:2px;" />
+              <input type="text" id="brand-secondary-color-hex" value="#1a1a2e" maxlength="7" style="width:80px;font-family:'JetBrains Mono',monospace;font-size:13px;padding:6px 8px;" />
+            </div>
+            <p class="help" style="margin-top:2px;font-size:11px;">Backgrounds, headers</p>
+          </div>
+          <div>
+            <label for="brand-accent-color">Accent color</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input type="color" id="brand-accent-color" value="#d4af61" style="width:42px;height:36px;border:1px solid var(--border);border-radius:8px;background:transparent;cursor:pointer;padding:2px;" />
+              <input type="text" id="brand-accent-color-hex" value="#d4af61" maxlength="7" style="width:80px;font-family:'JetBrains Mono',monospace;font-size:13px;padding:6px 8px;" />
+            </div>
+            <p class="help" style="margin-top:2px;font-size:11px;">Buttons, highlights</p>
+          </div>
+        </div>
+
+        <!-- Preview -->
+        <div id="brand-preview" style="margin-top:18px;padding:16px;border-radius:12px;border:1px solid var(--border);background:var(--surface);">
+          <p class="help" style="margin:0 0 8px;font-weight:600;">Preview</p>
+          <div id="brand-preview-box" style="border-radius:8px;overflow:hidden;">
+            <div id="brand-preview-header" style="background:#1a1a2e;padding:14px 20px;display:flex;align-items:center;gap:12px;">
+              <img id="brand-preview-logo" src="" alt="" style="max-height:32px;max-width:120px;display:none;" />
+              <span id="brand-preview-name" style="color:#C9A04E;font-size:18px;font-weight:700;">Your Company</span>
+            </div>
+            <div style="background:#fff;padding:14px 20px;">
+              <p style="margin:0;color:#333;font-size:13px;">Quote Q-20260213-0001</p>
+              <div id="brand-preview-accent-bar" style="height:3px;background:#d4af61;border-radius:2px;margin-top:8px;width:60%;"></div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:14px;">
+          <button type="button" id="brand-save">Save brand settings</button>
+          <button type="button" class="secondary" id="brand-reset">Reset to defaults</button>
+        </div>
+        <div id="brand-status" class="help" style="margin-top:6px;min-height:18px;"></div>
+      </section>
+
       <section class="owner-panel">
         <h2>Receptionist personality</h2>
         <p class="help">Customize how your AI receptionist introduces itself and interacts with callers.</p>
@@ -937,8 +1010,22 @@
           loadWorkflowDataPanels();
           loadOwnerWorkflows();
           
-          // Also load voice config
+          // Also load voice config and branding
           loadVoiceConfig().catch(() => {});
+          // Check if custom branding is enabled by admin
+          ownerFetch("/api/admin/workflows/settings").then(settings => {
+            if (settings && settings.customBrandingEnabled) {
+              $("brand-settings-section").style.display = "";
+              loadBranding().then(() => updateOwnerHeaderBranding()).catch(() => {});
+            } else {
+              $("brand-settings-section").style.display = "none";
+              // Still load branding for PDF/document rendering (use whatever is saved)
+              loadBranding().catch(() => {});
+            }
+          }).catch(() => {
+            $("brand-settings-section").style.display = "none";
+            loadBranding().catch(() => {});
+          });
           const tenantsList = tenantsRes.tenants || [];
           const me = tenantsList.find((t) => t.id === OWNER_TENANT_ID) || { id: OWNER_TENANT_ID, name: "My business", numbers: [] };
           const myTelnyxNumbers = me.numbers || [];
@@ -1790,6 +1877,215 @@
         }
       }
 
+      // ── Branding ──
+      let brandingCache = {};
+
+      function hexToRgb(hex) {
+        const r = parseInt(hex.slice(1, 3), 16);
+        const g = parseInt(hex.slice(3, 5), 16);
+        const b = parseInt(hex.slice(5, 7), 16);
+        return [r, g, b];
+      }
+
+      function getBrandCompanyName() {
+        return brandingCache.companyName || "";
+      }
+
+      function getBrandPrimaryColor() {
+        return brandingCache.primaryColor || "#C9A04E";
+      }
+
+      function getBrandPrimaryRgb() {
+        return hexToRgb(getBrandPrimaryColor());
+      }
+
+      function getBrandFooterText() {
+        const name = getBrandCompanyName();
+        return name ? `Generated by ${name}` : "Generated by VeraLux AI";
+      }
+
+      function updateBrandPreview() {
+        const name = $("brand-company-name").value.trim() || "Your Company";
+        const primary = $("brand-primary-color").value;
+        const secondary = $("brand-secondary-color").value;
+        const accent = $("brand-accent-color").value;
+        $("brand-preview-name").textContent = name;
+        $("brand-preview-name").style.color = primary;
+        $("brand-preview-header").style.background = secondary;
+        $("brand-preview-accent-bar").style.background = accent;
+
+        const logoImg = $("brand-logo-img");
+        const previewLogo = $("brand-preview-logo");
+        if (logoImg.src && $("brand-logo-preview").style.display !== "none") {
+          previewLogo.src = logoImg.src;
+          previewLogo.style.display = "";
+        } else {
+          previewLogo.style.display = "none";
+        }
+      }
+
+      // Sync color picker ↔ hex text input
+      function bindColorSync(pickerId, hexId) {
+        $(pickerId).addEventListener("input", () => {
+          $(hexId).value = $(pickerId).value;
+          updateBrandPreview();
+        });
+        $(hexId).addEventListener("input", () => {
+          const v = $(hexId).value.trim();
+          if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+            $(pickerId).value = v;
+            updateBrandPreview();
+          }
+        });
+      }
+
+      async function loadBranding() {
+        try {
+          const data = await ownerFetch("/api/admin/branding");
+          brandingCache = data || {};
+          $("brand-company-name").value = data.companyName || "";
+          if (data.primaryColor) {
+            $("brand-primary-color").value = data.primaryColor;
+            $("brand-primary-color-hex").value = data.primaryColor;
+          }
+          if (data.secondaryColor) {
+            $("brand-secondary-color").value = data.secondaryColor;
+            $("brand-secondary-color-hex").value = data.secondaryColor;
+          }
+          if (data.accentColor) {
+            $("brand-accent-color").value = data.accentColor;
+            $("brand-accent-color-hex").value = data.accentColor;
+          }
+          if (data.logoUrl) {
+            $("brand-logo-img").src = data.logoUrl;
+            $("brand-logo-preview").style.display = "";
+          } else {
+            $("brand-logo-preview").style.display = "none";
+          }
+          updateBrandPreview();
+        } catch (err) {
+          console.warn("loadBranding:", err);
+        }
+      }
+
+      async function saveBranding() {
+        const status = $("brand-status");
+        status.textContent = "Saving...";
+        try {
+          const body = {
+            companyName: $("brand-company-name").value.trim(),
+            primaryColor: $("brand-primary-color").value,
+            secondaryColor: $("brand-secondary-color").value,
+            accentColor: $("brand-accent-color").value,
+          };
+          const res = await ownerFetch("/api/admin/branding", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          brandingCache = res;
+          status.style.color = "var(--success)";
+          status.textContent = "Brand settings saved!";
+          // Update the header to reflect the new brand name
+          updateOwnerHeaderBranding();
+        } catch (err) {
+          status.style.color = "var(--danger)";
+          status.textContent = "Failed to save: " + (err.message || err);
+        }
+        setTimeout(() => { status.textContent = ""; status.style.color = ""; }, 4000);
+      }
+
+      async function uploadBrandLogo(file) {
+        const status = $("brand-logo-status");
+        status.textContent = "Uploading...";
+        try {
+          const formData = new FormData();
+          formData.append("logo", file);
+          const headers = {};
+          if (ownerAuthToken) headers["X-Admin-Key"] = ownerAuthToken;
+          headers["X-Tenant-ID"] = OWNER_TENANT_ID;
+          const res = await fetch("/api/admin/branding/logo", {
+            method: "POST",
+            headers,
+            body: formData,
+          });
+          if (!res.ok) throw new Error(await res.text());
+          const data = await res.json();
+          brandingCache = data.branding || brandingCache;
+          $("brand-logo-img").src = data.logoUrl;
+          $("brand-logo-preview").style.display = "";
+          updateBrandPreview();
+          status.style.color = "var(--success)";
+          status.textContent = "Logo uploaded!";
+        } catch (err) {
+          status.style.color = "var(--danger)";
+          status.textContent = "Upload failed: " + (err.message || err);
+        }
+        setTimeout(() => { status.textContent = ""; status.style.color = ""; }, 4000);
+      }
+
+      async function removeBrandLogo() {
+        const status = $("brand-logo-status");
+        status.textContent = "Removing...";
+        try {
+          await ownerFetch("/api/admin/branding/logo", { method: "DELETE" });
+          brandingCache.logoUrl = "";
+          $("brand-logo-img").src = "";
+          $("brand-logo-preview").style.display = "none";
+          updateBrandPreview();
+          status.style.color = "var(--success)";
+          status.textContent = "Logo removed.";
+        } catch (err) {
+          status.style.color = "var(--danger)";
+          status.textContent = "Failed: " + (err.message || err);
+        }
+        setTimeout(() => { status.textContent = ""; status.style.color = ""; }, 4000);
+      }
+
+      function resetBranding() {
+        $("brand-company-name").value = "";
+        $("brand-primary-color").value = "#C9A04E";
+        $("brand-primary-color-hex").value = "#C9A04E";
+        $("brand-secondary-color").value = "#1a1a2e";
+        $("brand-secondary-color-hex").value = "#1a1a2e";
+        $("brand-accent-color").value = "#d4af61";
+        $("brand-accent-color-hex").value = "#d4af61";
+        updateBrandPreview();
+      }
+
+      function setupBrandLogoDropZone() {
+        const zone = $("brand-logo-drop-zone");
+        const input = $("brand-logo-input");
+        zone.addEventListener("click", () => input.click());
+        zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.style.borderColor = "var(--accent)"; zone.style.background = "rgba(201,160,78,0.05)"; });
+        zone.addEventListener("dragleave", () => { zone.style.borderColor = ""; zone.style.background = ""; });
+        zone.addEventListener("drop", (e) => {
+          e.preventDefault();
+          zone.style.borderColor = "";
+          zone.style.background = "";
+          const file = e.dataTransfer?.files?.[0];
+          if (file) requireAuth(() => uploadBrandLogo(file));
+        });
+        input.addEventListener("change", () => {
+          if (input.files?.[0]) requireAuth(() => uploadBrandLogo(input.files[0]));
+          input.value = "";
+        });
+      }
+
+      function updateOwnerHeaderBranding() {
+        // Update the owner panel header with the tenant's branding
+        const name = brandingCache.companyName;
+        if (name) {
+          const h1 = document.querySelector(".owner-brand h1");
+          if (h1) h1.textContent = name;
+        }
+        const logoUrl = brandingCache.logoUrl;
+        if (logoUrl) {
+          const logoImg = document.querySelector(".owner-logo img");
+          if (logoImg) logoImg.src = logoUrl;
+        }
+      }
+
       // ── Workflow Data Panels ──
       const TRIGGER_LABELS = {
         call_ended: "Call ended",
@@ -2102,30 +2398,46 @@
         const q = rx.quoteNumber ? rx : (rx.quote || rx);
         const items = q.lineItems || [];
 
+        // Use tenant branding
+        const brandName = getBrandCompanyName();
+        const brandRgb = getBrandPrimaryRgb();
+        const footerText = "This quote is valid for 30 days. | " + getBrandFooterText();
+
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ unit: "mm", format: "a4" });
 
+        let headerY = 14;
+
+        // Company name header (branded)
+        if (brandName) {
+          doc.setFontSize(16);
+          doc.setTextColor(...brandRgb);
+          doc.text(brandName, 14, headerY);
+          headerY += 8;
+        }
+
         // Header
         doc.setFontSize(22);
-        doc.setTextColor(201, 160, 78);
-        doc.text("QUOTE", 14, 20);
+        doc.setTextColor(...brandRgb);
+        doc.text("QUOTE", 14, headerY + 6);
         doc.setFontSize(10);
         doc.setTextColor(120, 120, 120);
-        doc.text(q.quoteNumber || "—", 14, 27);
-        doc.text("Date: " + (lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : "—"), 14, 33);
+        doc.text(q.quoteNumber || "—", 14, headerY + 13);
+        doc.text("Date: " + (lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : "—"), 14, headerY + 19);
 
         // Customer info
+        const custY = headerY + 30;
         doc.setFontSize(12);
         doc.setTextColor(60, 60, 60);
-        doc.text("Bill To:", 14, 44);
+        doc.text("Bill To:", 14, custY);
         doc.setFontSize(10);
-        doc.text(q.customerName || "—", 14, 50);
-        doc.text(q.customerPhone || lead.phone || "—", 14, 55);
-        doc.text(q.customerEmail || lead.email || "—", 14, 60);
+        doc.text(q.customerName || "—", 14, custY + 6);
+        doc.text(q.customerPhone || lead.phone || "—", 14, custY + 11);
+        doc.text(q.customerEmail || lead.email || "—", 14, custY + 16);
 
         // Line items table
         doc.autoTable({
-          startY: 68,
+          startY: custY + 24,
           head: [["Item", "Type", "Qty", "Unit Price", "Total"]],
           body: items.map(i => [
             i.description || "—",
@@ -2135,7 +2447,7 @@
             "$" + (i.total || 0).toFixed(2),
           ]),
           styles: { fontSize: 9, cellPadding: 4 },
-          headStyles: { fillColor: [201, 160, 78], textColor: [255, 255, 255], fontStyle: "bold" },
+          headStyles: { fillColor: brandRgb, textColor: [255, 255, 255], fontStyle: "bold" },
           alternateRowStyles: { fillColor: [248, 248, 248] },
           columnStyles: {
             3: { halign: "right" },
@@ -2158,7 +2470,7 @@
 
         const totalY = (q.tax || 0) > 0 ? finalY + 14 : finalY + 6;
         doc.setFontSize(14);
-        doc.setTextColor(201, 160, 78);
+        doc.setTextColor(...brandRgb);
         doc.setFont(undefined, "bold");
         doc.text("Total:", 140, totalY, { align: "right" });
         doc.text("$" + (q.grandTotal || 0).toFixed(2), 195, totalY, { align: "right" });
@@ -2174,7 +2486,7 @@
         // Footer
         doc.setFontSize(8);
         doc.setTextColor(160, 160, 160);
-        doc.text("This quote is valid for 30 days. | Generated by VeraLux AI", 14, doc.internal.pageSize.height - 10);
+        doc.text(footerText, 14, doc.internal.pageSize.height - 10);
 
         doc.save(`quote-${(q.quoteNumber || "draft").replace(/[^a-zA-Z0-9-]/g, "")}.pdf`);
       }
@@ -2370,10 +2682,14 @@
         const today = new Date().toLocaleDateString();
         const fileName = (wf.name || "workflow").replace(/[^a-zA-Z0-9 _-]/g, "").replace(/\s+/g, "-").toLowerCase();
 
+        // Use tenant branding
+        const brandName = getBrandCompanyName() || "VeraLux AI";
+        const brandRgb = getBrandPrimaryRgb();
+
         // Header
         doc.setFontSize(18);
-        doc.setTextColor(201, 160, 78); // VeraLux gold
-        doc.text("VeraLux AI", 14, 16);
+        doc.setTextColor(...brandRgb);
+        doc.text(brandName, 14, 16);
         doc.setFontSize(14);
         doc.setTextColor(60, 60, 60);
         doc.text(wf.name, 14, 24);
@@ -2438,7 +2754,7 @@
           head: head,
           body: body,
           styles: { fontSize: 8, cellPadding: 3, overflow: "linebreak" },
-          headStyles: { fillColor: [201, 160, 78], textColor: [255, 255, 255], fontStyle: "bold" },
+          headStyles: { fillColor: brandRgb, textColor: [255, 255, 255], fontStyle: "bold" },
           alternateRowStyles: { fillColor: [245, 245, 245] },
           columnStyles: isInsights ? {
             5: { cellWidth: 50 }, // Questions
@@ -2449,11 +2765,12 @@
 
         // Footer
         const pageCount = doc.internal.getNumberOfPages();
+        const footerLabel = getBrandCompanyName() || "VeraLux AI Receptionist";
         for (let i = 1; i <= pageCount; i++) {
           doc.setPage(i);
           doc.setFontSize(8);
           doc.setTextColor(160, 160, 160);
-          doc.text(`Page ${i} of ${pageCount} | VeraLux AI Receptionist`, 14, doc.internal.pageSize.height - 8);
+          doc.text(`Page ${i} of ${pageCount} | ${footerLabel}`, 14, doc.internal.pageSize.height - 8);
         }
 
         doc.save(`${fileName}-${today.replace(/\//g, "-")}.pdf`);
@@ -2610,6 +2927,16 @@
         $("owner-save-prompts").addEventListener("click", () => requireAuth(() => saveOwnerPrompts()));
         $("owner-save-business-info").addEventListener("click", () => requireAuth(() => saveOwnerBusinessInfo()));
         $("owner-refresh").addEventListener("click", () => requireAuth(() => loadOwnerData()));
+
+        // Brand settings listeners
+        $("brand-save").addEventListener("click", () => requireAuth(() => saveBranding()));
+        $("brand-reset").addEventListener("click", () => resetBranding());
+        $("brand-logo-remove").addEventListener("click", () => requireAuth(() => removeBrandLogo()));
+        $("brand-company-name").addEventListener("input", () => updateBrandPreview());
+        bindColorSync("brand-primary-color", "brand-primary-color-hex");
+        bindColorSync("brand-secondary-color", "brand-secondary-color-hex");
+        bindColorSync("brand-accent-color", "brand-accent-color-hex");
+        setupBrandLogoDropZone();
         
         // TTS Engine selector
         $("tts-engine-selector").addEventListener("change", (e) => requireAuth(() => switchTtsEngine(e.target.value)));

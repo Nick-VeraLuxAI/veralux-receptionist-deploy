@@ -129,6 +129,14 @@ export interface TenantRow {
   updated_at: string;
 }
 
+export interface BrandingConfig {
+  companyName?: string;
+  logoUrl?: string;
+  primaryColor?: string;
+  secondaryColor?: string;
+  accentColor?: string;
+}
+
 export interface ConfigRow {
   tenant_id: string;
   config: unknown;
@@ -137,6 +145,7 @@ export interface ConfigRow {
   tts: unknown;
   forwarding_profiles?: unknown;
   pricing?: unknown;
+  branding?: BrandingConfig;
 }
 
 export interface CallRow {
@@ -329,8 +338,8 @@ export async function upsertConfig(row: ConfigRow): Promise<void> {
   try {
     await client.query(
       `
-      insert into tenant_configs (tenant_id, config, prompts, stt, tts, forwarding_profiles, pricing, updated_at)
-      values ($1, $2, $3, $4, $5, $6, $7, now())
+      insert into tenant_configs (tenant_id, config, prompts, stt, tts, forwarding_profiles, pricing, branding, updated_at)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, now())
       on conflict (tenant_id) do update
       set config = excluded.config,
           prompts = excluded.prompts,
@@ -338,6 +347,7 @@ export async function upsertConfig(row: ConfigRow): Promise<void> {
           tts = excluded.tts,
           forwarding_profiles = excluded.forwarding_profiles,
           pricing = excluded.pricing,
+          branding = excluded.branding,
           updated_at = now()
     `,
       [
@@ -348,8 +358,40 @@ export async function upsertConfig(row: ConfigRow): Promise<void> {
         row.tts,
         row.forwarding_profiles ?? [],
         row.pricing ?? { items: [], notes: "" },
+        row.branding ?? {},
       ]
     );
+  } finally {
+    client.release();
+  }
+}
+
+export async function getBranding(tenantId: string): Promise<BrandingConfig> {
+  const client = await pool.connect();
+  try {
+    const res = await client.query<{ branding: BrandingConfig }>(
+      "SELECT branding FROM tenant_configs WHERE tenant_id = $1",
+      [tenantId]
+    );
+    return res.rows[0]?.branding ?? {};
+  } finally {
+    client.release();
+  }
+}
+
+export async function upsertBranding(tenantId: string, branding: BrandingConfig): Promise<BrandingConfig> {
+  const client = await pool.connect();
+  try {
+    // Merge with existing branding so partial updates work
+    const res = await client.query<{ branding: BrandingConfig }>(
+      `UPDATE tenant_configs
+       SET branding = COALESCE(branding, '{}'::jsonb) || $2::jsonb,
+           updated_at = now()
+       WHERE tenant_id = $1
+       RETURNING branding`,
+      [tenantId, JSON.stringify(branding)]
+    );
+    return res.rows[0]?.branding ?? branding;
   } finally {
     client.release();
   }

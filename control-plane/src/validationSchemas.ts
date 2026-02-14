@@ -217,6 +217,7 @@ export const updateWorkflowSchema = z.object({
 
 export const workflowSettingsSchema = z.object({
   ownerCanEdit: z.boolean().optional(),
+  customBrandingEnabled: z.boolean().optional(),
 });
 
 // ────────────────────────────────────────────────
