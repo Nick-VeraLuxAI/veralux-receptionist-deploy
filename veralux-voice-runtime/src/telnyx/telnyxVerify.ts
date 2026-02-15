@@ -39,7 +39,19 @@ function parsePublicKey(publicKey: string): crypto.KeyObject {
   }
 
   const keyBuffer = Buffer.from(publicKey, isHex(publicKey) ? 'hex' : 'base64');
-  return crypto.createPublicKey({ key: keyBuffer, format: 'der', type: 'spki' });
+
+  // Try DER SPKI first (44 bytes for Ed25519)
+  try {
+    return crypto.createPublicKey({ key: keyBuffer, format: 'der', type: 'spki' });
+  } catch {
+    // Raw 32-byte Ed25519 key — wrap in SPKI envelope
+    if (keyBuffer.length === 32) {
+      const ed25519SpkiHeader = Buffer.from('302a300506032b6570032100', 'hex');
+      const spki = Buffer.concat([ed25519SpkiHeader, keyBuffer]);
+      return crypto.createPublicKey({ key: spki, format: 'der', type: 'spki' });
+    }
+    throw new Error(`Unable to parse public key (${keyBuffer.length} bytes)`);
+  }
 }
 
 function getString(value: unknown): string | undefined {
@@ -172,8 +184,22 @@ export function verifyTelnyxSignature({
 
     const publicKey = parsePublicKey(publicKeyRaw);
     const signatureBuffer = Buffer.from(trimmedSignature, isHex(trimmedSignature) ? 'hex' : 'base64');
-    return { ok: crypto.verify(null, message, publicKey, signatureBuffer), skipped: false };
-  } catch {
+    const result = crypto.verify(null, message, publicKey, signatureBuffer);
+    if (!result) {
+      console.error('[SIG_DEBUG] Ed25519 verify returned false', {
+        scheme,
+        signatureLen: signatureBuffer.length,
+        messageLen: message.length,
+        timestampRaw: trimmedTimestamp,
+        signatureHex: signatureBuffer.toString('hex').slice(0, 32) + '...',
+        keyType: publicKey.asymmetricKeyType,
+        bodyLen: rawBody.length,
+        bodyPreview: rawBody.toString('utf8').slice(0, 80),
+      });
+    }
+    return { ok: result, skipped: false };
+  } catch (err) {
+    console.error('[SIG_DEBUG] Ed25519 verify threw', { scheme, error: (err as Error).message });
     return { ok: false, skipped: false };
   }
 }
