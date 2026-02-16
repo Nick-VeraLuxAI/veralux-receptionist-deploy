@@ -474,7 +474,7 @@ export class CallSession {
       provider,
       whisperUrl: sttEndpointUrl,
       language: this.sttConfig?.language ?? env.STT_LANGUAGE,
-      prompt: env.STT_WHISPER_PROMPT,
+      prompt: this.sttConfig?.prompt ?? env.STT_WHISPER_PROMPT,
       frameMs: this.sttConfig?.chunkMs ?? env.STT_CHUNK_MS,
       silenceEndMs: env.STT_SILENCE_MS,
       inputCodec: sttAudioInput.codec,
@@ -2153,9 +2153,8 @@ export class CallSession {
     let segmentIndex = 0;
     let queuedSegments = 0;
     let baseTurnId: string | undefined;
-    const firstSegmentMin = env.BRAIN_STREAM_SEGMENT_MIN_CHARS;
-    const nextSegmentMin = env.BRAIN_STREAM_SEGMENT_NEXT_CHARS;
     const firstAudioMaxMs = env.BRAIN_STREAM_FIRST_AUDIO_MAX_MS;
+    const longSentenceFallback = env.BRAIN_STREAM_SEGMENT_MIN_CHARS;
 
     // === PSTN streaming ===
     // Previously disabled for llama3.2:3b (unreliable streaming). Re-enabled for qwen2.5:7b.
@@ -2215,50 +2214,39 @@ export class CallSession {
           return;
         }
 
-        if (!firstSegmentQueued) {
-          const boundary = this.findSentenceBoundary(pending);
-          if (boundary !== null) {
-            queueSegment(pending.slice(0, boundary));
-            speakCursor += boundary;
-            firstSegmentQueued = true;
-            continue;
-          }
-
-          if (pending.length >= firstSegmentMin) {
-            const end = this.selectSegmentEnd(pending, firstSegmentMin);
-            queueSegment(pending.slice(0, end));
-            speakCursor += end;
-            firstSegmentQueued = true;
-            continue;
-          }
-
-          if (
-            force ||
-            (firstTokenAt && Date.now() - firstTokenAt >= firstAudioMaxMs)
-          ) {
-            queueSegment(pending);
-            speakCursor += pending.length;
-            firstSegmentQueued = true;
-            continue;
-          }
-
-          return;
-        }
-
+        // 1) Always prefer splitting at a sentence boundary (.?!)
         const boundary = this.findSentenceBoundary(pending);
         if (boundary !== null) {
           queueSegment(pending.slice(0, boundary));
           speakCursor += boundary;
+          firstSegmentQueued = true;
           continue;
         }
 
-        if (pending.length >= nextSegmentMin) {
-          const end = this.selectSegmentEnd(pending, nextSegmentMin);
+        // 2) Safety valve for abnormally long single sentences (>longSentenceFallback chars):
+        //    fall back to space-based splitting so we don't buffer forever.
+        if (pending.length >= longSentenceFallback) {
+          const end = this.selectSegmentEnd(pending, longSentenceFallback);
           queueSegment(pending.slice(0, end));
           speakCursor += end;
+          firstSegmentQueued = true;
           continue;
         }
 
+        // 3) First-byte timeout: if the LLM is slow (>firstAudioMaxMs) and we
+        //    haven't sent anything yet, send what we have so the caller isn't
+        //    waiting in silence.
+        if (
+          !firstSegmentQueued &&
+          (force || (firstTokenAt && Date.now() - firstTokenAt >= firstAudioMaxMs))
+        ) {
+          queueSegment(pending);
+          speakCursor += pending.length;
+          firstSegmentQueued = true;
+          continue;
+        }
+
+        // 4) Stream ended (force=true) — flush any remaining text.
         if (force) {
           queueSegment(pending);
           speakCursor += pending.length;
@@ -2310,6 +2298,26 @@ export class CallSession {
     if (reply.text.length > bufferedText.length) {
       bufferedText = reply.text;
     }
+
+    // Single-segment shortcut: if no segments were queued during streaming and the
+    // full reply is short enough, play it as one unbroken audio file (zero gaps).
+    const singleSegmentMax = env.BRAIN_STREAM_SINGLE_SEGMENT_MAX;
+    if (queuedSegments === 0 && bufferedText.length <= singleSegmentMax) {
+      log.info(
+        {
+          event: 'tts_single_segment_shortcut',
+          reply_len: bufferedText.length,
+          threshold: singleSegmentMax,
+          ...this.logContext,
+        },
+        'reply fits single segment — skipping segmentation',
+      );
+      if (handlingToken !== this.transcriptHandlingToken) {
+        return { reply };
+      }
+      return { reply, playbackDone: this.playAssistantTurn(reply.text) };
+    }
+
     maybeQueueSegments(true);
 
     if (queuedSegments === 0) {
@@ -2635,9 +2643,16 @@ export class CallSession {
       'tts segment queued',
     );
 
+    // Pre-synthesize immediately (don't wait for previous segment to finish playing).
+    // This eliminates the ~1s dead-air gap between sentences caused by sequential synthesis.
+    const preparedPromise = this.prepareTtsSegment(segmentText, segmentId);
+
     this.ttsSegmentChain = this.ttsSegmentChain
       .then(async () => {
-        await this.playTtsSegment(segmentText, segmentId);
+        const prepared = await preparedPromise;
+        if (prepared) {
+          await this.deliverTtsSegment(prepared, segmentText, segmentId);
+        }
       })
       .catch((error) => {
         log.error({ err: error, ...this.logContext }, 'tts segment playback failed');
@@ -2657,10 +2672,21 @@ export class CallSession {
       });
   }
 
-  private async playTtsSegment(segmentText: string, segmentId: string): Promise<void> {
-    const shouldAbort = !this.active || this.state === 'ENDED' || this.playbackState.interrupted;
-    if (shouldAbort) {
-      return;
+  /**
+   * Phase 1: Synthesize TTS audio, run the telephony pipeline, and store the WAV.
+   * This runs immediately when the segment is queued (in parallel with the
+   * previous segment's playback) so audio is ready the instant it's needed.
+   */
+  private async prepareTtsSegment(
+    segmentText: string,
+    segmentId: string,
+  ): Promise<{
+    playbackAudio: Buffer;
+    playbackInput: { kind: 'url'; url: string } | { kind: 'buffer'; audio: Buffer; contentType?: string };
+    spanMeta: { callId: string; tenantId: string | undefined; logContext: Record<string, unknown>; kind: string };
+  } | null> {
+    if (!this.active || this.state === 'ENDED' || this.playbackState.interrupted) {
+      return null;
     }
 
     const tenantLabel = this.tenantId ?? 'unknown';
@@ -2707,7 +2733,6 @@ export class CallSession {
     const ttsDuration = Date.now() - ttsStart;
     markAudioSpan('tts_ready', spanMeta);
 
-
     log.info(
       {
         event: 'tts_synthesized',
@@ -2718,8 +2743,8 @@ export class CallSession {
       'tts synthesized',
     );
 
-    if (!this.active || this.state === 'ENDED' || this.playbackState.interrupted) {
-      return;
+    if (!this.active || (this.state as string) === 'ENDED' || this.playbackState.interrupted) {
+      return null;
     }
 
     this.logTtsBytesReady(segmentId, result.audio, result.contentType);
@@ -2751,9 +2776,29 @@ export class CallSession {
         ? { kind: 'url' as const, url: await storeWav(this.callControlId, segmentId, result.audio) }
         : { kind: 'buffer' as const, audio: result.audio, contentType: result.contentType };
 
-    if (this.playbackState.interrupted) {
+    return { playbackAudio, playbackInput, spanMeta };
+  }
+
+  /**
+   * Phase 2: Deliver pre-synthesized audio to the caller.
+   * This runs sequentially in the segment chain (after the previous segment
+   * finishes playing) so audio segments don't overlap.
+   */
+  private async deliverTtsSegment(
+    prepared: {
+      playbackAudio: Buffer;
+      playbackInput: { kind: 'url'; url: string } | { kind: 'buffer'; audio: Buffer; contentType?: string };
+      spanMeta: { callId: string; tenantId: string | undefined; logContext: Record<string, unknown>; kind: string };
+    },
+    segmentText: string,
+    segmentId: string,
+  ): Promise<void> {
+    if (!this.active || this.state === 'ENDED' || this.playbackState.interrupted) {
       return;
     }
+
+    const { playbackAudio, playbackInput, spanMeta } = prepared;
+    const tenantLabel = this.tenantId ?? 'unknown';
 
     if (this.transport.mode === 'pstn') {
       log.info(
@@ -2826,10 +2871,7 @@ export class CallSession {
       endPlayback();
     }
 
-
     const playbackDuration = Date.now() - playbackStart;
-
-
 
     if (this.transport.mode === 'pstn') {
       log.info(

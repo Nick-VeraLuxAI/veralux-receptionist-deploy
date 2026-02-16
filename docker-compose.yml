@@ -94,6 +94,7 @@ services:
       - TENANT_CALLS_PER_MIN_CAP_DEFAULT=${TENANT_CALLS_PER_MIN_CAP_DEFAULT:-60}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - test-recordings:/app/control-plane/public/test-recordings
     group_add:
       - "${DOCKER_GID:-984}"
     ports:
@@ -151,7 +152,11 @@ services:
       - TELNYX_PHONE_NUMBER=${TELNYX_PHONE_NUMBER}
       - TELNYX_VERIFY_SIGNATURES=${TELNYX_VERIFY_SIGNATURES:-true}
       - TELNYX_ACCEPT_CODECS=${TELNYX_ACCEPT_CODECS:-PCMU,AMR-WB}
+      - TELNYX_STREAM_CODEC=${TELNYX_STREAM_CODEC:-AMR-WB}
       - TELNYX_AMRWB_DECODE=${TELNYX_AMRWB_DECODE:-true}
+      - TELNYX_AMRWB_FORCE_BE=${TELNYX_AMRWB_FORCE_BE:-true}
+      - TELNYX_AMRWB_DEFAULT_BE=${TELNYX_AMRWB_DEFAULT_BE:-false}
+      - AMRWB_ALLOW_OCTET_FALLBACK=${AMRWB_ALLOW_OCTET_FALLBACK:-true}
       - PLAYBACK_PSTN_SAMPLE_RATE=${PLAYBACK_PSTN_SAMPLE_RATE:-24000}
       # URLs
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
@@ -166,21 +171,30 @@ services:
       - AUDIO_STORAGE_DIR=${AUDIO_STORAGE_DIR:-/app/audio}
       - WHISPER_URL=${WHISPER_URL:-http://whisper:9000/transcribe}
       # Speech-to-Text Settings
+      - STT_LANGUAGE=${STT_LANGUAGE:-en}
+      - STT_NO_FRAME_FINALIZE_MS=${STT_NO_FRAME_FINALIZE_MS:-2000}
       - STT_CHUNK_MS=${STT_CHUNK_MS:-100}
       - STT_SILENCE_MS=${STT_SILENCE_MS:-500}
-      - STT_SPEECH_FRAMES_REQUIRED=${STT_SPEECH_FRAMES_REQUIRED:-3}
+      - STT_SPEECH_FRAMES_REQUIRED=${STT_SPEECH_FRAMES_REQUIRED:-2}
       - STT_AEC_ENABLED=${STT_AEC_ENABLED:-true}
       - STT_RMS_FLOOR=${STT_RMS_FLOOR:-0.008}
       - STT_PEAK_FLOOR=${STT_PEAK_FLOOR:-0.02}
-      # Silero VAD (neural voice activity detection — rejects background noise)
+      # Silero VAD (neural voice activity detection — advisory only, gates are authoritative)
       - STT_VAD_ENABLED=${STT_VAD_ENABLED:-true}
-      - STT_VAD_THRESHOLD=${STT_VAD_THRESHOLD:-0.45}
-      - STT_VAD_SPEECH_FRAMES_REQUIRED=${STT_VAD_SPEECH_FRAMES_REQUIRED:-3}
-      - STT_VAD_SILENCE_FRAMES_REQUIRED=${STT_VAD_SILENCE_FRAMES_REQUIRED:-6}
+      - STT_VAD_THRESHOLD=${STT_VAD_THRESHOLD:-0.15}
+      - STT_VAD_SPEECH_FRAMES_REQUIRED=${STT_VAD_SPEECH_FRAMES_REQUIRED:-2}
+      - STT_VAD_SILENCE_FRAMES_REQUIRED=${STT_VAD_SILENCE_FRAMES_REQUIRED:-8}
+      # Pre-Whisper audio normalization (canonical 16k mono WAV)
+      - STT_PREWHISPER_GATE=true
+      - STT_FORCE_NORMALIZE_WAV=true
+      # Debug: dump audio files sent to Whisper (disable after debugging)
+      - STT_DEBUG_DUMP_WHISPER_WAVS=true
+      - STT_PREWHISPER_DUMP_FIRST_N=5
       - DEAD_AIR_MS=${DEAD_AIR_MS:-10000}
       # Streaming segmentation
-      - BRAIN_STREAM_SEGMENT_MIN_CHARS=${BRAIN_STREAM_SEGMENT_MIN_CHARS:-40}
-      - BRAIN_STREAM_SEGMENT_NEXT_CHARS=${BRAIN_STREAM_SEGMENT_NEXT_CHARS:-60}
+      - BRAIN_STREAM_SEGMENT_MIN_CHARS=${BRAIN_STREAM_SEGMENT_MIN_CHARS:-160}
+      - BRAIN_STREAM_SEGMENT_NEXT_CHARS=${BRAIN_STREAM_SEGMENT_NEXT_CHARS:-220}
+      - BRAIN_STREAM_SINGLE_SEGMENT_MAX=${BRAIN_STREAM_SINGLE_SEGMENT_MAX:-300}
       # Rate Limiting
       - GLOBAL_CONCURRENCY_CAP=${GLOBAL_CONCURRENCY_CAP:-100}
       - TENANT_CONCURRENCY_CAP_DEFAULT=${TENANT_CONCURRENCY_CAP_DEFAULT:-10}
@@ -416,9 +430,15 @@ services:
               count: 1
               capabilities: [gpu]
     environment:
-      - WHISPER_MODEL=${WHISPER_MODEL:-medium}
+      - WHISPER_MODEL=${WHISPER_MODEL:-large-v3}
       - WHISPER_DEVICE=cuda
       - WHISPER_COMPUTE_TYPE=float16
+      # Disable internal Silero VAD — our runtime already gates speech
+      - WHISPER_VAD_FILTER=false
+      # Lower no-speech threshold for compressed telephony audio
+      - WHISPER_NO_SPEECH_THRESHOLD=0.3
+      - WHISPER_BEAM_SIZE=5
+      - WHISPER_MAX_CONCURRENT=3
     # ports:
     #   - "${WHISPER_PORT:-9000}:9000"  # Internal only — accessible via Docker network
     networks:
@@ -629,6 +649,7 @@ services:
           memory: 128M
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
       - prometheus-data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
@@ -685,6 +706,8 @@ volumes:
     name: veralux-prometheus-data
   grafana-data:
     name: veralux-grafana-data
+  test-recordings:
+    name: veralux-test-recordings
 
 networks:
   veralux-network:

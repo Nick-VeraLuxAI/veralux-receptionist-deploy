@@ -736,11 +736,25 @@
       <div class="tab-content" data-tab="calls">
         <section class="panel">
           <div class="flex-between">
-            <h2>Chat History</h2>
+            <h2>Active Calls</h2>
             <button type="button" class="secondary" id="refresh-calls">Refresh</button>
           </div>
           <div id="calls" class="call-grid" style="margin-top: 10px"></div>
         </section>
+        <section class="panel">
+          <div class="flex-between">
+            <h2>Call History</h2>
+            <button type="button" class="secondary" id="refresh-call-history">Refresh</button>
+          </div>
+          <div id="call-history" style="margin-top: 10px"></div>
+          <div id="call-history-pagination" class="row" style="gap: 8px; margin-top: 8px; justify-content: center"></div>
+        </section>
+        <div id="call-detail-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:999; align-items:center; justify-content:center;">
+          <div style="background:#1a1a2e; border-radius:12px; max-width:700px; width:90%; max-height:80vh; overflow-y:auto; padding:24px; position:relative;">
+            <button type="button" id="close-call-detail" style="position:absolute; top:12px; right:12px; background:none; border:none; color:#fff; font-size:20px; cursor:pointer;">&times;</button>
+            <div id="call-detail-content"></div>
+          </div>
+        </div>
       </div>
 
       <div class="tab-content" data-tab="audit">
@@ -1799,6 +1813,166 @@
       }
 
       // ───────────────────────────────────────────────
+      // CALL HISTORY
+      // ───────────────────────────────────────────────
+
+      let callHistoryPage = 0;
+      const CALL_HISTORY_PAGE_SIZE = 15;
+
+      function formatDuration(ms) {
+        if (!ms || ms <= 0) return "0s";
+        const sec = Math.floor(ms / 1000);
+        if (sec < 60) return sec + "s";
+        const min = Math.floor(sec / 60);
+        const rem = sec % 60;
+        return min + "m " + rem + "s";
+      }
+
+      function renderCallHistory(data) {
+        const container = $("call-history");
+        const pagination = $("call-history-pagination");
+        container.innerHTML = "";
+        pagination.innerHTML = "";
+
+        const rows = data.rows || [];
+        const total = data.total || 0;
+
+        if (rows.length === 0) {
+          container.textContent = "No completed calls yet.";
+          return;
+        }
+
+        const table = document.createElement("table");
+        table.style.cssText = "width:100%; border-collapse:collapse; font-size:13px;";
+        table.innerHTML = `
+          <thead>
+            <tr style="text-align:left; border-bottom:1px solid #333;">
+              <th style="padding:6px 8px;">Time</th>
+              <th style="padding:6px 8px;">Caller</th>
+              <th style="padding:6px 8px;">Duration</th>
+              <th style="padding:6px 8px;">Stage</th>
+              <th style="padding:6px 8px;">Summary</th>
+              <th style="padding:6px 8px;"></th>
+            </tr>
+          </thead>
+        `;
+        const tbody = document.createElement("tbody");
+        rows.forEach(r => {
+          const tr = document.createElement("tr");
+          tr.style.cssText = "border-bottom:1px solid #222; cursor:pointer;";
+          tr.onmouseover = () => tr.style.background = "#222";
+          tr.onmouseout = () => tr.style.background = "";
+          const endedAt = r.ended_at ? new Date(r.ended_at).toLocaleString() : "";
+          const summary = r.summary ? r.summary.slice(0, 80) + (r.summary.length > 80 ? "..." : "") : "—";
+          const stageColor = r.stage === "closed" ? "#4ade80" : r.stage === "handoff" ? "#C9A04E" : "#60a5fa";
+          tr.innerHTML = `
+            <td style="padding:6px 8px;">${escapeHtml(endedAt)}</td>
+            <td style="padding:6px 8px;">${escapeHtml(r.caller_id || "unknown")}</td>
+            <td style="padding:6px 8px;">${formatDuration(r.duration_ms)}</td>
+            <td style="padding:6px 8px;"><span style="color:${stageColor}">${escapeHtml(r.stage || "unknown")}</span></td>
+            <td style="padding:6px 8px;" class="small">${escapeHtml(summary)}</td>
+            <td style="padding:6px 8px;"><button class="secondary" style="font-size:11px; padding:2px 8px;" data-call-id="${escapeHtml(r.id)}">View</button></td>
+          `;
+          tr.querySelector("button").addEventListener("click", (e) => {
+            e.stopPropagation();
+            showCallDetail(r);
+          });
+          tr.addEventListener("click", () => showCallDetail(r));
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        container.appendChild(table);
+
+        // Pagination
+        const totalPages = Math.ceil(total / CALL_HISTORY_PAGE_SIZE);
+        if (totalPages > 1) {
+          if (callHistoryPage > 0) {
+            const prevBtn = document.createElement("button");
+            prevBtn.className = "secondary";
+            prevBtn.textContent = "Previous";
+            prevBtn.onclick = () => { callHistoryPage--; loadCallHistory(); };
+            pagination.appendChild(prevBtn);
+          }
+          const info = document.createElement("span");
+          info.className = "small";
+          info.textContent = `Page ${callHistoryPage + 1} of ${totalPages} (${total} total)`;
+          pagination.appendChild(info);
+          if (callHistoryPage < totalPages - 1) {
+            const nextBtn = document.createElement("button");
+            nextBtn.className = "secondary";
+            nextBtn.textContent = "Next";
+            nextBtn.onclick = () => { callHistoryPage++; loadCallHistory(); };
+            pagination.appendChild(nextBtn);
+          }
+        }
+      }
+
+      function showCallDetail(callRow) {
+        const modal = $("call-detail-modal");
+        const content = $("call-detail-content");
+        modal.style.display = "flex";
+
+        const endedAt = callRow.ended_at ? new Date(callRow.ended_at).toLocaleString() : "N/A";
+        const startedAt = callRow.started_at ? new Date(callRow.started_at).toLocaleString() : "N/A";
+        const history = Array.isArray(callRow.history) ? callRow.history : [];
+        const lead = callRow.lead && typeof callRow.lead === "object" ? callRow.lead : {};
+        const leadKeys = Object.keys(lead).filter(k => lead[k]);
+
+        let html = `<h2 style="margin-top:0;">Call Detail</h2>`;
+        html += `<div class="row" style="gap:16px; flex-wrap:wrap; margin-bottom:12px;">`;
+        html += `<div class="small"><strong>Caller:</strong> ${escapeHtml(callRow.caller_id || "unknown")}</div>`;
+        html += `<div class="small"><strong>Duration:</strong> ${formatDuration(callRow.duration_ms)}</div>`;
+        html += `<div class="small"><strong>Stage:</strong> ${escapeHtml(callRow.stage || "")}</div>`;
+        html += `<div class="small"><strong>Started:</strong> ${escapeHtml(startedAt)}</div>`;
+        html += `<div class="small"><strong>Ended:</strong> ${escapeHtml(endedAt)}</div>`;
+        html += `</div>`;
+
+        if (callRow.summary) {
+          html += `<div class="card" style="background:#162236; margin-bottom:12px;">`;
+          html += `<div class="small" style="color:#C9A04E; margin-bottom:4px;">AI Summary</div>`;
+          html += `<div>${escapeHtml(callRow.summary)}</div>`;
+          html += `</div>`;
+        }
+
+        if (leadKeys.length > 0) {
+          html += `<div class="card" style="background:#1e1e2e; margin-bottom:12px;">`;
+          html += `<div class="small" style="color:#4ade80; margin-bottom:4px;">Lead Data</div>`;
+          leadKeys.forEach(k => {
+            html += `<div class="small"><strong>${escapeHtml(k)}:</strong> ${escapeHtml(String(lead[k]))}</div>`;
+          });
+          html += `</div>`;
+        }
+
+        if (history.length > 0) {
+          html += `<div style="margin-top:8px;"><div class="small" style="color:#60a5fa; margin-bottom:4px;">Conversation (${history.length} turns)</div>`;
+          history.forEach(turn => {
+            const role = turn.role || turn.from || "unknown";
+            const msg = turn.content || turn.message || "";
+            const isAssistant = role === "assistant";
+            html += `<div style="margin-bottom:4px; padding:4px 8px; border-left:2px solid ${isAssistant ? "#C9A04E" : "#60a5fa"};">`;
+            html += `<span class="small" style="color:${isAssistant ? "#C9A04E" : "#60a5fa"};">${escapeHtml(role)}</span>: ${escapeHtml(msg)}`;
+            html += `</div>`;
+          });
+          html += `</div>`;
+        } else if (callRow.transcript) {
+          html += `<div style="margin-top:8px;"><div class="small" style="color:#60a5fa; margin-bottom:4px;">Transcript</div>`;
+          html += `<pre class="debug-block" style="white-space:pre-wrap; max-height:300px;">${escapeHtml(callRow.transcript)}</pre>`;
+          html += `</div>`;
+        }
+
+        content.innerHTML = html;
+      }
+
+      async function loadCallHistory() {
+        try {
+          const data = await fetchJSON(`/api/admin/call-history?limit=${CALL_HISTORY_PAGE_SIZE}&offset=${callHistoryPage * CALL_HISTORY_PAGE_SIZE}`);
+          renderCallHistory(data);
+        } catch (err) {
+          $("call-history").textContent = "Failed to load history: " + err.message;
+        }
+      }
+
+      // ───────────────────────────────────────────────
       // TTS CONFIG & PREVIEW (Kokoro / XTTS)
       // ───────────────────────────────────────────────
 
@@ -2827,6 +3001,7 @@
         loadHealth();
         loadAnalytics();
         loadCalls();
+        loadCallHistory();
         loadAudit();
         loadAdminKeys();
         loadCloudflareStatus();
@@ -3497,6 +3672,27 @@
           refreshCallsBtn.addEventListener("click", () => {
             setStatus("Refreshing calls…", "ok");
             loadCalls();
+          });
+        }
+
+        const refreshCallHistoryBtn = $("refresh-call-history");
+        if (refreshCallHistoryBtn) {
+          refreshCallHistoryBtn.addEventListener("click", () => {
+            setStatus("Refreshing call history…", "ok");
+            loadCallHistory();
+          });
+        }
+
+        const closeCallDetailBtn = $("close-call-detail");
+        if (closeCallDetailBtn) {
+          closeCallDetailBtn.addEventListener("click", () => {
+            $("call-detail-modal").style.display = "none";
+          });
+        }
+        const callDetailModal = $("call-detail-modal");
+        if (callDetailModal) {
+          callDetailModal.addEventListener("click", (e) => {
+            if (e.target === callDetailModal) callDetailModal.style.display = "none";
           });
         }
 

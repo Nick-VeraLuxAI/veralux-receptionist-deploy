@@ -1160,6 +1160,80 @@ export function buildServer(): { app: express.Express; server: http.Server; sess
 
   log.info({ routes: ['/v1/calls/:callControlId/voice'] }, 'call management API configured');
 
+  // ── Test Recorder proxy (tunnel hits runtime, pages live on control plane) ──
+  const CONTROL_PLANE_URL = process.env.CONTROL_URL || 'http://control:4000';
+
+  // Proxy HTML pages from control plane
+  for (const page of ['test-recorder.html', 'admin.html', 'owner.html']) {
+    app.get(`/${page}`, async (_req, res) => {
+      try {
+        const upstream = await fetch(`${CONTROL_PLANE_URL}/${page}`);
+        if (!upstream.ok) { res.status(upstream.status).send(await upstream.text()); return; }
+        res.setHeader('Content-Type', 'text/html');
+        const body = await upstream.arrayBuffer();
+        res.send(Buffer.from(body));
+      } catch (err) {
+        log.error({ err }, `${page} proxy failed`);
+        res.status(502).json({ error: 'control plane unreachable' });
+      }
+    });
+  }
+
+  // Helper: collect raw request body into a Buffer (for multipart proxy)
+  function collectRawBody(req: express.Request): Promise<Buffer> {
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      req.on('data', (c: Buffer) => chunks.push(c));
+      req.on('end', () => resolve(Buffer.concat(chunks)));
+      req.on('error', reject);
+    });
+  }
+
+  // Helper: proxy a request to the control plane
+  async function proxyToControl(
+    req: express.Request,
+    res: express.Response,
+    label: string,
+  ): Promise<void> {
+    try {
+      const url = new URL(req.originalUrl, CONTROL_PLANE_URL);
+      const headers: Record<string, string> = {};
+      if (req.headers['content-type']) headers['content-type'] = req.headers['content-type'] as string;
+
+      let reqBody: Buffer | undefined;
+      if (!['GET', 'HEAD', 'DELETE'].includes(req.method)) {
+        reqBody = await collectRawBody(req);
+      }
+
+      const upstreamResp = await fetch(url.toString(), {
+        method: req.method,
+        headers,
+        ...(reqBody ? { body: reqBody as unknown as BodyInit } : {}),
+      });
+
+      res.status(upstreamResp.status);
+      for (const [k, v] of upstreamResp.headers.entries()) {
+        if (!['transfer-encoding', 'content-encoding', 'connection'].includes(k.toLowerCase())) {
+          res.setHeader(k, v);
+        }
+      }
+      const body = await upstreamResp.arrayBuffer();
+      res.send(Buffer.from(body));
+    } catch (err) {
+      log.error({ err }, `${label} proxy failed`);
+      res.status(502).json({ error: 'control plane unreachable' });
+    }
+  }
+
+  // Proxy all /api/test-pipeline and /api/test-recordings to control plane
+  app.use('/api/test-pipeline', (req, res) => { void proxyToControl(req, res, 'test-pipeline'); });
+  app.use('/api/test-recordings', (req, res) => { void proxyToControl(req, res, 'test-recordings'); });
+
+  // Proxy admin, owner, and auth API routes to control plane
+  app.use('/api/admin', (req, res) => { void proxyToControl(req, res, 'admin'); });
+  app.use('/api/owner', (req, res) => { void proxyToControl(req, res, 'owner'); });
+  app.use('/api/auth', (req, res) => { void proxyToControl(req, res, 'auth'); });
+
   app.use(errorHandler);
 
   const server = http.createServer(app);

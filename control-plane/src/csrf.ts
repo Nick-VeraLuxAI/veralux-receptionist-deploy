@@ -67,6 +67,9 @@ function isExempt(req: Request): boolean {
   // Public auth endpoints (signup, login, etc.) — no session cookie yet
   if (req.path.startsWith("/api/auth/")) return true;
 
+  // Test recorder endpoints — dev tool, multipart FormData
+  if (req.path.startsWith("/api/test-pipeline") || req.path.startsWith("/api/test-recordings")) return true;
+
   return false;
 }
 

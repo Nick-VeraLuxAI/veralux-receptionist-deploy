@@ -1120,16 +1120,14 @@ export class ChunkedSTT {
       else vadSpeechDecision = this.vadSpeechNow;
     }
 
-    // Speech decision: require amplitude gates AND VAD when VAD is active.
-    // If VAD is not ready or not enabled, fall back to gates only.
-    // When VAD says no-speech but gates detect strong audio, trust the gates
-    // (telephony audio can cause low VAD probabilities due to compression artifacts).
+    // Speech decision: amplitude gates are always authoritative.
+    // VAD can ADD sensitivity (detect quiet speech gates miss) but never BLOCK
+    // speech the gates detect. Silero VAD produces near-zero probabilities on
+    // AMR-WB telephony audio, so gates must be the primary signal.
     const gatesSaysSpeech = gateRms && gatePeak;
     const isSpeech = this.disableGates
       ? true
-      : vadSpeechDecision !== null
-        ? (vadSpeechDecision && gatesSaysSpeech) || (gatesSaysSpeech && !vadSpeechDecision && stats.rms > this.speechRmsFloor * 4)
-        : gatesSaysSpeech;
+      : gatesSaysSpeech || (vadSpeechDecision === true);
 
     if (isSpeech && !gatedForPlayback) {
       this.sawSpeech = true;

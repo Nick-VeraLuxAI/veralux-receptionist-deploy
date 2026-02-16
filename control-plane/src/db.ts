@@ -155,6 +155,8 @@ export interface CallRow {
   stage: string | null;
   lead: any;
   history: any;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface AnalyticsRow {
@@ -219,7 +221,7 @@ export async function fetchTenantsFromDb(): Promise<{
           "select tenant_id, number from tenant_numbers"
         ),
         client.query<ConfigRow>("select * from tenant_configs"),
-        client.query<CallRow>("select id, tenant_id, caller_id, stage, lead, history from calls"),
+        client.query<CallRow>("select id, tenant_id, caller_id, stage, lead, history, created_at, updated_at from calls"),
         client.query<AnalyticsRow>(
           "select tenant_id, call_count, caller_message_count, question_counts from analytics"
         ),
@@ -858,6 +860,117 @@ export async function upsertSubscription(
       ]
     );
     return rowToSubscription(res.rows[0]);
+  } finally {
+    client.release();
+  }
+}
+
+/* ────────────────────────────────────────────────
+   Call History – completed call archive
+   ──────────────────────────────────────────────── */
+
+export interface CallHistoryRow {
+  id: string;
+  tenant_id: string;
+  call_id: string | null;
+  caller_id: string | null;
+  stage: string | null;
+  lead: any;
+  history: any;
+  transcript: string | null;
+  summary: string | null;
+  duration_ms: number;
+  started_at: string;
+  ended_at: string;
+}
+
+export async function insertCallHistory(params: {
+  tenantId: string;
+  callId?: string;
+  callerId?: string;
+  stage?: string;
+  lead?: any;
+  history?: any;
+  transcript?: string;
+  summary?: string;
+  durationMs?: number;
+  startedAt?: Date;
+}): Promise<CallHistoryRow> {
+  const client = await pool.connect();
+  try {
+    const res = await client.query(
+      `INSERT INTO call_history (tenant_id, call_id, caller_id, stage, lead, history, transcript, summary, duration_ms, started_at, ended_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+       RETURNING *`,
+      [
+        params.tenantId,
+        params.callId ?? null,
+        params.callerId ?? null,
+        params.stage ?? 'closed',
+        JSON.stringify(params.lead ?? {}),
+        JSON.stringify(params.history ?? []),
+        params.transcript ?? null,
+        params.summary ?? null,
+        params.durationMs ?? 0,
+        params.startedAt ?? new Date(),
+      ]
+    );
+    return res.rows[0];
+  } finally {
+    client.release();
+  }
+}
+
+export async function listCallHistory(
+  tenantId: string,
+  limit = 50,
+  offset = 0
+): Promise<{ rows: CallHistoryRow[]; total: number }> {
+  const client = await pool.connect();
+  try {
+    const [data, countRes] = await Promise.all([
+      client.query(
+        "SELECT * FROM call_history WHERE tenant_id = $1 ORDER BY ended_at DESC LIMIT $2 OFFSET $3",
+        [tenantId, limit, offset]
+      ),
+      client.query(
+        "SELECT COUNT(*)::int as total FROM call_history WHERE tenant_id = $1",
+        [tenantId]
+      ),
+    ]);
+    return { rows: data.rows, total: countRes.rows[0]?.total ?? 0 };
+  } finally {
+    client.release();
+  }
+}
+
+export async function getCallHistoryById(
+  id: string,
+  tenantId?: string
+): Promise<CallHistoryRow | null> {
+  const client = await pool.connect();
+  try {
+    const sql = tenantId
+      ? "SELECT * FROM call_history WHERE id = $1 AND tenant_id = $2"
+      : "SELECT * FROM call_history WHERE id = $1";
+    const params = tenantId ? [id, tenantId] : [id];
+    const res = await client.query(sql, params);
+    return res.rows[0] ?? null;
+  } finally {
+    client.release();
+  }
+}
+
+export async function updateCallHistorySummary(
+  id: string,
+  summary: string
+): Promise<void> {
+  const client = await pool.connect();
+  try {
+    await client.query(
+      "UPDATE call_history SET summary = $2 WHERE id = $1",
+      [id, summary]
+    );
   } finally {
     client.release();
   }

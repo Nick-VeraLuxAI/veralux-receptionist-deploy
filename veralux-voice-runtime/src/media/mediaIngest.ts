@@ -1813,6 +1813,10 @@ private guessDumpKind(raw: Buffer): 'wav_riff' | 'unknown' {
     if (this.transportMode !== 'pstn') return;
     if (encoding !== 'AMR-WB') return;
 
+    // Allow disabling the force-BE assumption via env var (e.g. when Telnyx sends octet-aligned)
+    const forceBeEnv = (process.env.TELNYX_AMRWB_FORCE_BE ?? '').trim().toLowerCase();
+    if (forceBeEnv === '0' || forceBeEnv === 'false' || forceBeEnv === 'no') return;
+
     this.forceAmrWbBe = true;
 
     if (!this.forceAmrWbBeLogged) {

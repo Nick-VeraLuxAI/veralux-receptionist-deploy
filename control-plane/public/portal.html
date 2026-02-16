@@ -1305,7 +1305,7 @@
       }
 
       /* ── Voice Settings ─────────────────────────── */
-      let voiceConfig = { ttsMode:"coqui_xtts", defaultVoiceMode:"preset", presetVoice:"default", clonedVoices:[], activeVoiceId:"preset:default", kokoroVoice:"af_bella", kokoroSpeed:1.0 };
+      let voiceConfig = { ttsMode:"coqui_xtts", defaultVoiceMode:"preset", presetVoice:"default", clonedVoices:[], activeVoiceId:"preset:default", kokoroVoice:"af_bella", kokoroSpeed:1.3 };
 
       /* ── TTS Engine panel switching ── */
       function showTtsPanel(mode) {
@@ -1342,7 +1342,7 @@
           voiceConfig.presetVoice = cfg.voiceId || cfg.voice || "default";
           voiceConfig.defaultVoiceMode = cfg.defaultVoiceMode || "preset";
           voiceConfig.kokoroVoice = cfg.kokoroVoice || cfg.voice || "af_bella";
-          voiceConfig.kokoroSpeed = typeof cfg.kokoroSpeed === "number" ? cfg.kokoroSpeed : 1.0;
+          voiceConfig.kokoroSpeed = typeof cfg.kokoroSpeed === "number" ? cfg.kokoroSpeed : 1.3;
           if (cfg.clonedVoice && cfg.clonedVoice.speakerWavUrl) {
             const exists = voiceConfig.clonedVoices.find(v => v.speakerWavUrl === cfg.clonedVoice.speakerWavUrl);
             if (!exists) voiceConfig.clonedVoices.push({ id:"cloned_"+Date.now(), label:cfg.clonedVoice.label||"Custom Voice", speakerWavUrl:cfg.clonedVoice.speakerWavUrl });
@@ -1436,7 +1436,7 @@
       }
 
       /* ── Kokoro Settings ────────────────────────── */
-      const KOKORO_DEFAULTS = { kokoroVoice: "af_bella", kokoroSpeed: 1.0 };
+      const KOKORO_DEFAULTS = { kokoroVoice: "af_bella", kokoroSpeed: 1.3 };
       function loadKokoroSettings(cfg) {
         const vs = $("kokoro-voice-selector"), ss = $("kokoro-speed"), sl = $("kokoro-speed-val");
         const voice = cfg.kokoroVoice || KOKORO_DEFAULTS.kokoroVoice;
@@ -1468,7 +1468,7 @@
         const btn = $("kokoro-preview-btn"), statusEl = $("kokoro-preview-status"), audioEl = $("kokoro-preview-audio"), textInput = $("kokoro-preview-text");
         const text = textInput.value.trim() || textInput.placeholder;
         const vs = $("kokoro-voice-selector"), ss = $("kokoro-speed");
-        const payload = { text, engine: "kokoro", kokoroVoice: vs ? vs.value : "af_bella", kokoroSpeed: ss ? parseFloat(ss.value) : 1.0 };
+        const payload = { text, engine: "kokoro", kokoroVoice: vs ? vs.value : "af_bella", kokoroSpeed: ss ? parseFloat(ss.value) : 1.3 };
         btn.disabled = true; btn.textContent = "Generating\u2026"; statusEl.textContent = "";
         audioEl.style.display = "none"; if (audioEl.src) { URL.revokeObjectURL(audioEl.src); audioEl.src = ""; }
         try {

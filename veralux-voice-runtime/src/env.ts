@@ -246,6 +246,8 @@ const EnvSchema = z.object({
   BRAIN_STREAM_FIRST_AUDIO_MAX_MS: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(2000)),
   BRAIN_STREAM_SEGMENT_MIN_CHARS: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(120)),
   BRAIN_STREAM_SEGMENT_NEXT_CHARS: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(180)),
+  /** If the full LLM reply is at or below this char count, play it as a single audio file (no segmentation). */
+  BRAIN_STREAM_SINGLE_SEGMENT_MAX: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(300)),
 
   /* ───────────────────────── Call transcript / summarizer ───────────────────────── */
   /** When set, write full call transcript (caller + assistant text) to this dir at teardown. No audio. */

@@ -63,12 +63,25 @@ transcribe_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 def _deduplicate_text(text: str) -> str:
     """Remove repeated phrases that Whisper sometimes hallucinates on short audio."""
     import re
-    # Match cases like "What time do you close? What time do you-" or "Hello hello"
-    # Split on sentence boundaries and remove near-duplicate trailing fragments
-    sentences = re.split(r'(?<=[.?!])\s+', text.strip())
+    stripped = text.strip()
+    if not stripped:
+        return stripped
+
+    # 1) Regex: detect a phrase repeated 2+ times (with optional separators)
+    #    e.g. "Yes, I'm pricing for Yes, I'm pricing for Yes, I'm pricing for"
+    deduped = re.sub(
+        r'(.{8,}?)\s*(?:\1\s*)+',
+        r'\1',
+        stripped,
+        flags=re.IGNORECASE,
+    )
+    if deduped != stripped:
+        stripped = deduped.strip()
+
+    # 2) Split on sentence boundaries and remove near-duplicate trailing fragments
+    sentences = re.split(r'(?<=[.?!])\s+', stripped)
     if len(sentences) <= 1:
-        return text.strip()
-    # Keep the first complete sentence; drop subsequent ones that are prefixes of it
+        return stripped
     result = [sentences[0]]
     for s in sentences[1:]:
         clean = s.rstrip('- ').lower()
@@ -77,16 +90,72 @@ def _deduplicate_text(text: str) -> str:
     return ' '.join(result)
 
 
-def _transcribe_file(path: str) -> str:
-    segments, _info = model.transcribe(
+WHISPER_CONDITION_ON_PREV = os.getenv(
+    "WHISPER_CONDITION_ON_PREVIOUS_TEXT", "false"
+).lower() in {"1", "true", "yes"}
+WHISPER_COMPRESSION_RATIO_THRESHOLD = float(
+    os.getenv("WHISPER_COMPRESSION_RATIO_THRESHOLD", "2.4")
+)
+WHISPER_LOG_PROB_THRESHOLD = float(
+    os.getenv("WHISPER_LOG_PROB_THRESHOLD", "-1.0")
+)
+WHISPER_REPETITION_PENALTY = float(
+    os.getenv("WHISPER_REPETITION_PENALTY", "1.1")
+)
+WHISPER_NO_SPEECH_THRESHOLD = float(
+    os.getenv("WHISPER_NO_SPEECH_THRESHOLD", "0.6")
+)
+
+logging.basicConfig(level=logging.INFO)
+logger.info(
+    "Whisper config: model=%s device=%s compute=%s beam=%d vad=%s no_speech=%.2f "
+    "compress_ratio=%.1f log_prob=%.1f rep_penalty=%.1f",
+    WHISPER_MODEL, WHISPER_DEVICE, WHISPER_COMPUTE_TYPE, WHISPER_BEAM_SIZE,
+    WHISPER_VAD_FILTER, WHISPER_NO_SPEECH_THRESHOLD,
+    WHISPER_COMPRESSION_RATIO_THRESHOLD, WHISPER_LOG_PROB_THRESHOLD,
+    WHISPER_REPETITION_PENALTY,
+)
+
+
+def _transcribe_file(path: str, *, language: str | None = None, prompt: str | None = None) -> str:
+    effective_lang = language or WHISPER_LANGUAGE
+    effective_prompt = prompt or WHISPER_INITIAL_PROMPT or None
+
+    file_size = os.path.getsize(path)
+    logger.info(
+        "transcribe start: file=%s size=%d lang=%s vad=%s beam=%d no_speech=%.2f model=%s",
+        path, file_size, effective_lang, WHISPER_VAD_FILTER, WHISPER_BEAM_SIZE,
+        WHISPER_NO_SPEECH_THRESHOLD, WHISPER_MODEL,
+    )
+
+    segments, info = model.transcribe(
         path,
         beam_size=WHISPER_BEAM_SIZE,
-        language=WHISPER_LANGUAGE,
+        language=effective_lang,
         vad_filter=WHISPER_VAD_FILTER,
-        initial_prompt=WHISPER_INITIAL_PROMPT or None,
-        no_speech_threshold=0.6,            # suppress hallucinated speech in silence
+        initial_prompt=effective_prompt,
+        no_speech_threshold=WHISPER_NO_SPEECH_THRESHOLD,
+        condition_on_previous_text=WHISPER_CONDITION_ON_PREV,
+        compression_ratio_threshold=WHISPER_COMPRESSION_RATIO_THRESHOLD,
+        log_prob_threshold=WHISPER_LOG_PROB_THRESHOLD,
+        repetition_penalty=WHISPER_REPETITION_PENALTY,
     )
-    text_chunks = [seg.text for seg in segments]
+    all_segments = list(segments)
+    text_chunks = [seg.text for seg in all_segments]
+
+    logger.info(
+        "transcribe done: segments=%d lang=%s lang_prob=%.3f duration=%.2fs",
+        len(all_segments),
+        info.language,
+        info.language_probability,
+        info.duration,
+    )
+    for i, seg in enumerate(all_segments):
+        logger.info(
+            "  seg[%d] [%.2f-%.2f] avg_logprob=%.3f no_speech=%.3f text=%r",
+            i, seg.start, seg.end, seg.avg_logprob, seg.no_speech_prob, seg.text,
+        )
+
     raw = "".join(text_chunks).strip()
     return _deduplicate_text(raw)
 
@@ -153,8 +222,14 @@ async def transcribe(request: Request):
             tmp.write(body)
             tmp_path = tmp.name
 
+        # Read optional per-request overrides from query params
+        req_language = request.query_params.get("language")
+        req_prompt = request.query_params.get("prompt")
+
         async with transcribe_semaphore:
-            text = await run_in_threadpool(_transcribe_file, tmp_path)
+            text = await run_in_threadpool(
+                _transcribe_file, tmp_path, language=req_language, prompt=req_prompt,
+            )
 
         return JSONResponse({"text": text})
 

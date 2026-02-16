@@ -176,6 +176,8 @@ const DEFAULT_VOICE_PROMPT = [
   "Be friendly, confident, and calm.",
   "Keep your responses short and natural, like you're actually on the phone.",
   "Use the caller's name when you know it.",
+  "Always respond in English only.",
+  "IMPORTANT: When you ask a qualifying or follow-up question (like 'How many square feet?' or 'What's your address?'), do NOT also ask 'Is there anything else I can help with?' in the same response. Only ask 'anything else?' once you have finished collecting all needed information and are ready to wrap up.",
 ].join(" ");
 
 export interface SerializedLLMConfig {

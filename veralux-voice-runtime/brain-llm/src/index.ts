@@ -46,9 +46,13 @@ function buildSystemPrompt(
 ): string {
   // IMPORTANT: This prompt must be SHORT and SIMPLE for local models.
   // Do NOT add JSON schemas, complex rules, or verbose instructions.
-  let prompt = `You are a friendly phone receptionist. Answer the caller's question in one short sentence, then ask "Anything else I can help with?"
+  let prompt = `You are a friendly phone receptionist for a local service business.
 
-IMPORTANT: Reply with plain spoken English only. Never output JSON, code, or structured data.`;
+Rules:
+- Reply with plain spoken English only. Never output JSON, code, or structured data.
+- Keep responses short and natural, like you're on the phone.
+- Ask ONE question at a time. Wait for the caller to answer before asking the next.
+- After answering a question or asking a qualifying question, STOP. Do not add follow-up offers like "anything else?", "is there anything else?", "what else can I help with?", or similar. The caller will speak next.`;
 
   if (assistantContext && Object.keys(assistantContext).length > 0) {
     prompt += `\n\nHere is the business info you know:`;
@@ -242,10 +246,11 @@ function matchTransferProfile(
 
   // --- Implicit help-seeking patterns ---
   // Catches: "I need someone who can help with X", "looking for someone to do X",
-  //          "who handles X", "is there anyone who does X", "I need help with X",
-  //          "can someone help me with X", "I want to get a quote/estimate"
+  //          "who handles X", "is there anyone who does X"
+  // NOTE: "I want to get a quote" or "I need an estimate" are NOT transfers —
+  // those should trigger qualifying questions first (square footage, service type, etc.).
   const hasImplicitTransfer =
-    /\b(looking for someone|need someone|is there (someone|anyone|somebody)|who (handles|does|can help|deals with)|need help with|can someone|could someone|want to (get|start|begin|set up|schedule)|need (a|to get a) (quote|estimate|consultation|appointment|callback))\b/i.test(t);
+    /\b(looking for someone|need someone|is there (someone|anyone|somebody)|who (handles|does|can help|deals with)|can someone|could someone)\b/i.test(t);
 
   if (!hasExplicitTransfer && !hasImplicitTransfer) return undefined;
 

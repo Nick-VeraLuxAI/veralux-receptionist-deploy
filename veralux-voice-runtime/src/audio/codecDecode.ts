@@ -1974,8 +1974,10 @@ export async function decodeTelnyxPayloadToPcm16(opts: DecodeTelnyxOptions): Pro
     // requireBe = hard policy: if true and we cannot parse BE, we reject (NO fallback)
     const requireBe = forcedBe || parseBoolEnv(process.env.AMRWB_REQUIRE_BE);
 
-    // If BE is active, do NOT allow raw octet fallback.
-    const octetFallbackAllowed = !beActive && parseBoolEnv(process.env.AMRWB_ALLOW_OCTET_FALLBACK);
+    // Allow octet fallback when explicitly enabled, even if transcoder auto-detected BE.
+    // The old logic (!beActive && ...) blocked fallback whenever the transcoder guessed BE,
+    // but the BE decode can produce near-silent audio when the stream is actually octet-aligned.
+    const octetFallbackAllowed = parseBoolEnv(process.env.AMRWB_ALLOW_OCTET_FALLBACK);
 
     const logPathSelectOnce = (chosenPath: 'be' | 'octet'): void => {
       if (state.amrwbPathSelectedLogged) return;
@@ -2232,8 +2234,7 @@ export async function decodeTelnyxPayloadToPcm16(opts: DecodeTelnyxOptions): Pro
     candidates.push(...valid);
 
     candidates.sort((a, b) => scoreCandidate(b) - scoreCandidate(a));
-    const transcodedCandidate = candidates.find((candidate) => candidate.label === 'transcoded');
-    const chosen = transcodedCandidate ?? candidates[0]!;
+    const chosen = candidates[0]!;
     const dep = chosen.dep;
 
     const chosenPath: 'be' | 'octet' = chosen.label === 'raw' ? 'octet' : 'be';

@@ -168,6 +168,8 @@ export class TenantRegistry {
           stage: (c.stage as any) || "greeting",
           lead: c.lead || {},
           history: Array.isArray(c.history) ? c.history : [],
+          createdAt: c.created_at ? new Date(c.created_at).getTime() : Date.now(),
+          lastActivityAt: c.updated_at ? new Date(c.updated_at).getTime() : Date.now(),
         }));
 
       // ✅ IMPORTANT: declare ctx before callbacks capture it

@@ -58,7 +58,7 @@ import {
   type AdminRole,
 } from "./auth";
 import { secretStore } from "./secretStore";
-import { listAuditLogs, upsertUserBySub, listMembershipsForUser, closePool, pingPool, getSubscription, upsertSubscription, pool as dbPool, type BrandingConfig } from "./db";
+import { listAuditLogs, upsertUserBySub, listMembershipsForUser, closePool, pingPool, getSubscription, upsertSubscription, pool as dbPool, type BrandingConfig, insertCallHistory, listCallHistory, getCallHistoryById } from "./db";
 import { rateLimit } from "./rateLimit";
 import { closeRedis as closeRateLimitRedis } from "./redis";
 import { normalizePhoneNumber } from "./utils/phone";
@@ -596,9 +596,28 @@ async function syncLLMContextToRuntime(tenant: TenantContext): Promise<void> {
       assistantContext["Pricing & Services"] = pricingLines + (notes ? `\nNote: ${notes}` : "");
     }
 
+    // Build a domain-specific STT prompt from the tenant's pricing catalog
+    // so Whisper is biased toward recognizing service/product names.
+    const sttPromptParts = [
+      "Phone call with a receptionist at a local service business.",
+    ];
+    if (tenant.pricing?.items?.length) {
+      const names = tenant.pricing.items.map((item) => item.name).join(", ");
+      sttPromptParts.push(`The business offers: ${names}.`);
+    }
+    sttPromptParts.push(
+      "The caller may ask about pricing, scheduling, business hours, or to speak with the owner or manager.",
+    );
+    const sttPrompt = sttPromptParts.join(" ");
+
     const updatedConfig: RuntimeTenantConfig = {
       ...existing,
       greetingText: prompts.greetingText,
+      // Inject the dynamic STT prompt so Whisper recognizes domain vocabulary
+      stt: {
+        ...existing.stt,
+        prompt: sttPrompt,
+      },
       // Provide business info to the LLM as assistantContext
       ...(Object.keys(assistantContext).length > 0 ? { assistantContext } : {}),
       llmContext: {
@@ -2025,7 +2044,7 @@ app.post("/api/tts/preview", async (req, res) => {
     if (!kokoroUrl.endsWith("/tts")) kokoroUrl += "/tts";
 
     const voice = kokoroVoice || (ttsCfg as any).kokoroVoice || "af_bella";
-    const rate = kokoroSpeed ?? (ttsCfg as any).kokoroSpeed ?? 1.0;
+    const rate = kokoroSpeed ?? (ttsCfg as any).kokoroSpeed ?? 1.3;
 
     const body: Record<string, unknown> = {
       text: sampleText,
@@ -2595,6 +2614,21 @@ app.post("/api/runtime/calls", adminGuard("admin"), (req, res) => {
     incrementUsage(tenantId, "call_count", 1).catch(() => {});
     incrementUsage(tenantId, "call_minutes", callMinutes).catch(() => {});
 
+    // Archive to call_history (async, don't block response)
+    insertCallHistory({
+      tenantId,
+      callId,
+      callerId: endingCall?.callerId,
+      stage: endingCall?.stage ?? "closed",
+      lead: endingCall?.lead ?? {},
+      history: endingCall?.history ?? [],
+      transcript: req.body.transcript,
+      durationMs,
+      startedAt: endingCall?.createdAt ? new Date(endingCall.createdAt) : undefined,
+    }).catch(err => {
+      console.error("[runtime/calls] Failed to archive call:", err);
+    });
+
     // Fire workflow event bus (async, don't block response)
     if (endingCall) {
       const workflowEvent: CallEndedEvent = {
@@ -2617,6 +2651,66 @@ app.post("/api/runtime/calls", adminGuard("admin"), (req, res) => {
   }
 
   return res.status(400).json({ error: "invalid_action", validActions: ["start", "update", "end"] });
+});
+
+/* ────────────────────────────────────────────────
+   Admin – Call History (completed calls archive)
+   ──────────────────────────────────────────────── */
+
+app.get("/api/admin/call-history", adminGuard("admin"), async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  const offset = Number(req.query.offset) || 0;
+  try {
+    const data = await listCallHistory(tenant.id, limit, offset);
+    res.json(data);
+  } catch (err) {
+    console.error("[call-history] list error:", err);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+app.get("/api/admin/call-history/:id", adminGuard("admin"), async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  try {
+    const row = await getCallHistoryById(req.params.id, tenant.id);
+    if (!row) return res.status(404).json({ error: "not_found" });
+    res.json(row);
+  } catch (err) {
+    console.error("[call-history] get error:", err);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/* ────────────────────────────────────────────────
+   Owner – Call History + Summaries
+   ──────────────────────────────────────────────── */
+
+app.get("/api/owner/call-history", async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const limit = Math.min(Number(req.query.limit) || 25, 100);
+  const offset = Number(req.query.offset) || 0;
+  try {
+    const data = await listCallHistory(tenant.id, limit, offset);
+    // Return a simplified view for owners (exclude raw history/lead)
+    const simplified = data.rows.map(r => ({
+      id: r.id,
+      callerId: r.caller_id,
+      stage: r.stage,
+      summary: r.summary,
+      transcript: r.transcript,
+      durationMs: r.duration_ms,
+      startedAt: r.started_at,
+      endedAt: r.ended_at,
+    }));
+    res.json({ rows: simplified, total: data.total });
+  } catch (err) {
+    console.error("[owner/call-history] error:", err);
+    res.status(500).json({ error: "internal_error" });
+  }
 });
 
 // Runtime billing check — called by voice runtime before accepting a call
@@ -3315,6 +3409,193 @@ app.post("/api/telnyx/call-control", (_req, res) =>
 app.get("/api/telnyx/audio/:id.wav", (_req, res) =>
   respondVoiceRuntimeMoved(res)
 );
+
+/* ────────────────────────────────────────────────
+   Test Recorder — Record phrases, test Whisper + Brain
+   ──────────────────────────────────────────────── */
+const TEST_RECORDINGS_DIR = path.join(__dirname, "..", "public", "test-recordings");
+if (!fs.existsSync(TEST_RECORDINGS_DIR)) {
+  fs.mkdirSync(TEST_RECORDINGS_DIR, { recursive: true });
+}
+
+const testRecordingUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, TEST_RECORDINGS_DIR),
+    filename: (_req, file, cb) => {
+      const label = ((_req as any).body?.label || "recording").replace(/[^a-zA-Z0-9_-]/g, "_");
+      cb(null, `${label}-${Date.now()}${path.extname(file.originalname) || ".webm"}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+// Whisper + Brain URLs (reachable from inside Docker network)
+// Use /transcribe_file (multipart) so Whisper gets filename hints for codec detection
+const TEST_WHISPER_URL = (process.env.WHISPER_URL || "http://whisper:9000/transcribe").replace(/\/transcribe$/, "/transcribe_file");
+const TEST_BRAIN_URL = process.env.BRAIN_URL || "http://brain:3001/reply";
+
+// List saved test recordings
+app.get("/api/test-recordings", (_req, res) => {
+  try {
+    const files = fs.readdirSync(TEST_RECORDINGS_DIR)
+      .filter(f => !f.startsWith("."))
+      .sort()
+      .map(filename => {
+        const match = filename.match(/^(.+)-\d+\.\w+$/);
+        return { filename, label: match ? match[1].replace(/_/g, " ") : filename };
+      });
+    res.json({ recordings: files });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// Save a test recording
+app.post("/api/test-recordings", testRecordingUpload.single("audio"), (req, res) => {
+  if (!req.file) {
+    res.status(400).json({ error: "No audio file" });
+    return;
+  }
+  res.json({ saved: true, filename: req.file.filename });
+});
+
+// Delete a test recording
+app.delete("/api/test-recordings/:filename", (req, res) => {
+  const filePath = path.join(TEST_RECORDINGS_DIR, path.basename(req.params.filename));
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    res.json({ deleted: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// Test pipeline: Whisper transcription → Brain reply (accepts upload or saved filename)
+app.post("/api/test-pipeline", testRecordingUpload.single("audio"), async (req, res) => {
+  let audioPath: string | undefined;
+  let cleanup = false;
+
+  if (req.file) {
+    audioPath = req.file.path;
+    cleanup = true;
+  } else if (req.query.file) {
+    audioPath = path.join(TEST_RECORDINGS_DIR, path.basename(String(req.query.file)));
+    if (!fs.existsSync(audioPath)) {
+      res.status(404).json({ error: "Recording not found" });
+      return;
+    }
+  }
+
+  if (!audioPath) {
+    res.status(400).json({ error: "No audio provided" });
+    return;
+  }
+
+  const result: Record<string, unknown> = {};
+
+  try {
+    // Helper: run a file through Whisper → Brain and return results
+    const ext = path.extname(audioPath!) || ".webm";
+    const audioData = fs.readFileSync(audioPath!);
+
+    // Step 1: Send to Whisper (multipart /transcribe_file)
+    const sttStart = Date.now();
+    const formData = new FormData();
+    formData.append("file", new Blob([audioData]), `audio${ext}`);
+    const whisperResp = await fetch(TEST_WHISPER_URL, { method: "POST", body: formData });
+    const whisperData = await whisperResp.json() as { text?: string };
+    result.sttMs = Date.now() - sttStart;
+    result.transcript = whisperData.text || "";
+
+    if (!result.transcript) {
+      result.error = "Whisper returned empty transcript";
+      res.json(result);
+      return;
+    }
+
+    // Step 2: Send transcript to Brain
+    const llmStart = Date.now();
+    const brainResp = await fetch(TEST_BRAIN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transcript: result.transcript,
+        history: [],
+        transferProfiles: [],
+        assistantContext: {},
+      }),
+    });
+    const brainData = await brainResp.json() as { text?: string; transfer?: unknown; hangup?: boolean };
+    result.llmMs = Date.now() - llmStart;
+    result.reply = brainData.text || "";
+    result.transfer = brainData.transfer || null;
+    result.hangup = brainData.hangup || false;
+  } catch (err) {
+    result.error = String(err);
+  } finally {
+    if (cleanup && audioPath) {
+      try { fs.unlinkSync(audioPath); } catch { /* ignore */ }
+    }
+  }
+
+  res.json(result);
+});
+
+// Re-test a saved recording (GET variant)
+app.get("/api/test-pipeline", async (req, res) => {
+  const filename = req.query.file;
+  if (!filename) {
+    res.status(400).json({ error: "?file= required" });
+    return;
+  }
+  const audioPath = path.join(TEST_RECORDINGS_DIR, path.basename(String(filename)));
+  if (!fs.existsSync(audioPath)) {
+    res.status(404).json({ error: "Recording not found" });
+    return;
+  }
+
+  const result: Record<string, unknown> = {};
+
+  try {
+    const ext = path.extname(audioPath) || ".webm";
+    const audioData = fs.readFileSync(audioPath);
+
+    const sttStart = Date.now();
+    const formData = new FormData();
+    formData.append("file", new Blob([audioData]), `audio${ext}`);
+    const whisperResp = await fetch(TEST_WHISPER_URL, { method: "POST", body: formData });
+    const whisperData = await whisperResp.json() as { text?: string };
+    result.sttMs = Date.now() - sttStart;
+    result.transcript = whisperData.text || "";
+
+    if (!result.transcript) {
+      result.error = "Whisper returned empty transcript";
+      res.json(result);
+      return;
+    }
+
+    const llmStart = Date.now();
+    const brainResp = await fetch(TEST_BRAIN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transcript: result.transcript,
+        history: [],
+        transferProfiles: [],
+        assistantContext: {},
+      }),
+    });
+    const brainData = await brainResp.json() as { text?: string; transfer?: unknown; hangup?: boolean };
+    result.llmMs = Date.now() - llmStart;
+    result.reply = brainData.text || "";
+    result.transfer = brainData.transfer || null;
+    result.hangup = brainData.hangup || false;
+  } catch (err) {
+    result.error = String(err);
+  }
+
+  res.json(result);
+});
 
 /* ────────────────────────────────────────────────
    Admin UI shell

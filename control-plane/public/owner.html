@@ -741,6 +741,20 @@
         <button type="button" class="secondary" id="owner-refresh" style="margin-top: 10px">Refresh</button>
       </section>
 
+      <section class="owner-panel full-width" id="owner-call-history-section">
+        <h2>Call History &amp; Summaries</h2>
+        <p class="help">Detailed log of all completed calls with AI-generated summaries.</p>
+        <div id="owner-call-history" style="margin-top:8px;"></div>
+        <div id="owner-call-history-pagination" class="stat-row" style="margin-top:8px; justify-content:center; gap:8px;"></div>
+      </section>
+
+      <div id="owner-call-detail-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:999; align-items:center; justify-content:center;">
+        <div style="background:var(--bg, #1a1a2e); border-radius:12px; max-width:700px; width:90%; max-height:80vh; overflow-y:auto; padding:24px; position:relative; color:var(--text, #e8e8e8);">
+          <button type="button" id="owner-close-call-detail" style="position:absolute; top:12px; right:12px; background:none; border:none; color:var(--text, #fff); font-size:20px; cursor:pointer;">&times;</button>
+          <div id="owner-call-detail-content"></div>
+        </div>
+      </div>
+
       <!-- Billing (hidden if admin disables) -->
       <section class="owner-panel" id="billing-section" style="display:none;">
         <h2>Your subscription</h2>
@@ -839,7 +853,7 @@
         activeVoiceId: "preset:default",
         // Kokoro-specific
         kokoroVoice: "af_bella",
-        kokoroSpeed: 1.0,
+        kokoroSpeed: 1.3,
       };
 
       /* ── TTS Engine panel switching ── */
@@ -1056,12 +1070,132 @@
             $("stat-messages").textContent = analyticsRes.totalCallerMessages ?? analyticsRes.callerMessageCount ?? "—";
           }
           if (billingRes) renderBilling(billingRes);
+
+          // Load call history
+          loadOwnerCallHistory().catch(err => console.error("loadOwnerCallHistory error:", err));
         } catch (err) {
           console.error("loadOwnerData error:", err);
         } finally {
           const refreshBtn = $("owner-refresh");
           if (refreshBtn) { refreshBtn.textContent = "Refresh"; refreshBtn.disabled = false; }
         }
+      }
+
+      // ── Call History ──
+
+      let ownerCallHistoryPage = 0;
+      const OWNER_HISTORY_PAGE_SIZE = 10;
+
+      function ownerFormatDuration(ms) {
+        if (!ms || ms <= 0) return "0s";
+        const sec = Math.floor(ms / 1000);
+        if (sec < 60) return sec + "s";
+        const min = Math.floor(sec / 60);
+        const rem = sec % 60;
+        return min + "m " + rem + "s";
+      }
+
+      function ownerEsc(str) {
+        const d = document.createElement("div"); d.textContent = str; return d.innerHTML;
+      }
+
+      async function loadOwnerCallHistory() {
+        const container = $("owner-call-history");
+        const pagination = $("owner-call-history-pagination");
+        if (!container) return;
+        try {
+          const data = await ownerFetch(`/api/owner/call-history?limit=${OWNER_HISTORY_PAGE_SIZE}&offset=${ownerCallHistoryPage * OWNER_HISTORY_PAGE_SIZE}`);
+          const rows = data.rows || [];
+          const total = data.total || 0;
+          container.innerHTML = "";
+          if (pagination) pagination.innerHTML = "";
+
+          if (rows.length === 0) {
+            container.textContent = "No completed calls yet. Calls will appear here after they end.";
+            return;
+          }
+
+          rows.forEach(r => {
+            const card = document.createElement("div");
+            card.style.cssText = "background:var(--surface, #222); border-radius:8px; padding:12px; margin-bottom:8px; cursor:pointer;";
+            card.onmouseover = () => card.style.opacity = "0.85";
+            card.onmouseout = () => card.style.opacity = "1";
+            const endedAt = r.endedAt ? new Date(r.endedAt).toLocaleString() : "";
+            const summary = r.summary ? r.summary.slice(0, 100) + (r.summary.length > 100 ? "..." : "") : "";
+            const stageColor = r.stage === "closed" ? "#4ade80" : r.stage === "handoff" ? "#C9A04E" : "#60a5fa";
+            card.innerHTML = `
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div>
+                  <strong>${ownerEsc(r.callerId || "Unknown Caller")}</strong>
+                  <span class="help" style="margin-left:8px;">${ownerEsc(endedAt)}</span>
+                </div>
+                <div style="display:flex; gap:8px; align-items:center;">
+                  <span style="color:${stageColor}; font-size:12px;">${ownerEsc(r.stage || "")}</span>
+                  <span class="help">${ownerFormatDuration(r.durationMs)}</span>
+                </div>
+              </div>
+              ${summary ? `<div class="help" style="margin-top:4px;">${ownerEsc(summary)}</div>` : ""}
+            `;
+            card.addEventListener("click", () => showOwnerCallDetail(r));
+            container.appendChild(card);
+          });
+
+          // Pagination
+          if (pagination) {
+            const totalPages = Math.ceil(total / OWNER_HISTORY_PAGE_SIZE);
+            if (totalPages > 1) {
+              if (ownerCallHistoryPage > 0) {
+                const prev = document.createElement("button");
+                prev.className = "secondary"; prev.textContent = "Previous";
+                prev.onclick = () => { ownerCallHistoryPage--; loadOwnerCallHistory(); };
+                pagination.appendChild(prev);
+              }
+              const info = document.createElement("span");
+              info.className = "help";
+              info.textContent = `Page ${ownerCallHistoryPage + 1} of ${totalPages}`;
+              pagination.appendChild(info);
+              if (ownerCallHistoryPage < totalPages - 1) {
+                const next = document.createElement("button");
+                next.className = "secondary"; next.textContent = "Next";
+                next.onclick = () => { ownerCallHistoryPage++; loadOwnerCallHistory(); };
+                pagination.appendChild(next);
+              }
+            }
+          }
+        } catch (err) {
+          container.textContent = "Could not load call history.";
+          console.error("loadOwnerCallHistory:", err);
+        }
+      }
+
+      function showOwnerCallDetail(r) {
+        const modal = $("owner-call-detail-modal");
+        const content = $("owner-call-detail-content");
+        if (!modal || !content) return;
+        modal.style.display = "flex";
+
+        let html = `<h2 style="margin-top:0;">Call Details</h2>`;
+        html += `<div style="display:flex; gap:16px; flex-wrap:wrap; margin-bottom:12px;">`;
+        html += `<div class="help"><strong>Caller:</strong> ${ownerEsc(r.callerId || "Unknown")}</div>`;
+        html += `<div class="help"><strong>Duration:</strong> ${ownerFormatDuration(r.durationMs)}</div>`;
+        html += `<div class="help"><strong>Time:</strong> ${r.endedAt ? new Date(r.endedAt).toLocaleString() : "N/A"}</div>`;
+        html += `</div>`;
+
+        if (r.summary) {
+          html += `<div style="background:var(--surface-alt, #162236); border-radius:8px; padding:12px; margin-bottom:12px;">`;
+          html += `<div style="font-size:12px; color:#C9A04E; margin-bottom:4px;">AI Summary</div>`;
+          html += `<div>${ownerEsc(r.summary)}</div>`;
+          html += `</div>`;
+        }
+
+        if (r.transcript) {
+          html += `<div style="margin-top:8px;">`;
+          html += `<div style="font-size:12px; color:#60a5fa; margin-bottom:4px;">Transcript</div>`;
+          html += `<pre style="white-space:pre-wrap; background:var(--surface, #222); border-radius:6px; padding:10px; max-height:300px; overflow-y:auto; font-size:13px;">${ownerEsc(r.transcript)}</pre>`;
+          html += `</div>`;
+        }
+
+        content.innerHTML = html;
       }
 
       // ── Billing ──
@@ -1428,7 +1562,7 @@
 
           // Kokoro-specific fields
           voiceConfig.kokoroVoice = cfg.kokoroVoice || cfg.voice || "af_bella";
-          voiceConfig.kokoroSpeed = typeof cfg.kokoroSpeed === "number" ? cfg.kokoroSpeed : 1.0;
+          voiceConfig.kokoroSpeed = typeof cfg.kokoroSpeed === "number" ? cfg.kokoroSpeed : 1.3;
           
           // Handle cloned voice (single) from server
           if (cfg.clonedVoice && cfg.clonedVoice.speakerWavUrl) {
@@ -1690,7 +1824,7 @@
 
       /* ── Kokoro Settings ────────────────────────── */
 
-      const KOKORO_DEFAULTS = { kokoroVoice: "af_bella", kokoroSpeed: 1.0 };
+      const KOKORO_DEFAULTS = { kokoroVoice: "af_bella", kokoroSpeed: 1.3 };
 
       function loadKokoroSettings(cfg) {
         const voiceSel = $("kokoro-voice-selector");
@@ -1762,7 +1896,7 @@
           text,
           engine: "kokoro",
           kokoroVoice: voiceSel ? voiceSel.value : "af_bella",
-          kokoroSpeed: speedSlider ? parseFloat(speedSlider.value) : 1.0,
+          kokoroSpeed: speedSlider ? parseFloat(speedSlider.value) : 1.3,
         };
 
         btn.disabled = true;
@@ -3053,6 +3187,20 @@
         $("owner-save-prompts").addEventListener("click", () => requireAuth(() => saveOwnerPrompts()));
         $("owner-save-business-info").addEventListener("click", () => requireAuth(() => saveOwnerBusinessInfo()));
         $("owner-refresh").addEventListener("click", () => requireAuth(() => loadOwnerData()));
+
+        // Call detail modal close
+        const closeOwnerCallDetail = $("owner-close-call-detail");
+        if (closeOwnerCallDetail) {
+          closeOwnerCallDetail.addEventListener("click", () => {
+            $("owner-call-detail-modal").style.display = "none";
+          });
+        }
+        const ownerCallModal = $("owner-call-detail-modal");
+        if (ownerCallModal) {
+          ownerCallModal.addEventListener("click", (e) => {
+            if (e.target === ownerCallModal) ownerCallModal.style.display = "none";
+          });
+        }
 
         // Brand settings listeners
         $("brand-save").addEventListener("click", () => requireAuth(() => saveBranding()));
