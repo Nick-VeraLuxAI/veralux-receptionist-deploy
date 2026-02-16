@@ -1,5 +1,6 @@
 import { env } from '../env';
 import { log } from '../log';
+import { withRetry } from '../retry';
 import { TTSRequest, TTSResult } from './types';
 
 export async function synthesizeSpeech(request: TTSRequest): Promise<TTSResult> {
@@ -15,27 +16,33 @@ export async function synthesizeSpeech(request: TTSRequest): Promise<TTSResult> 
     { event: 'tts_request', sample_rate: sampleRate, voice: request.voice, format },
     'tts request',
   );
-  const response = await fetch(kokoroUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+  const { response, arrayBuffer } = await withRetry(
+    async () => {
+      const res = await fetch(kokoroUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: request.text,
+          voice_id: request.voice,
+          rate: request.kokoroSpeed,
+          format,
+          sampleRate,
+        }),
+        signal: AbortSignal.timeout(10_000),
+      });
+
+      if (!res.ok) {
+        const body = await res.text();
+        log.error({ status: res.status, body }, 'kokoro tts error');
+        throw new Error(`kokoro tts error ${res.status}`);
+      }
+
+      return { response: res, arrayBuffer: await res.arrayBuffer() };
     },
-    body: JSON.stringify({
-      text: request.text,
-      voice_id: request.voice,
-      rate: request.kokoroSpeed,
-      format,
-      sampleRate,
-    }),
-  });
-
-  if (!response.ok) {
-    const body = await response.text();
-    log.error({ status: response.status, body }, 'kokoro tts error');
-    throw new Error(`kokoro tts error ${response.status}`);
-  }
-
-  const arrayBuffer = await response.arrayBuffer();
+    { label: 'kokoro_tts', retries: 1 },
+  );
   return {
     audio: Buffer.from(arrayBuffer),
     contentType: response.headers.get('content-type') ?? 'audio/wav',

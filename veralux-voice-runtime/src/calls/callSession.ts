@@ -2158,7 +2158,7 @@ export class CallSession {
     const firstAudioMaxMs = env.BRAIN_STREAM_FIRST_AUDIO_MAX_MS;
 
     // === PSTN streaming ===
-    // Previously disabled for llama3.2:3b (unreliable streaming output).
+    // Previously disabled for llama3.2:3b (unreliable streaming). Re-enabled for qwen2.5:7b.
     // Now re-enabled for qwen2.5:7b which streams reliably.
     // Set BRAIN_PSTN_NO_STREAM=true to force non-streaming on PSTN if needed.
     const forcePstnNoStream = process.env.BRAIN_PSTN_NO_STREAM === 'true';

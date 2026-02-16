@@ -24,7 +24,7 @@ import type {
 const PORT = Number(process.env.PORT ?? 3001);
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim() || 'ollama';
 const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim() || undefined;
-const MODEL = process.env.OPENAI_MODEL?.trim() ?? 'llama3.2:3b';
+const MODEL = process.env.OPENAI_MODEL?.trim() ?? 'qwen2.5:7b';
 const MAX_TOKENS = Number(process.env.BRAIN_MAX_TOKENS ?? 50);
 // Ollama is 8-9x slower when tools are passed (even an empty array).
 // We detect end_call and transfer_call intent via heuristics instead.
@@ -44,7 +44,7 @@ function buildSystemPrompt(
   transferProfiles?: TransferProfile[],
   assistantContext?: Record<string, string>,
 ): string {
-  // IMPORTANT: This prompt must be SHORT and SIMPLE for small models (llama3.2:3b).
+  // IMPORTANT: This prompt must be SHORT and SIMPLE for local models.
   // Do NOT add JSON schemas, complex rules, or verbose instructions.
   let prompt = `You are a friendly phone receptionist. Answer the caller's question in one short sentence, then ask "Anything else I can help with?"
 

@@ -168,10 +168,27 @@ cmd_build() {
     
     local audio_profile
     audio_profile=$(detect_audio_profile)
-    
+
+    # Tag images with git SHA for reproducible builds and easy rollback
+    local git_sha
+    git_sha=$(git rev-parse --short HEAD 2>/dev/null || echo "dev")
+    local version_tag="${VERSION:-$git_sha}"
+
+    info "Tagging images with VERSION=$version_tag (git: $git_sha)"
+    export VERSION="$version_tag"
+
     $COMPOSE_CMD -f "$COMPOSE_FILE" -p "$PROJECT_NAME" $audio_profile build "$@"
     
-    success "Build complete!"
+    # Also tag as :latest for convenience
+    if [[ "$version_tag" != "latest" ]]; then
+        info "Also tagging as :latest..."
+        local registry="${REGISTRY:-ghcr.io/nick-veraluxai}"
+        for img in veralux-control-plane veralux-voice-runtime veralux-brain; do
+            docker tag "$registry/$img:$version_tag" "$registry/$img:latest" 2>/dev/null || true
+        done
+    fi
+
+    success "Build complete! Images tagged: $version_tag"
 }
 
 cmd_update() {
@@ -282,6 +299,15 @@ cmd_backup() {
     bash scripts/backup.sh "$@"
 }
 
+cmd_retention() {
+    local days="${1:-90}"
+    if [[ ! -x "scripts/db-retention.sh" ]]; then
+        error "Retention script not found at scripts/db-retention.sh"
+        exit 1
+    fi
+    bash scripts/db-retention.sh "$days"
+}
+
 cmd_tunnel() {
     local tunnel_type="${1:-cloudflare}"
     
@@ -334,6 +360,20 @@ cmd_tunnel() {
     esac
 }
 
+cmd_version() {
+    local git_sha
+    git_sha=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+    local git_branch
+    git_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")
+    local env_version="${VERSION:-latest}"
+    echo "Veralux Receptionist"
+    echo "  Git:     $git_sha ($git_branch)"
+    echo "  VERSION: $env_version"
+    echo ""
+    echo "Running images:"
+    docker ps --filter "name=veralux-" --format '  {{.Names}}: {{.Image}}' 2>/dev/null || echo "  (no containers running)"
+}
+
 cmd_help() {
     echo "Veralux Receptionist - Deployment Script"
     echo ""
@@ -345,10 +385,12 @@ cmd_help() {
     echo "  restart [services...] Restart services"
     echo "  status               Show service status"
     echo "  logs [service]       Follow service logs"
-    echo "  build [services...]  Build images from local source"
+    echo "  build [services...]  Build images from local source (tagged with git SHA)"
     echo "  update               Rolling update (pull + restart one at a time)"
     echo "  backup [dir] [opts]  Backup the database"
+    echo "  retention [days]     Clean up records older than N days (default: 90)"
     echo "  tunnel [type]        Start with tunnel (cloudflare or ngrok)"
+    echo "  version              Show version info and running images"
     echo "  help                 Show this help message"
     echo ""
     echo "Tunnel Options:"
@@ -360,9 +402,15 @@ cmd_help() {
     echo "  ./deploy.sh build control         # Build just the control plane"
     echo "  ./deploy.sh update                # Rolling update (zero-downtime)"
     echo ""
-    echo "Backup & Restore:"
+    echo "Backup & Maintenance:"
     echo "  ./deploy.sh backup                # Backup to ./backups/"
     echo "  ./deploy.sh backup --s3 s3://b    # Backup + upload to S3"
+    echo "  ./deploy.sh retention             # Clean up records older than 90 days"
+    echo "  ./deploy.sh retention 30          # Clean up records older than 30 days"
+    echo ""
+    echo "Monitoring:"
+    echo "  docker compose --profile monitoring up -d   # Start Prometheus + Grafana"
+    echo "  Open http://localhost:3000 for Grafana (admin/veralux)"
     echo ""
     echo "Examples:"
     echo "  ./deploy.sh up                    # Start all core services"
@@ -414,9 +462,16 @@ main() {
             shift
             cmd_backup "$@"
             ;;
+        retention)
+            shift
+            cmd_retention "$@"
+            ;;
         tunnel)
             shift
             cmd_tunnel "$@"
+            ;;
+        version|--version|-v)
+            cmd_version
             ;;
         help|--help|-h)
             cmd_help

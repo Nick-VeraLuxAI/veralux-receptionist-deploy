@@ -1,5 +1,6 @@
 import { env } from '../env';
 import { log } from '../log';
+import { withRetry } from '../retry';
 import { ConversationTurn } from '../calls/types';
 import type { TransferProfile } from '../tenants/tenantConfig';
 import { defaultBrainReply } from './defaultBrain';
@@ -239,32 +240,37 @@ export async function generateAssistantReply(
       'brain routed to http',
     );
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const response = await withRetry(
+      async () => {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            tenantId: input.tenantId,
+            callControlId: input.callControlId,
+            transcript: input.transcript,
+            history: input.history,
+            ...(input.transferProfiles?.length
+              ? { transferProfiles: input.transferProfiles }
+              : {}),
+            ...(input.assistantContext &&
+            Object.keys(input.assistantContext).length > 0
+              ? { assistantContext: input.assistantContext }
+              : {}),
+          }),
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          const body = await readResponseText(res);
+          const preview = body.length > 500 ? `${body.slice(0, 500)}...` : body;
+          throw new Error(`brain reply failed ${res.status}: ${preview}`);
+        }
+        return res;
       },
-      body: JSON.stringify({
-        tenantId: input.tenantId,
-        callControlId: input.callControlId,
-        transcript: input.transcript,
-        history: input.history,
-        ...(input.transferProfiles?.length
-          ? { transferProfiles: input.transferProfiles }
-          : {}),
-        ...(input.assistantContext &&
-        Object.keys(input.assistantContext).length > 0
-          ? { assistantContext: input.assistantContext }
-          : {}),
-      }),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const body = await readResponseText(response);
-      const preview = body.length > 500 ? `${body.slice(0, 500)}...` : body;
-      throw new Error(`brain reply failed ${response.status}: ${preview}`);
-    }
+      { label: 'brain_reply', retries: 1 },
+    );
 
     const data = (await response.json()) as {
       text?: unknown;

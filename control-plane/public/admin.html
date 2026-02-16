@@ -494,7 +494,7 @@
 
             <div id="openai-fields">
               <label for="openaiModel">Model</label>
-              <input id="openaiModel" name="openaiModel" type="text" placeholder="llama3.2:3b" />
+              <input id="openaiModel" name="openaiModel" type="text" placeholder="qwen2.5:7b" />
 
               <label for="openaiApiKey">API key (kept server-side, never shown)</label>
               <input id="openaiApiKey" name="openaiApiKey" type="password" autocomplete="off" placeholder="sk-..." />
@@ -1492,7 +1492,7 @@
         const providerLabel = cfg.provider === "openai" ? "OpenAI (ChatGPT)" : "Local LLM";
         $("summary-provider").textContent = providerLabel;
         $("summary-model").textContent = cfg.provider === "openai"
-          ? `Model: ${cfg.openaiModel || "llama3.2:3b"}`
+          ? `Model: ${cfg.openaiModel || "qwen2.5:7b"}`
           : cfg.localUrl ? `URL: ${cfg.localUrl}` : "";
         $("api-key-status").textContent = cfg.hasOpenAIApiKey
           ? "API key is configured"
@@ -1686,7 +1686,7 @@
 
         const llmProvider = data.llm.provider === "openai" ? "OpenAI (ChatGPT)" : "Local LLM";
         const llmDetails = data.llm.provider === "openai"
-          ? [`Provider: ${llmProvider}`, `Model: ${data.llm.model || "llama3.2:3b"}`, `API Key: ${data.llm.hasOpenAIApiKey ? "Configured" : "Missing"}`]
+          ? [`Provider: ${llmProvider}`, `Model: ${data.llm.model || "qwen2.5:7b"}`, `API Key: ${data.llm.hasOpenAIApiKey ? "Configured" : "Missing"}`]
           : [`Provider: ${llmProvider}`, `URL: ${data.llm.localUrl || "-"}`];
         container.appendChild(
           healthCard("LLM", data.llm.status, llmDetails)
@@ -2737,7 +2737,8 @@
               <td style="padding:8px;" class="small">${run.stepsCompleted}/${run.stepsTotal}</td>
               <td style="padding:8px;" class="small">${escapeHtml(started)}</td>
               <td style="padding:8px;">
-                <button type="button" onclick='showRunDetails(${JSON.stringify(run).replace(/'/g, "\\'")})'
+                <button type="button" data-run="${escapeHtml(JSON.stringify(run))}"
+                  onclick="showRunDetails(JSON.parse(this.dataset.run))"
                   style="font-size:11px; padding:2px 8px; border-radius:4px; cursor:pointer;">Details</button>
               </td>
             </tr>`;
@@ -2982,7 +2983,7 @@
         list.innerHTML = stripePlansCache.map(p => {
           const intv = intervalLabels[p.billing_interval] || p.billing_interval;
           return `<li style="margin:4px 0; padding:8px 10px; border-radius:8px; background:rgba(246,243,236,0.04); border:1px solid rgba(246,243,236,0.08); display:flex; justify-content:space-between; align-items:center; gap:8px;">
-            <span style="flex:1;"><strong>${escapeHtml(p.name)}</strong> — $${(p.price_cents / 100).toFixed(2)} ${p.currency.toUpperCase()} / ${intv}</span>
+            <span style="flex:1;"><strong>${escapeHtml(p.name)}</strong> — $${(p.price_cents / 100).toFixed(2)} ${escapeHtml(p.currency.toUpperCase())} / ${escapeHtml(intv)}</span>
             <code class="small" style="flex-shrink:0;">${escapeHtml(p.stripe_price_id || "—")}</code>
             <button type="button" onclick="deleteStripePlanUI('${escapeHtml(p.id)}')" style="background:rgba(196,80,80,0.15); color:#e07070; border:1px solid rgba(196,80,80,0.3); padding:3px 10px; border-radius:6px; font-size:12px; cursor:pointer; flex-shrink:0;">Delete</button>
           </li>`;
@@ -3102,7 +3103,8 @@
           const urlEl = $("stripe-checkout-url");
           if (urlEl && data.url) {
             urlEl.style.display = "";
-            urlEl.innerHTML = `Checkout link: <a href="${escapeHtml(data.url)}" target="_blank" style="color:var(--primary); word-break:break-all;">${escapeHtml(data.url)}</a>`;
+            const safeUrl = /^https?:\/\//i.test(data.url) ? data.url : "#";
+            urlEl.innerHTML = `Checkout link: <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener" style="color:var(--primary); word-break:break-all;">${escapeHtml(data.url)}</a>`;
           }
           if (statusEl) statusEl.textContent = "Checkout session created. Send the link to the owner.";
           setStatus("Stripe checkout created", "ok");

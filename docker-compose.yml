@@ -141,8 +141,9 @@ services:
       - BRAIN_URL=http://brain:3001/reply
       - BRAIN_TIMEOUT_MS=${BRAIN_TIMEOUT_MS:-15000}
       - LLM_PROVIDER=${LLM_PROVIDER:-openai}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_MODEL=${OPENAI_MODEL:-llama3.2:3b}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-ollama}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-http://host.docker.internal:11434/v1}
+      - OPENAI_MODEL=${BRAIN_MODEL:-qwen2.5:7b}
       - LOCAL_LLM_URL=${LOCAL_LLM_URL:-}
       # Telnyx Configuration
       - TELNYX_API_KEY=${TELNYX_API_KEY}
@@ -607,6 +608,64 @@ services:
         aliases:
           - xtts
 
+  # =============================================================================
+  # Monitoring (Optional - enable with: docker compose --profile monitoring up)
+  # =============================================================================
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: veralux-prometheus
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+      - "--storage.tsdb.retention.size=1GB"
+    networks:
+      - veralux-network
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: veralux-grafana
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+      - monitoring
+    depends_on:
+      - prometheus
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-veralux}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    networks:
+      - veralux-network
+
 # =============================================================================
 # Volumes & Networks
 # =============================================================================
@@ -622,6 +681,10 @@ volumes:
     name: veralux-certbot-webroot
   certbot-certs:
     name: veralux-certbot-certs
+  prometheus-data:
+    name: veralux-prometheus-data
+  grafana-data:
+    name: veralux-grafana-data
 
 networks:
   veralux-network:

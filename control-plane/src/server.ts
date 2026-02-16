@@ -576,7 +576,7 @@ async function syncLLMContextToRuntime(tenant: TenantContext): Promise<void> {
     const prompts = tenant.config.getPrompts();
 
     // Build assistantContext from business info fields so the LLM
-    // can answer caller questions about hours, location, etc.
+    // can answer caller questions about hours, location, pricing, etc.
     const assistantContext: Record<string, string> = {};
     if (prompts.businessHours?.trim()) {
       assistantContext["Business Hours"] = prompts.businessHours.trim();
@@ -586,6 +586,14 @@ async function syncLLMContextToRuntime(tenant: TenantContext): Promise<void> {
     }
     if (prompts.businessFaq?.trim()) {
       assistantContext["Additional Info & FAQ"] = prompts.businessFaq.trim();
+    }
+    // Include pricing catalog so the LLM can answer cost questions during live calls
+    if (tenant.pricing?.items?.length) {
+      const pricingLines = tenant.pricing.items
+        .map((item) => `- ${item.name}: ${item.price}${item.description ? ` (${item.description})` : ""}`)
+        .join("\n");
+      const notes = tenant.pricing.notes?.trim();
+      assistantContext["Pricing & Services"] = pricingLines + (notes ? `\nNote: ${notes}` : "");
     }
 
     const updatedConfig: RuntimeTenantConfig = {
@@ -646,7 +654,7 @@ async function syncLLMContextToRuntime(tenant: TenantContext): Promise<void> {
     // Trigger greeting regeneration on the runtime
     if (prompts.greetingText) {
       try {
-        const runtimeUrl = process.env.RUNTIME_URL || "http://veralux-runtime:3001";
+        const runtimeUrl = process.env.VOICE_RUNTIME_URL || "http://runtime:4001";
         await fetch(`${runtimeUrl}/admin/regenerate-greeting`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1062,9 +1070,20 @@ app.get("/api/admin/system/health", asyncHandler(async (req, res) => {
    ──────────────────────────────────────────────── */
 
 const INSTALLER_USERNAME = process.env.INSTALLER_USERNAME || "VeraLux";
-const INSTALLER_PASSWORD = process.env.INSTALLER_PASSWORD || "JesusisKing";
+const INSTALLER_PASSWORD = process.env.INSTALLER_PASSWORD || "";
 
-app.post("/admin-auth", (req, res) => {
+if (!INSTALLER_PASSWORD && IS_PROD) {
+  console.error(
+    "[SECURITY] INSTALLER_PASSWORD is not set. " +
+    "The /admin-auth endpoint will reject all requests until a password is configured."
+  );
+}
+
+app.post("/admin-auth", authRateLimiter, (req, res) => {
+  if (!INSTALLER_PASSWORD) {
+    return res.status(503).json({ success: false, error: "Installer auth is not configured" });
+  }
+
   const { username, password } = req.body || {};
 
   if (!username || !password) {
@@ -1086,7 +1105,7 @@ app.post("/admin-auth", (req, res) => {
    Owner Portal – public auth (no adminGuard)
    ──────────────────────────────────────────────── */
 
-app.post("/api/owner/login", async (req, res) => {
+app.post("/api/owner/login", authRateLimiter, async (req, res) => {
   try {
     const { phone, passcode } = req.body || {};
 

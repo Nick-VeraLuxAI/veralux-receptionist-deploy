@@ -486,10 +486,18 @@ export class SessionManager {
         ended_at: transcript.endedAt,
         duration_ms: transcript.durationMs,
         turns: transcript.turns.length,
-        transcript_turns: transcript.turns,
         requestId: context.requestId,
       },
       'call transcript',
+    );
+
+    log.debug(
+      {
+        event: 'call_transcript_detail',
+        call_control_id: transcript.callControlId,
+        transcript_turns: transcript.turns,
+      },
+      'call transcript detail (PII)',
     );
 
     // Report call end to control plane (workflow automation engine)

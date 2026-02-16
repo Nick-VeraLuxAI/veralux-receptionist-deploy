@@ -57,10 +57,10 @@ When the runtime sends **transferProfiles** (departments/positions and their num
 
 ## Model
 
-Default model is **llama3.2:3b** (via local Ollama). Override with:
+Default model is **qwen2.5:7b** (via local Ollama). Override with:
 
 ```env
-OPENAI_MODEL=llama3.2:3b
+OPENAI_MODEL=qwen2.5:7b
 ```
 
 (or any other chat model supported by your configured backend).

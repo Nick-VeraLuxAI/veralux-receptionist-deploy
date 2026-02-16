@@ -11,7 +11,7 @@ export interface LLMRuntimeConfig {
 }
 
 const DEFAULT_LOCAL_URL = "http://127.0.0.1:8080/completion";
-const DEFAULT_OPENAI_MODEL = "llama3.2:3b";
+const DEFAULT_OPENAI_MODEL = "qwen2.5:7b";
 
 // STT defaults (env → fallback)
 const DEFAULT_WHISPER_URL =
