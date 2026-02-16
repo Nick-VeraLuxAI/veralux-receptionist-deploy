@@ -477,10 +477,23 @@ function createWindow() {
 
 // ─── App Lifecycle ────────────────────────────────────────────────────────────
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   setupIPC();
   createTray();
   createWindow();
+
+  // Auto-deploy: bring up all services on every app launch / login
+  try {
+    console.log('[auto-deploy] Starting all services...');
+    if (mainWindow) mainWindow.webContents.send('docker-action-start', { action: 'up' });
+    await dockerCompose(['up', '-d']);
+    console.log('[auto-deploy] All services started successfully');
+    if (mainWindow) mainWindow.webContents.send('docker-action-done', { action: 'up', success: true });
+  } catch (err) {
+    console.error('[auto-deploy] Failed to start services:', err.message);
+    if (mainWindow) mainWindow.webContents.send('docker-action-done', { action: 'up', success: false, error: err.message });
+  }
+
   startHealthPolling();
 });
 
