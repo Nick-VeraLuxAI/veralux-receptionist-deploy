@@ -25,7 +25,10 @@ const PORT = Number(process.env.PORT ?? 3001);
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY?.trim() || 'ollama';
 const OPENAI_BASE_URL = process.env.OPENAI_BASE_URL?.trim() || undefined;
 const MODEL = process.env.OPENAI_MODEL?.trim() ?? 'llama3.2:3b';
-const MAX_TOKENS = Number(process.env.BRAIN_MAX_TOKENS ?? 80);
+const MAX_TOKENS = Number(process.env.BRAIN_MAX_TOKENS ?? 50);
+// Ollama is 8-9x slower when tools are passed (even an empty array).
+// We detect end_call and transfer_call intent via heuristics instead.
+const TOOLS_DISABLED = (process.env.BRAIN_DISABLE_TOOLS ?? 'true').toLowerCase() === 'true';
 
 const openai = new OpenAI({
   apiKey: OPENAI_API_KEY,
@@ -41,43 +44,23 @@ function buildSystemPrompt(
   transferProfiles?: TransferProfile[],
   assistantContext?: Record<string, string>,
 ): string {
-  let prompt = `You are a phone receptionist. Reply in exactly this format:
+  // IMPORTANT: This prompt must be SHORT and SIMPLE for small models (llama3.2:3b).
+  // Do NOT add JSON schemas, complex rules, or verbose instructions.
+  let prompt = `You are a friendly phone receptionist. Answer the caller's question in one short sentence, then ask "Anything else I can help with?"
 
-[short answer]. Anything else I can help with?
-
-Examples:
-- "We close at 5 PM. Anything else I can help with?"
-- "We're at 123 Main Street. Anything else I can help with?"
-- "I'm not sure about that. Anything else I can help with?"
-- "Have a great day! Goodbye."
-
-Rules:
-1. Your answer MUST be one short sentence ending with a period, followed by "Anything else I can help with?"
-2. ONLY use facts from the business info below. If you don't know, say "I'm not sure about that."
-3. If the caller says goodbye or no more questions, just say "Have a great day! Goodbye."
-4. Never start with "We actually" or add filler. Be direct.`;
+IMPORTANT: Reply with plain spoken English only. Never output JSON, code, or structured data.`;
 
   if (assistantContext && Object.keys(assistantContext).length > 0) {
-    prompt += `\n\nUse the following information when answering questions. Answer only from this context when the caller asks about these topics:\n\n`;
+    prompt += `\n\nHere is the business info you know:`;
     for (const [section, text] of Object.entries(assistantContext)) {
       if (text?.trim()) {
-        prompt += `${section}:\n${text.trim()}\n\n`;
+        prompt += `\n${section}: ${text.trim()}`;
       }
     }
   }
 
   if (transferProfiles?.length) {
-    prompt += `You can transfer the caller to a person or department. When the caller asks to speak to someone, or their need matches a department below, use the transfer_call tool with that profile's destination number and a brief message to the caller (e.g. "I'll connect you with Morgan in Sales now.").
-
-Transfer options (use the exact \`destination\` value when calling transfer_call):
-${transferProfiles
-  .map(
-    (p) =>
-      `- ${p.name}${p.holder ? ` (${p.holder})` : ''}: handles ${p.responsibilities.join(', ')}. destination: ${p.destination}`,
-  )
-  .join('\n')}
-
-Only use transfer_call when the caller clearly wants to be transferred or their request matches one of the above. Otherwise just answer in your normal voice.`;
+    prompt += `\n\nYou can transfer calls to: ${transferProfiles.map((p) => `${p.holder || p.name} (${p.responsibilities.join(', ')})`).join(', ')}.`;
   }
 
   return prompt;
@@ -106,7 +89,10 @@ function getEndCallToolDefinition(): OpenAI.Chat.ChatCompletionTool {
     function: {
       name: END_CALL_TOOL_NAME,
       description:
-        'End the phone call after saying goodbye. Use this when the caller indicates they are done (e.g. "no thanks", "that\'s all", "goodbye", "I\'m good").',
+        'End the phone call ONLY when the caller explicitly says goodbye or says they have no more questions. ' +
+        'Examples of when to use: "bye", "goodbye", "no thanks", "that\'s all", "I\'m good", "nothing else". ' +
+        'Do NOT use this tool when the caller is asking a question — even if the question contains words like "close", "closing", "done", or "finish". ' +
+        'Questions like "what time do you close?" or "when do you close?" are asking about business hours — answer them, do NOT end the call.',
       parameters: {
         type: 'object',
         properties: {
@@ -199,6 +185,101 @@ function isGoodbyeResponse(
   return userDone || (hasGoodbye && !!askedAnythingElse);
 }
 
+/**
+ * Detect whether the caller's transcript is a question.
+ * When the caller is asking something, we should never end the call.
+ */
+function isCallerQuestion(transcript: string): boolean {
+  const t = transcript.trim().toLowerCase();
+  if (t.endsWith('?')) return true;
+  // Question starters (Whisper sometimes drops the "?" so we check prefixes)
+  const questionStarters = [
+    'what', 'when', 'where', 'how', 'who', 'which', 'why',
+    'do you', 'does', 'can you', 'can i', 'could you', 'is there',
+    'are you', 'are there', 'will you', 'would you',
+  ];
+  if (questionStarters.some((q) => t.startsWith(q))) return true;
+  // Catch common question patterns even when Whisper mangles the start
+  // e.g. "The time you guys close." or "Time to get close." → about business hours
+  const questionPatterns = [
+    /\btime\b.*\b(close|open|closing|opening|hours)\b/,
+    /\b(close|open|closing|opening)\b.*\btime\b/,
+    /\bhours\b/,
+    /\bwhat time\b/,
+    /\bwhen do\b/,
+    /\bhow much\b/,
+    /\bhow long\b/,
+    /\bwhere are\b/,
+    /\bwhere is\b/,
+    /\bdo you (have|offer|provide|do|sell|take)\b/,
+    /\baddress\b/,
+    /\blocation\b/,
+    /\bpric(e|ing|es)\b/,
+    /\bcost\b/,
+    /\bestimate\b/,
+  ];
+  return questionPatterns.some((p) => p.test(t));
+}
+
+/**
+ * Match caller transcript against transfer profiles using heuristic keywords.
+ * Handles two cases:
+ *   1. Explicit transfer: "transfer me to sales", "can I speak to Morgan"
+ *   2. Implicit help-seeking: "I need someone to help me with a quote",
+ *      "looking for someone who handles estimates", "who do I talk to about billing"
+ * Returns { profile, reason } or undefined.
+ */
+function matchTransferProfile(
+  transcript: string,
+  transferProfiles: TransferProfile[] | undefined,
+): { profile: TransferProfile; reason: 'explicit' | 'implicit' } | undefined {
+  if (!transferProfiles?.length) return undefined;
+  const t = transcript.toLowerCase();
+
+  // --- Explicit transfer keywords ---
+  const hasExplicitTransfer =
+    /\b(transfer|connect|speak to|talk to|speak with|talk with|put me through)\b/i.test(t);
+
+  // --- Implicit help-seeking patterns ---
+  // Catches: "I need someone who can help with X", "looking for someone to do X",
+  //          "who handles X", "is there anyone who does X", "I need help with X",
+  //          "can someone help me with X", "I want to get a quote/estimate"
+  const hasImplicitTransfer =
+    /\b(looking for someone|need someone|is there (someone|anyone|somebody)|who (handles|does|can help|deals with)|need help with|can someone|could someone|want to (get|start|begin|set up|schedule)|need (a|to get a) (quote|estimate|consultation|appointment|callback))\b/i.test(t);
+
+  if (!hasExplicitTransfer && !hasImplicitTransfer) return undefined;
+
+  const reason = hasExplicitTransfer ? 'explicit' as const : 'implicit' as const;
+
+  // Try matching by holder name, profile name, or responsibility keywords
+  for (const p of transferProfiles) {
+    const nameMatch = p.holder && t.includes(p.holder.toLowerCase());
+    const nameMatch2 = p.name && t.includes(p.name.toLowerCase());
+    // Check each responsibility word/phrase
+    const respMatch = p.responsibilities.some((r) => {
+      const rLower = r.toLowerCase();
+      // Direct mention of the responsibility
+      if (t.includes(rLower)) return true;
+      // Also check individual words for multi-word responsibilities (e.g. "sales quotes")
+      const words = rLower.split(/\s+/).filter((w) => w.length > 3);
+      return words.length > 0 && words.some((w) => t.includes(w));
+    });
+    if (nameMatch || nameMatch2 || respMatch) return { profile: p, reason };
+  }
+
+  // If caller uses explicit "transfer me" and there's only one profile, use it
+  if (hasExplicitTransfer && transferProfiles.length === 1) {
+    return { profile: transferProfiles[0], reason };
+  }
+
+  // If implicit help-seeking but no specific match, and only one profile, use it
+  if (hasImplicitTransfer && transferProfiles.length === 1) {
+    return { profile: transferProfiles[0], reason };
+  }
+
+  return undefined;
+}
+
 /** POST /reply — non-streaming reply. */
 async function handleReply(req: Request, res: Response): Promise<void> {
   const body = req.body as BrainReplyRequest;
@@ -209,24 +290,39 @@ async function handleReply(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  const startMs = Date.now();
+
+  // Heuristic: check for transfer intent BEFORE calling the LLM
+  const transferMatch = matchTransferProfile(transcript, transferProfiles);
+  if (transferMatch) {
+    const { profile, reason } = transferMatch;
+    const who = profile.holder || profile.name;
+    // Explicit: "One moment, I'll connect you with Morgan now."
+    // Implicit: "I can connect you with Morgan — they handle quotes and estimates. One moment!"
+    const message = reason === 'explicit'
+      ? `One moment, I'll connect you with ${who} now.`
+      : `I can connect you with ${who}${profile.responsibilities.length ? ' — they handle ' + profile.responsibilities.join(', ') : ''}. One moment!`;
+    const transfer: BrainTransferAction = { to: profile.destination };
+    if (profile.audioUrl) transfer.audioUrl = profile.audioUrl;
+    if (profile.timeoutSecs) transfer.timeoutSecs = profile.timeoutSecs;
+    console.log(`[brain] transfer detected (${reason}) → ${profile.destination} (${Date.now() - startMs}ms)`);
+    res.json({ text: message, transfer } as BrainReplyResponse);
+    return;
+  }
+
   const systemPrompt = buildSystemPrompt(transferProfiles, assistantContext);
+  console.log(`[brain] transcript="${transcript}" | assistantContext keys=${assistantContext ? Object.keys(assistantContext).join(',') : 'NONE'} | tools=DISABLED(heuristic)`);
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt },
     ...historyToMessages(history ?? [], transcript),
   ];
 
-  // Always include end_call tool; add transfer tool when profiles exist
-  const tools: OpenAI.Chat.ChatCompletionTool[] = [
-    getEndCallToolDefinition(),
-    ...(transferProfiles?.length ? getTransferToolDefinition() : []),
-  ];
-
   try {
+    // NEVER pass tools to Ollama — it causes an 8-9x slowdown.
+    // Intent detection (end_call, transfer) is handled via heuristics.
     const completion = await openai.chat.completions.create({
       model: MODEL,
       messages,
-      tools,
-      tool_choice: 'auto',
       max_tokens: MAX_TOKENS,
     });
 
@@ -236,64 +332,31 @@ async function handleReply(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    const message = choice.message;
-    const response: BrainReplyResponse = { text: 'Got it. How can I help?' };
+    const content = choice.message.content;
+    const text = content && typeof content === 'string' ? content.trim() : 'Got it. How can I help?';
+    const elapsedMs = Date.now() - startMs;
+    console.log(`[brain] LLM response (${elapsedMs}ms): "${text}"`);
 
-    // Check for end_call tool call
-    const endCallTool = message.tool_calls?.find((tc) => tc.function?.name === END_CALL_TOOL_NAME);
-    if (endCallTool?.function?.arguments) {
-      try {
-        const args = JSON.parse(endCallTool.function.arguments) as { goodbye_message?: string };
-        response.text = args.goodbye_message?.trim() || 'Have a great day! Goodbye.';
-      } catch {
-        response.text = 'Have a great day! Goodbye.';
+    const response: BrainReplyResponse = { text };
+
+    // Post-LLM: check if the LLM suggested a transfer in its response
+    // e.g. "Let me connect you with Morgan" or "I'll transfer you to sales"
+    if (transferProfiles?.length) {
+      const postMatch = matchTransferProfile(text, transferProfiles);
+      if (postMatch) {
+        const { profile } = postMatch;
+        const transfer: BrainTransferAction = { to: profile.destination };
+        if (profile.audioUrl) transfer.audioUrl = profile.audioUrl;
+        if (profile.timeoutSecs) transfer.timeoutSecs = profile.timeoutSecs;
+        response.transfer = transfer;
+        console.log(`[brain] transfer detected in LLM response → ${profile.destination}`);
       }
-      response.hangup = true;
-      res.json(response);
-      return;
     }
 
-    // Check for transfer tool call
-    const toolCall = message.tool_calls?.find((tc) => tc.function?.name === TRANSFER_TOOL_NAME);
-    if (toolCall?.function?.arguments) {
-      try {
-        const args = JSON.parse(toolCall.function.arguments) as {
-          to?: string;
-          message_to_caller?: string;
-        };
-        const to = typeof args.to === 'string' && args.to.trim() ? args.to.trim() : undefined;
-        const messageToCaller =
-          typeof args.message_to_caller === 'string' && args.message_to_caller.trim()
-            ? args.message_to_caller.trim()
-            : 'One moment while I transfer you.';
-
-        if (to) {
-          response.text = messageToCaller;
-          const transfer: BrainTransferAction = { to };
-          const profile = findProfileByDestination(transferProfiles, to);
-          if (profile?.audioUrl) transfer.audioUrl = profile.audioUrl;
-          if (profile?.timeoutSecs) transfer.timeoutSecs = profile.timeoutSecs;
-          response.transfer = transfer;
-        } else {
-          response.text = message.content && typeof message.content === 'string'
-            ? String(message.content).trim()
-            : messageToCaller;
-        }
-      } catch {
-        response.text =
-          message.content && typeof message.content === 'string'
-            ? String(message.content).trim()
-            : response.text;
-      }
-    } else {
-      const content = message.content;
-      response.text =
-        content && typeof content === 'string' ? String(content).trim() : response.text;
-    }
-
-    // Fallback: detect goodbye intent heuristically if the tool wasn't called
-    if (!response.transfer && !response.hangup && isGoodbyeResponse(response.text, transcript, history ?? [])) {
+    // Detect goodbye/end_call via heuristic
+    if (!response.transfer && isGoodbyeResponse(text, transcript, history ?? [])) {
       response.hangup = true;
+      console.log(`[brain] goodbye detected via heuristic → hangup`);
     }
 
     res.json(response);
@@ -316,6 +379,27 @@ async function handleReplyStream(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  // Heuristic: check for transfer intent BEFORE calling the LLM
+  const transferMatch = matchTransferProfile(transcript, transferProfiles);
+  if (transferMatch) {
+    const { profile, reason } = transferMatch;
+    const who = profile.holder || profile.name;
+    const message = reason === 'explicit'
+      ? `One moment, I'll connect you with ${who} now.`
+      : `I can connect you with ${who}${profile.responsibilities.length ? ' — they handle ' + profile.responsibilities.join(', ') : ''}. One moment!`;
+    const transfer: BrainTransferAction = { to: profile.destination };
+    if (profile.audioUrl) transfer.audioUrl = profile.audioUrl;
+    if (profile.timeoutSecs) transfer.timeoutSecs = profile.timeoutSecs;
+    // Return as instant SSE done event (no LLM call needed)
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders?.();
+    res.write(`event: done\ndata: ${JSON.stringify({ text: message, transfer })}\n\n`);
+    res.end();
+    return;
+  }
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -327,24 +411,16 @@ async function handleReplyStream(req: Request, res: Response): Promise<void> {
     ...historyToMessages(history ?? [], transcript),
   ];
 
-  // Always include end_call tool; add transfer tool when profiles exist
-  const tools: OpenAI.Chat.ChatCompletionTool[] = [
-    getEndCallToolDefinition(),
-    ...(transferProfiles?.length ? getTransferToolDefinition() : []),
-  ];
-
   try {
+    // NEVER pass tools to Ollama — 8-9x slowdown.
     const stream = await openai.chat.completions.create({
       model: MODEL,
       messages,
-      tools,
-      tool_choice: 'auto',
       max_tokens: MAX_TOKENS,
       stream: true,
     });
 
     let fullContent = '';
-    const toolCallsByIndex: Map<number, { name: string; args: string }> = new Map();
 
     for await (const chunk of stream) {
       const delta = chunk.choices?.[0]?.delta;
@@ -357,69 +433,17 @@ async function handleReplyStream(req: Request, res: Response): Promise<void> {
           res.write(`event: token\ndata: ${JSON.stringify({ t: text })}\n\n`);
         }
       }
-      if (delta.tool_calls?.length) {
-        for (const tc of delta.tool_calls) {
-          const idx = tc.index ?? 0;
-          const existing = toolCallsByIndex.get(idx);
-          const name =
-            (existing?.name ?? tc.function?.name ?? '').trim() || (tc.function?.name ?? '');
-          const args = (existing?.args ?? '') + (tc.function?.arguments ?? '');
-          toolCallsByIndex.set(idx, { name, args });
-        }
-      }
     }
 
-    const toolCalls = Array.from(toolCallsByIndex.values());
-    let finalText = fullContent.trim();
-    let transfer: BrainTransferAction | undefined;
+    let finalText = fullContent.trim() || 'Got it. How can I help?';
     let hangup = false;
 
-    // Check for end_call tool
-    const endCallTool = toolCalls.find((tc) => tc.name === END_CALL_TOOL_NAME);
-    if (endCallTool?.args) {
-      try {
-        const args = JSON.parse(endCallTool.args) as { goodbye_message?: string };
-        finalText = args.goodbye_message?.trim() || finalText || 'Have a great day! Goodbye.';
-      } catch {
-        if (!finalText) finalText = 'Have a great day! Goodbye.';
-      }
+    // Detect goodbye/end_call via heuristic
+    if (isGoodbyeResponse(finalText, transcript, history ?? [])) {
       hangup = true;
     }
-
-    // Check for transfer tool
-    if (!hangup) {
-      const transferTool = toolCalls.find((tc) => tc.name === TRANSFER_TOOL_NAME);
-      if (transferTool?.args) {
-        try {
-          const args = JSON.parse(transferTool.args) as {
-            to?: string;
-            message_to_caller?: string;
-          };
-          const to = typeof args.to === 'string' && args.to.trim() ? args.to.trim() : undefined;
-          if (to) {
-            finalText =
-              typeof args.message_to_caller === 'string' && args.message_to_caller.trim()
-                ? args.message_to_caller.trim()
-                : 'One moment while I transfer you.';
-            transfer = { to };
-            const profile = findProfileByDestination(transferProfiles, to);
-            if (profile?.audioUrl) transfer.audioUrl = profile.audioUrl;
-            if (profile?.timeoutSecs) transfer.timeoutSecs = profile.timeoutSecs;
-          }
-        } catch {
-          // keep finalText from content
-        }
-      }
-    }
-
-    if (!finalText) finalText = fullContent.trim() || 'Got it. How can I help?';
 
     const donePayload: BrainReplyResponse = { text: finalText };
-    if (transfer) donePayload.transfer = transfer;
-    // Fallback: detect goodbye intent heuristically if the tool wasn't called
-    if (!transfer && !hangup && isGoodbyeResponse(finalText, transcript, history ?? [])) {
-      hangup = true;
-    }
     if (hangup) donePayload.hangup = true;
     res.write(`event: done\ndata: ${JSON.stringify(donePayload)}\n\n`);
   } catch (err) {
@@ -442,6 +466,52 @@ app.get('/health', (_req, res) => {
   res.json({ ok: true, model: MODEL });
 });
 
-app.listen(PORT, () => {
+/**
+ * Warm up the Ollama model on startup so the first call doesn't incur a 2s cold-start.
+ * Also sets keep_alive=30m and num_ctx=2048 for faster inference.
+ */
+async function warmupOllamaModel(): Promise<void> {
+  const ollamaBase = OPENAI_BASE_URL?.replace(/\/v1\/?$/, '') || '';
+  if (!ollamaBase || OPENAI_API_KEY !== 'ollama') return; // Only for Ollama
+  try {
+    const resp = await fetch(`${ollamaBase}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: MODEL,
+        prompt: 'hi',
+        options: { num_ctx: 2048 },
+        keep_alive: '30m',
+        stream: false,
+      }),
+    });
+    if (resp.ok) {
+      console.log(`[brain] model ${MODEL} warmed up (num_ctx=2048, keep_alive=30m)`);
+    } else {
+      console.warn(`[brain] warmup failed: ${resp.status}`);
+    }
+  } catch (err) {
+    console.warn(`[brain] warmup error (non-fatal):`, err);
+  }
+}
+
+/** Re-ping Ollama every 25 min to prevent model eviction (default keep_alive=5m). */
+function startKeepAlivePing(): void {
+  const ollamaBase = OPENAI_BASE_URL?.replace(/\/v1\/?$/, '') || '';
+  if (!ollamaBase || OPENAI_API_KEY !== 'ollama') return;
+  setInterval(async () => {
+    try {
+      await fetch(`${ollamaBase}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: MODEL, prompt: '', keep_alive: '30m', stream: false }),
+      });
+    } catch { /* non-fatal */ }
+  }, 25 * 60 * 1000); // every 25 minutes
+}
+
+app.listen(PORT, async () => {
   console.log(`brain-llm listening on port ${PORT} (model: ${MODEL})`);
+  await warmupOllamaModel();
+  startKeepAlivePing();
 });

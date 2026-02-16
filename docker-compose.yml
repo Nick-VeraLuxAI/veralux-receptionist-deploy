@@ -53,8 +53,9 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - API_KEY=${API_KEY}
       - LLM_PROVIDER=${LLM_PROVIDER:-openai}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_MODEL=${OPENAI_MODEL:-llama3.2:3b}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-ollama}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-http://host.docker.internal:11434/v1}
+      - OPENAI_MODEL=${BRAIN_MODEL:-qwen2.5:7b}
       - LOCAL_LLM_URL=${LOCAL_LLM_URL:-}
       - TELNYX_PHONE_NUMBER=${TELNYX_PHONE_NUMBER}
       - TELNYX_API_KEY=${TELNYX_API_KEY}
@@ -226,7 +227,7 @@ services:
       - PORT=3001
       - OPENAI_API_KEY=${OPENAI_API_KEY:-ollama}
       - OPENAI_BASE_URL=${OPENAI_BASE_URL:-http://host.docker.internal:11434/v1}
-      - OPENAI_MODEL=${BRAIN_MODEL:-llama3.2:3b}
+      - OPENAI_MODEL=${BRAIN_MODEL:-qwen2.5:7b}
     # ports:
     #   - "${BRAIN_PORT:-3001}:3001"  # Internal only — accessible via Docker network
     networks:

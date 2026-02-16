@@ -132,6 +132,12 @@ export interface PromptConfig {
   voicePrompt: string;
   /** Custom greeting text for the welcome message when a caller dials in */
   greetingText: string;
+  /** Business hours description (shown to callers via the LLM) */
+  businessHours: string;
+  /** Business address / location */
+  businessAddress: string;
+  /** Additional info & FAQ */
+  businessFaq: string;
 }
 
 export interface STTConfig {
@@ -202,10 +208,16 @@ export class LLMConfigStore {
       policyPrompt: DEFAULT_POLICY_PROMPT,
       voicePrompt: DEFAULT_VOICE_PROMPT,
       greetingText: "",
+      businessHours: "",
+      businessAddress: "",
+      businessFaq: "",
       ...(initial?.prompts || {}),
     };
-    // Ensure greetingText exists for configs loaded before this field was added
+    // Ensure fields exist for configs loaded before they were added
     if (this.prompts.greetingText === undefined) this.prompts.greetingText = "";
+    if (this.prompts.businessHours === undefined) this.prompts.businessHours = "";
+    if (this.prompts.businessAddress === undefined) this.prompts.businessAddress = "";
+    if (this.prompts.businessFaq === undefined) this.prompts.businessFaq = "";
 
     this.stt = initial?.stt || {
       whisperUrl: DEFAULT_WHISPER_URL,
@@ -283,6 +295,16 @@ export class LLMConfigStore {
       greetingText: next.greetingText !== undefined
         ? next.greetingText.trim()
         : this.prompts.greetingText,
+      // Business info — allow clearing (empty string) so use !== undefined guard
+      businessHours: next.businessHours !== undefined
+        ? next.businessHours.trim()
+        : this.prompts.businessHours,
+      businessAddress: next.businessAddress !== undefined
+        ? next.businessAddress.trim()
+        : this.prompts.businessAddress,
+      businessFaq: next.businessFaq !== undefined
+        ? next.businessFaq.trim()
+        : this.prompts.businessFaq,
     };
     return this.prompts;
   }

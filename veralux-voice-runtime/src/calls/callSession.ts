@@ -2157,11 +2157,12 @@ export class CallSession {
     const nextSegmentMin = env.BRAIN_STREAM_SEGMENT_NEXT_CHARS;
     const firstAudioMaxMs = env.BRAIN_STREAM_FIRST_AUDIO_MAX_MS;
 
-    // === PSTN: use non-streaming (single TTS turn) for now ===
-    // The llama3.2:3b model produces unreliable output in streaming mode
-    // (regurgitates prompt examples, adds meta-commentary). Non-streaming
-    // produces consistent short answers. Re-enable when using a better model.
-    if (this.transport.mode === 'pstn') {
+    // === PSTN streaming ===
+    // Previously disabled for llama3.2:3b (unreliable streaming output).
+    // Now re-enabled for qwen2.5:7b which streams reliably.
+    // Set BRAIN_PSTN_NO_STREAM=true to force non-streaming on PSTN if needed.
+    const forcePstnNoStream = process.env.BRAIN_PSTN_NO_STREAM === 'true';
+    if (this.transport.mode === 'pstn' && forcePstnNoStream) {
       const tenantLabel = this.tenantId ?? 'unknown';
       const endLlm = startStageTimer('llm', tenantLabel);
 

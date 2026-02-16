@@ -60,6 +60,23 @@ except Exception:
 transcribe_semaphore = asyncio.Semaphore(MAX_CONCURRENT)
 
 
+def _deduplicate_text(text: str) -> str:
+    """Remove repeated phrases that Whisper sometimes hallucinates on short audio."""
+    import re
+    # Match cases like "What time do you close? What time do you-" or "Hello hello"
+    # Split on sentence boundaries and remove near-duplicate trailing fragments
+    sentences = re.split(r'(?<=[.?!])\s+', text.strip())
+    if len(sentences) <= 1:
+        return text.strip()
+    # Keep the first complete sentence; drop subsequent ones that are prefixes of it
+    result = [sentences[0]]
+    for s in sentences[1:]:
+        clean = s.rstrip('- ').lower()
+        if clean and not sentences[0].lower().startswith(clean):
+            result.append(s)
+    return ' '.join(result)
+
+
 def _transcribe_file(path: str) -> str:
     segments, _info = model.transcribe(
         path,
@@ -67,9 +84,11 @@ def _transcribe_file(path: str) -> str:
         language=WHISPER_LANGUAGE,
         vad_filter=WHISPER_VAD_FILTER,
         initial_prompt=WHISPER_INITIAL_PROMPT or None,
+        no_speech_threshold=0.6,            # suppress hallucinated speech in silence
     )
     text_chunks = [seg.text for seg in segments]
-    return "".join(text_chunks).strip()
+    raw = "".join(text_chunks).strip()
+    return _deduplicate_text(raw)
 
 
 def _choose_suffix(content_type: str | None, filename: str | None) -> str:

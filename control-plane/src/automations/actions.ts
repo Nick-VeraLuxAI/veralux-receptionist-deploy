@@ -174,6 +174,26 @@ export async function fireWebhook(
   };
 }
 
+// ── LLM helper ───────────────────────────────────
+
+/** Resolve the OpenAI-compatible chat completions endpoint. */
+function getLlmEndpoint(): string {
+  const base = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
+  // Normalise to always end at /v1/chat/completions
+  if (base.endsWith("/chat/completions")) return base;
+  const trimmed = base.replace(/\/+$/, "");
+  if (trimmed.endsWith("/v1")) return `${trimmed}/chat/completions`;
+  return `${trimmed}/v1/chat/completions`;
+}
+
+function getLlmApiKey(): string {
+  return process.env.OPENAI_API_KEY || "ollama";
+}
+
+function getLlmModel(override?: string): string {
+  return override || process.env.OPENAI_MODEL || "qwen2.5:7b";
+}
+
 // ── ai_summarize ─────────────────────────────────
 
 export async function aiSummarize(
@@ -190,18 +210,15 @@ export async function aiSummarize(
     callEvent.turns?.map(t => `${t.role}: ${t.content}`).join("\n") ??
     "";
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return { summary: "[OpenAI API key not configured]" };
-  }
-
   const systemPrompt =
     config.prompt ??
     "You are an assistant that summarizes phone call transcripts. Provide a concise summary including key points, action items, and any follow-up needed.";
 
-  const model = config.model || process.env.OPENAI_MODEL || "llama3.2:3b";
+  const model = getLlmModel(config.model);
+  const endpoint = getLlmEndpoint();
+  const apiKey = getLlmApiKey();
 
-  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+  const resp = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -220,7 +237,7 @@ export async function aiSummarize(
 
   if (!resp.ok) {
     const errText = await resp.text();
-    console.error("[actions/ai_summarize] OpenAI error:", errText);
+    console.error("[actions/ai_summarize] LLM error:", errText);
     return { summary: `[AI summarize error: ${resp.status}]` };
   }
 
@@ -246,20 +263,17 @@ export async function aiExtract(
     callEvent.turns?.map(t => `${t.role}: ${t.content}`).join("\n") ??
     "";
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return { extracted: { error: "OpenAI API key not configured" } };
-  }
-
   const fields = config.fields ?? ["name", "phone", "email", "issue", "category", "priority"];
 
   const systemPrompt =
     config.prompt ??
-    `You are a data extraction assistant. Extract the following fields from the phone call transcript: ${fields.join(", ")}. Return a JSON object with these fields. If a field is not found, use null.`;
+    `You are a data extraction assistant. Extract the following fields from the phone call transcript: ${fields.join(", ")}. Return ONLY a JSON object with these fields. If a field is not found, use null. No explanation, just JSON.`;
 
-  const model = config.model || process.env.OPENAI_MODEL || "llama3.2:3b";
+  const model = getLlmModel(config.model);
+  const endpoint = getLlmEndpoint();
+  const apiKey = getLlmApiKey();
 
-  const resp = await fetch("https://api.openai.com/v1/chat/completions", {
+  const resp = await fetch(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -273,13 +287,12 @@ export async function aiExtract(
       ],
       max_tokens: 500,
       temperature: 0,
-      response_format: { type: "json_object" },
     }),
   });
 
   if (!resp.ok) {
     const errText = await resp.text();
-    console.error("[actions/ai_extract] OpenAI error:", errText);
+    console.error("[actions/ai_extract] LLM error:", errText);
     return { extracted: { error: `AI extraction error: ${resp.status}` } };
   }
 
@@ -287,7 +300,9 @@ export async function aiExtract(
   const content = data.choices?.[0]?.message?.content?.trim() ?? "{}";
 
   try {
-    return { extracted: JSON.parse(content) };
+    // The LLM may wrap JSON in markdown code fences — strip them
+    const cleaned = content.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/, "");
+    return { extracted: JSON.parse(cleaned) };
   } catch {
     return { extracted: { raw: content } };
   }
@@ -398,12 +413,6 @@ export async function aiExtractQuote(
     callEvent.turns?.map(t => `${t.role}: ${t.content}`).join("\n") ??
     "";
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  const baseUrl = process.env.OPENAI_BASE_URL || "https://api.openai.com/v1/chat/completions";
-  if (!apiKey) {
-    return { extracted: { error: "LLM API key not configured" } };
-  }
-
   // Fetch the tenant's existing pricing from the database
   const tenantPricing = await fetchTenantPricing(ctx.tenantId);
   const priceListText = tenantPricing.items.length > 0
@@ -412,7 +421,7 @@ export async function aiExtractQuote(
 
   const systemPrompt = `You are a quote extraction assistant. Analyze the phone call transcript and extract information needed to build a quote.${priceListText}
 
-Return a JSON object with:
+Return ONLY a JSON object (no explanation) with:
 {
   "customerName": "string or null",
   "customerPhone": "string or null",
@@ -431,10 +440,9 @@ Return a JSON object with:
 
 Match requested items to the price list when possible. If the caller mentions something not on the price list, include it with unitPrice: 0 and a note. Estimate quantities from context clues in the conversation.`;
 
-  const model = config.model || process.env.OPENAI_MODEL || "llama3.2:3b";
-
-  // Determine endpoint — Ollama uses a different path structure
-  const endpoint = baseUrl.includes("/v1") ? baseUrl.replace(/\/v1\/?$/, "/v1/chat/completions") : baseUrl;
+  const model = getLlmModel(config.model);
+  const endpoint = getLlmEndpoint();
+  const apiKey = getLlmApiKey();
 
   const resp = await fetch(endpoint, {
     method: "POST",
@@ -450,7 +458,6 @@ Match requested items to the price list when possible. If the caller mentions so
       ],
       max_tokens: 1000,
       temperature: 0,
-      response_format: { type: "json_object" },
     }),
   });
 
@@ -464,7 +471,9 @@ Match requested items to the price list when possible. If the caller mentions so
   const content = data.choices?.[0]?.message?.content?.trim() ?? "{}";
 
   try {
-    const parsed = JSON.parse(content);
+    // The LLM may wrap JSON in markdown code fences — strip them
+    const cleaned = content.replace(/^```(?:json)?\s*\n?/i, "").replace(/\n?```\s*$/, "");
+    const parsed = JSON.parse(cleaned);
     // Also carry caller info from the event
     if (!parsed.customerPhone && callEvent.callerId) {
       parsed.customerPhone = callEvent.callerId;

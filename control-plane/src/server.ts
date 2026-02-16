@@ -574,9 +574,25 @@ async function syncLLMContextToRuntime(tenant: TenantContext): Promise<void> {
     }
 
     const prompts = tenant.config.getPrompts();
+
+    // Build assistantContext from business info fields so the LLM
+    // can answer caller questions about hours, location, etc.
+    const assistantContext: Record<string, string> = {};
+    if (prompts.businessHours?.trim()) {
+      assistantContext["Business Hours"] = prompts.businessHours.trim();
+    }
+    if (prompts.businessAddress?.trim()) {
+      assistantContext["Address / Location"] = prompts.businessAddress.trim();
+    }
+    if (prompts.businessFaq?.trim()) {
+      assistantContext["Additional Info & FAQ"] = prompts.businessFaq.trim();
+    }
+
     const updatedConfig: RuntimeTenantConfig = {
       ...existing,
       greetingText: prompts.greetingText,
+      // Provide business info to the LLM as assistantContext
+      ...(Object.keys(assistantContext).length > 0 ? { assistantContext } : {}),
       llmContext: {
         forwardingProfiles: tenant.forwardingProfiles.map((p) => ({
           id: p.id,
@@ -1315,8 +1331,10 @@ app.post("/api/admin/prompts", async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);
   if (!tenant) return;
 
-  const { systemPreamble, schemaHint, policyPrompt, voicePrompt, greetingText } =
-    req.body as Partial<PromptConfig>;
+  const {
+    systemPreamble, schemaHint, policyPrompt, voicePrompt, greetingText,
+    businessHours, businessAddress, businessFaq,
+  } = req.body as Partial<PromptConfig>;
 
   const updated = tenant.config.setPrompts({
     systemPreamble,
@@ -1324,6 +1342,9 @@ app.post("/api/admin/prompts", async (req, res) => {
     policyPrompt,
     voicePrompt,
     greetingText,
+    businessHours,
+    businessAddress,
+    businessFaq,
   });
 
   tenants.persistConfig(tenant.id);
@@ -3313,6 +3334,18 @@ async function start() {
   } catch (err) {
     console.error("Failed to initialize tenants/DB:", err);
     process.exit(1);
+  }
+
+  // Sync all tenants' LLM context (including assistantContext) to Redis
+  // so the voice runtime always has up-to-date business info at startup
+  try {
+    for (const meta of tenants.listMetas()) {
+      const tenant = tenants.getOrCreate(meta.id);
+      await syncLLMContextToRuntime(tenant);
+    }
+    console.log("[startup] LLM context synced to Redis for all tenants");
+  } catch (err) {
+    console.error("[startup] Failed to sync LLM context (non-fatal):", err);
   }
 
   // Initialize workflow automation engine
