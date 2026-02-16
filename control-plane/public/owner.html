@@ -415,8 +415,10 @@
         <h2>Business information</h2>
         <p class="help">Essential details about your business. Your receptionist will use this to answer caller questions accurately.</p>
         
-        <label for="owner-businessHours">Business hours</label>
-        <textarea id="owner-businessHours" rows="3" placeholder="e.g. Monday–Friday: 8am–6pm&#10;Saturday: 9am–2pm&#10;Sunday: Closed"></textarea>
+        <label>Business hours</label>
+        <div id="owner-hours-grid" style="display:grid; grid-template-columns:auto 1fr 1fr auto; gap:6px 10px; align-items:center; margin-bottom:8px;">
+        </div>
+        <textarea id="owner-businessHours" rows="2" style="display:none;"></textarea>
 
         <label for="owner-businessAddress">Address / Location</label>
         <textarea id="owner-businessAddress" rows="2" placeholder="e.g. 123 Main St, Suite 100, Boise, ID 83702"></textarea>
@@ -1044,6 +1046,8 @@
             $("owner-voicePrompt").value = promptsRes.voicePrompt || "";
             $("owner-schemaHint").value = promptsRes.schemaHint || "";
             $("owner-businessHours").value = promptsRes.businessHours || "";
+            buildHoursGrid();
+            loadHoursFromText(promptsRes.businessHours || "");
             $("owner-businessAddress").value = promptsRes.businessAddress || "";
             $("owner-businessFaq").value = promptsRes.businessFaq || "";
           }
@@ -1270,7 +1274,129 @@
         }
       }
 
+      /* ── Business Hours Grid ──────────────────────── */
+      const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
+      const HOUR_OPTIONS = (() => {
+        const opts = [];
+        for (let h = 0; h < 24; h++) {
+          for (const m of ["00","30"]) {
+            const hr12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+            const ampm = h < 12 ? "AM" : "PM";
+            opts.push({ value: `${String(h).padStart(2,"0")}:${m}`, label: `${hr12}:${m} ${ampm}` });
+          }
+        }
+        return opts;
+      })();
+
+      function buildHoursGrid() {
+        const grid = $("owner-hours-grid");
+        if (!grid) return;
+        grid.innerHTML = "";
+        DAYS.forEach(day => {
+          const id = day.toLowerCase();
+          // Day label
+          const lbl = document.createElement("span");
+          lbl.style.cssText = "font-weight:600; font-size:13px;";
+          lbl.textContent = day.slice(0,3);
+          grid.appendChild(lbl);
+          // Open time
+          const openSel = document.createElement("select");
+          openSel.id = `hrs-${id}-open`;
+          openSel.style.cssText = "padding:4px 6px; border-radius:6px; font-size:13px; border:1px solid rgba(246,243,236,0.15); background:rgba(246,243,236,0.04); color:var(--fg,#f6f3ec);";
+          openSel.innerHTML = '<option value="">—</option>' + HOUR_OPTIONS.map(o =>
+            `<option value="${o.value}">${o.label}</option>`
+          ).join("");
+          openSel.addEventListener("change", syncHoursToTextarea);
+          grid.appendChild(openSel);
+          // Close time
+          const closeSel = document.createElement("select");
+          closeSel.id = `hrs-${id}-close`;
+          closeSel.style.cssText = openSel.style.cssText;
+          closeSel.innerHTML = openSel.innerHTML;
+          closeSel.addEventListener("change", syncHoursToTextarea);
+          grid.appendChild(closeSel);
+          // Closed toggle
+          const closedLabel = document.createElement("label");
+          closedLabel.style.cssText = "display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer; white-space:nowrap;";
+          const cb = document.createElement("input");
+          cb.type = "checkbox";
+          cb.id = `hrs-${id}-closed`;
+          cb.style.cssText = "accent-color:#C9A04E;";
+          cb.addEventListener("change", function() {
+            openSel.disabled = this.checked;
+            closeSel.disabled = this.checked;
+            openSel.style.opacity = this.checked ? "0.4" : "1";
+            closeSel.style.opacity = this.checked ? "0.4" : "1";
+            syncHoursToTextarea();
+          });
+          closedLabel.appendChild(cb);
+          closedLabel.appendChild(document.createTextNode("Closed"));
+          grid.appendChild(closedLabel);
+        });
+      }
+
+      function formatTime12(val24) {
+        if (!val24) return "";
+        const [h, m] = val24.split(":").map(Number);
+        const hr12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+        const ampm = h < 12 ? "AM" : "PM";
+        return m === 0 ? `${hr12} ${ampm}` : `${hr12}:${String(m).padStart(2,"0")} ${ampm}`;
+      }
+
+      function syncHoursToTextarea() {
+        const lines = [];
+        DAYS.forEach(day => {
+          const id = day.toLowerCase();
+          const closed = $(`hrs-${id}-closed`)?.checked;
+          if (closed) {
+            lines.push(`${day}: Closed`);
+          } else {
+            const open = $(`hrs-${id}-open`)?.value;
+            const close = $(`hrs-${id}-close`)?.value;
+            if (open && close) {
+              lines.push(`${day}: ${formatTime12(open)} to ${formatTime12(close)}`);
+            }
+          }
+        });
+        const ta = $("owner-businessHours");
+        if (ta) ta.value = lines.join("\n");
+      }
+
+      function loadHoursFromText(text) {
+        if (!text) return;
+        const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+        lines.forEach(line => {
+          const match = line.match(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\s*:\s*(.+)$/i);
+          if (!match) return;
+          const day = match[1].toLowerCase();
+          const value = match[2].trim();
+          if (/closed/i.test(value)) {
+            const cb = $(`hrs-${day}-closed`);
+            if (cb) { cb.checked = true; cb.dispatchEvent(new Event("change")); }
+            return;
+          }
+          // Try to parse "9 AM to 5 PM" or "9:30 AM to 6:00 PM" etc.
+          const timeMatch = value.match(/(\d{1,2})(?::(\d{2}))?\s*(AM|PM)\s*(?:to|–|-|—)\s*(\d{1,2})(?::(\d{2}))?\s*(AM|PM)/i);
+          if (timeMatch) {
+            let [, oh, om, oap, ch, cm, cap] = timeMatch;
+            om = om || "00"; cm = cm || "00";
+            let openH = parseInt(oh); let closeH = parseInt(ch);
+            if (oap.toUpperCase() === "PM" && openH < 12) openH += 12;
+            if (oap.toUpperCase() === "AM" && openH === 12) openH = 0;
+            if (cap.toUpperCase() === "PM" && closeH < 12) closeH += 12;
+            if (cap.toUpperCase() === "AM" && closeH === 12) closeH = 0;
+            const openVal = `${String(openH).padStart(2,"0")}:${om}`;
+            const closeVal = `${String(closeH).padStart(2,"0")}:${cm}`;
+            const openSel = $(`hrs-${day}-open`);
+            const closeSel = $(`hrs-${day}-close`);
+            if (openSel) openSel.value = openVal;
+            if (closeSel) closeSel.value = closeVal;
+          }
+        });
+      }
+
       async function saveOwnerBusinessInfo() {
+        syncHoursToTextarea();
         const statusEl = $("owner-business-info-status");
         try {
           await ownerFetch("/api/admin/prompts", {
