@@ -200,6 +200,9 @@ const EnvSchema = z.object({
   /** Optional grace ms before late-final watchdog fires (read by callSession when set). */
   STT_LATE_FINAL_GRACE_MS: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().optional()),
 
+  /* Thinking filler — play a short phrase while STT/LLM/TTS processes */
+  THINKING_FILLER_ENABLED: z.preprocess(stringToBoolean, z.boolean().default(true)),
+
   /* Dead air protection */
   DEAD_AIR_MS: z.coerce.number().int().positive(),
   DEAD_AIR_NO_FRAMES_MS: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(1500)),

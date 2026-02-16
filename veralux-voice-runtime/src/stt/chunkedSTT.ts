@@ -398,7 +398,16 @@ export class ChunkedSTT {
   private readonly onFinalResult?: (opts: { isEmpty: boolean; textLength: number; utteranceMs: number }) => void;
   private readonly consumePreRoll?: () => ExternalPreRoll | null;
   private readonly onFrameForPreRoll?: (buffer: Buffer, frameMs: number) => void;
-  private readonly prompt?: string;
+  private prompt?: string;
+
+  /**
+   * Update the Whisper prompt with conversation context.
+   * Appends recent transcript turns to the base prompt so Whisper
+   * can use prior conversation as context for better accuracy.
+   */
+  public updatePrompt(newPrompt: string): void {
+    this.prompt = newPrompt;
+  }
 
   // ===== BARGE-IN (NEW) =====
   private readonly onBargeInDetected?: (info: SpeechStartInfo & { duringPlayback: true }) => void;

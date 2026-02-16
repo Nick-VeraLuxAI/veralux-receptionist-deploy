@@ -12,7 +12,7 @@ import os
 from pathlib import Path
 
 # Rate limiting
-RATE_LIMIT = os.getenv("RATE_LIMIT_PER_MINUTE", "30")
+RATE_LIMIT = os.getenv("RATE_LIMIT_PER_MINUTE", "120")
 limiter = Limiter(key_func=get_remote_address)
 
 app = FastAPI()
@@ -35,6 +35,12 @@ WHISPER_INITIAL_PROMPT = os.getenv(
     "manager, schedule an appointment, ask about business hours, services, or pricing.",
 )
 WHISPER_ALLOW_FALLBACK = os.getenv("WHISPER_ALLOW_FALLBACK", "true").lower() in {"1", "true", "yes"}
+
+# Confidence-based retry: if avg_logprob is below this threshold, retry with higher beam
+WHISPER_RETRY_LOGPROB_THRESHOLD = float(
+    os.getenv("WHISPER_RETRY_LOGPROB_THRESHOLD", "-0.5")
+)
+WHISPER_RETRY_BEAM_SIZE = int(os.getenv("WHISPER_RETRY_BEAM_SIZE", "10"))
 
 # Load Whisper model once at startup (configurable for future GPU use).
 try:
@@ -117,20 +123,27 @@ logger.info(
 )
 
 
-def _transcribe_file(path: str, *, language: str | None = None, prompt: str | None = None) -> str:
+def _transcribe_file(
+    path: str,
+    *,
+    language: str | None = None,
+    prompt: str | None = None,
+    beam_size: int | None = None,
+) -> dict:
     effective_lang = language or WHISPER_LANGUAGE
     effective_prompt = prompt or WHISPER_INITIAL_PROMPT or None
+    effective_beam = beam_size or WHISPER_BEAM_SIZE
 
     file_size = os.path.getsize(path)
     logger.info(
         "transcribe start: file=%s size=%d lang=%s vad=%s beam=%d no_speech=%.2f model=%s",
-        path, file_size, effective_lang, WHISPER_VAD_FILTER, WHISPER_BEAM_SIZE,
+        path, file_size, effective_lang, WHISPER_VAD_FILTER, effective_beam,
         WHISPER_NO_SPEECH_THRESHOLD, WHISPER_MODEL,
     )
 
     segments, info = model.transcribe(
         path,
-        beam_size=WHISPER_BEAM_SIZE,
+        beam_size=effective_beam,
         language=effective_lang,
         vad_filter=WHISPER_VAD_FILTER,
         initial_prompt=effective_prompt,
@@ -143,12 +156,23 @@ def _transcribe_file(path: str, *, language: str | None = None, prompt: str | No
     all_segments = list(segments)
     text_chunks = [seg.text for seg in all_segments]
 
+    # Compute weighted average log probability across all segments
+    total_duration = 0.0
+    weighted_logprob = 0.0
+    for seg in all_segments:
+        seg_dur = max(seg.end - seg.start, 0.01)
+        weighted_logprob += seg.avg_logprob * seg_dur
+        total_duration += seg_dur
+    avg_logprob = weighted_logprob / total_duration if total_duration > 0 else -1.0
+
     logger.info(
-        "transcribe done: segments=%d lang=%s lang_prob=%.3f duration=%.2fs",
+        "transcribe done: segments=%d lang=%s lang_prob=%.3f duration=%.2fs avg_logprob=%.3f beam=%d",
         len(all_segments),
         info.language,
         info.language_probability,
         info.duration,
+        avg_logprob,
+        effective_beam,
     )
     for i, seg in enumerate(all_segments):
         logger.info(
@@ -157,7 +181,7 @@ def _transcribe_file(path: str, *, language: str | None = None, prompt: str | No
         )
 
     raw = "".join(text_chunks).strip()
-    return _deduplicate_text(raw)
+    return {"text": _deduplicate_text(raw), "avg_logprob": round(avg_logprob, 4)}
 
 
 def _choose_suffix(content_type: str | None, filename: str | None) -> str:
@@ -227,11 +251,38 @@ async def transcribe(request: Request):
         req_prompt = request.query_params.get("prompt")
 
         async with transcribe_semaphore:
-            text = await run_in_threadpool(
+            result = await run_in_threadpool(
                 _transcribe_file, tmp_path, language=req_language, prompt=req_prompt,
             )
 
-        return JSONResponse({"text": text})
+            # Confidence-based retry: if first pass has low confidence, retry with higher beam
+            if (
+                result["avg_logprob"] < WHISPER_RETRY_LOGPROB_THRESHOLD
+                and result["text"].strip()
+                and WHISPER_RETRY_BEAM_SIZE > WHISPER_BEAM_SIZE
+            ):
+                logger.info(
+                    "low confidence (%.3f < %.3f), retrying with beam=%d",
+                    result["avg_logprob"], WHISPER_RETRY_LOGPROB_THRESHOLD,
+                    WHISPER_RETRY_BEAM_SIZE,
+                )
+                retry_result = await run_in_threadpool(
+                    _transcribe_file, tmp_path,
+                    language=req_language, prompt=req_prompt,
+                    beam_size=WHISPER_RETRY_BEAM_SIZE,
+                )
+                # Use retry if it has better confidence
+                if retry_result["avg_logprob"] > result["avg_logprob"]:
+                    logger.info(
+                        "retry improved: %.3f -> %.3f, text=%r",
+                        result["avg_logprob"], retry_result["avg_logprob"],
+                        retry_result["text"][:60],
+                    )
+                    result = retry_result
+                else:
+                    logger.info("retry did not improve (%.3f), keeping original", retry_result["avg_logprob"])
+
+        return JSONResponse(result)
 
     except Exception:
         logger.exception("Transcription failed")
@@ -263,9 +314,9 @@ async def transcribe_file(request: Request, file: UploadFile = File(...)):
             tmp_path = tmp.name
 
         async with transcribe_semaphore:
-            text = await run_in_threadpool(_transcribe_file, tmp_path)
+            result = await run_in_threadpool(_transcribe_file, tmp_path)
 
-        return JSONResponse({"text": text})
+        return JSONResponse(result)
 
     except Exception:
         logger.exception("Transcription failed")

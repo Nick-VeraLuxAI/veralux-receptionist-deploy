@@ -21,6 +21,7 @@ import type { TTSResult } from '../tts/types';
 import type { RuntimeTenantConfig } from '../tenants/tenantConfig';
 import { getEffectiveSpeakerWavUrl, type VoiceMode } from '../tenants/tenantConfig';
 import { generateAssistantReply, generateAssistantReplyStream, type AssistantReplyResult } from '../ai/brainClient';
+import { getRandomFiller, getFillerAudio, type CachedFiller } from '../audio/thinkingFiller';
 import { reportCallerMessage } from '../controlPlane';
 import {
   CallSessionConfig,
@@ -218,6 +219,10 @@ export class CallSession {
   private readonly logPreviewChars = 160;
   private ttsSegmentChain: Promise<void> = Promise.resolve();
   private ttsSegmentQueueDepth = 0;
+  /** True while a thinking-filler segment is the only thing in the TTS chain. */
+  private fillerPlaying = false;
+  /** Set when a filler finishes and no real segments have arrived — prevents entering LISTENING. */
+  private fillerJustCompleted = false;
   private playbackState: {
     active: boolean;
     interrupted: boolean;
@@ -943,6 +948,29 @@ export class CallSession {
   public appendHistory(turn: ConversationTurn): void {
     this.conversationHistory.push(turn);
     this.metrics.turns += 1;
+    this.updateSttPromptWithContext();
+  }
+
+  /**
+   * Build a contextual prompt for Whisper from the base prompt + recent conversation.
+   * Whisper uses the prompt to bias its decoding, so including the last few turns
+   * helps it maintain coherence and avoid hallucinations on compressed audio.
+   */
+  private updateSttPromptWithContext(): void {
+    const basePrompt = this.sttConfig?.prompt ?? env.STT_WHISPER_PROMPT ?? '';
+    // Take the last 3 turns (keeps prompt short to avoid Whisper's 224-token limit)
+    const recentTurns = this.conversationHistory.slice(-3);
+    if (recentTurns.length === 0) return;
+
+    const contextLines = recentTurns.map((t) => {
+      const role = t.role === 'user' ? 'Caller' : 'Receptionist';
+      // Truncate long replies to keep the prompt compact
+      const content = t.content.length > 80 ? t.content.slice(0, 80) + '...' : t.content;
+      return `${role}: ${content}`;
+    });
+
+    const contextPrompt = `${basePrompt} Recent conversation: ${contextLines.join(' ')}`;
+    this.stt.updatePrompt(contextPrompt);
   }
 
   /** Full call transcript (caller + assistant text only, no audio). Use at teardown for summarizer / logs. */
@@ -1182,6 +1210,10 @@ export class CallSession {
         'playback ended after barge-in',
       );
 
+      // Clear filler flags on barge-in; caller speech takes priority.
+      this.fillerPlaying = false;
+      this.fillerJustCompleted = false;
+
       // ✅ CRITICAL FIX: barge-in playback end must re-open the LISTENING gate
       if (this.active && this.state !== 'ENDED') {
         this.enterListeningState(false);
@@ -1200,6 +1232,18 @@ export class CallSession {
       return;
     }
 
+    // Thinking-filler just finished but real LLM response hasn't arrived yet.
+    // Stay quiet — do NOT enter LISTENING. The real response will start a new
+    // playback cycle when its first TTS segment is ready.
+    if (this.fillerJustCompleted) {
+      this.fillerJustCompleted = false;
+      log.info(
+        { event: 'filler_playback_ended', state: this.state, ...this.logContext },
+        'thinking filler ended, waiting for real response',
+      );
+      this.audioCoordinator.onPlaybackEnded(now);
+      return;
+    }
 
     // ✅ normal playback end: enter LISTENING (but don't arm dead-air immediately)
     if (this.active && this.state !== 'ENDED') {
@@ -1323,6 +1367,8 @@ export class CallSession {
   private invalidateTranscriptHandling(): void {
     this.transcriptHandlingToken += 1;
     this.isHandlingTranscript = false;
+    this.fillerPlaying = false;
+    this.fillerJustCompleted = false;
   }
 
   private flushDeferredTranscript(): void {
@@ -1957,6 +2003,13 @@ export class CallSession {
 
       // Report caller message to control plane analytics (fire-and-forget)
       void reportCallerMessage(this.tenantId ?? 'unknown', trimmed);
+
+      // Queue a thinking filler to mask processing latency (streaming path only).
+      // The filler plays immediately from pre-cached audio; real LLM response
+      // segments chain after it in the TTS segment queue.
+      if (env.BRAIN_STREAMING_ENABLED) {
+        this.queueThinkingFiller(handlingToken);
+      }
 
       let response = '';
       let replySource = 'unknown';
@@ -2615,6 +2668,106 @@ export class CallSession {
   }
 
 
+  /**
+   * Queue a pre-cached thinking filler into the TTS segment chain.
+   * The filler plays while STT/LLM/TTS processes the real response;
+   * real response segments chain after it seamlessly.
+   */
+  private queueThinkingFiller(handlingToken: number): void {
+    if (!env.THINKING_FILLER_ENABLED) return;
+    if (!this.active || this.state === 'ENDED') return;
+
+    const filler = getRandomFiller();
+    if (!filler) return;
+
+    this.fillerPlaying = true;
+    this.fillerJustCompleted = false;
+
+    const segmentId = `filler-${this.nextTurnId()}`;
+
+    if (!this.playbackState.active) {
+      this.beginPlayback(segmentId);
+    }
+    this.ttsSegmentQueueDepth += 1;
+
+    log.info(
+      {
+        event: 'thinking_filler_queued',
+        text: filler.text,
+        segment_id: segmentId,
+        queue_depth: this.ttsSegmentQueueDepth,
+        ...this.logContext,
+      },
+      'thinking filler queued',
+    );
+
+    // Prepare delivery payload from the pre-cached audio (no TTS synthesis needed).
+    const deliveryPromise = this.prepareFillerDelivery(filler, segmentId);
+
+    this.ttsSegmentChain = this.ttsSegmentChain
+      .then(async () => {
+        if (!this.active || this.state === 'ENDED' || this.playbackState.interrupted) return;
+        if (handlingToken !== this.transcriptHandlingToken) return;
+
+        const prepared = await deliveryPromise;
+        if (prepared) {
+          await this.deliverTtsSegment(prepared, `[filler: ${filler.text}]`, segmentId);
+        }
+      })
+      .catch((error) => {
+        log.error({ err: error, ...this.logContext }, 'thinking filler playback failed');
+      })
+      .finally(() => {
+        this.ttsSegmentQueueDepth = Math.max(0, this.ttsSegmentQueueDepth - 1);
+
+        if (this.ttsSegmentQueueDepth === 0) {
+          if (this.fillerPlaying) {
+            // Filler finished but no real segments have arrived yet.
+            // Signal onPlaybackEnded to NOT enter LISTENING.
+            this.fillerPlaying = false;
+            this.fillerJustCompleted = true;
+          }
+
+          if (this.transport.mode === 'pstn') {
+            this.endPlaybackAuthoritatively('webhook');
+          } else {
+            this.onPlaybackEnded();
+          }
+        }
+      });
+  }
+
+  /**
+   * Build a delivery payload from pre-cached filler audio. Mirrors
+   * prepareTtsSegment but skips TTS synthesis (audio already exists).
+   */
+  private async prepareFillerDelivery(
+    filler: CachedFiller,
+    segmentId: string,
+  ): Promise<{
+    playbackAudio: Buffer;
+    playbackInput: { kind: 'url'; url: string } | { kind: 'buffer'; audio: Buffer; contentType?: string };
+    spanMeta: { callId: string; tenantId: string | undefined; logContext: Record<string, unknown>; kind: string };
+  } | null> {
+    if (!this.active || this.state === 'ENDED') return null;
+
+    const playbackAudio = getFillerAudio(filler, this.transport.mode);
+
+    const spanMeta = {
+      callId: this.callControlId,
+      tenantId: this.tenantId,
+      logContext: { ...this.logContext, tts_id: segmentId },
+      kind: segmentId,
+    };
+
+    const playbackInput =
+      this.transport.mode === 'pstn'
+        ? { kind: 'url' as const, url: await storeWav(this.callControlId, segmentId, playbackAudio) }
+        : { kind: 'buffer' as const, audio: playbackAudio, contentType: filler.contentType };
+
+    return { playbackAudio, playbackInput, spanMeta };
+  }
+
   private queueTtsSegment(segmentText: string, segmentId: string, handlingToken?: number): void {
     if (!segmentText.trim()) {
       return;
@@ -2624,6 +2777,11 @@ export class CallSession {
     }
     if (handlingToken !== undefined && handlingToken !== this.transcriptHandlingToken) {
       return;
+    }
+
+    // Real content arriving — filler is no longer the only thing in the queue.
+    if (this.fillerPlaying) {
+      this.fillerPlaying = false;
     }
 
     if (!this.playbackState.active) {

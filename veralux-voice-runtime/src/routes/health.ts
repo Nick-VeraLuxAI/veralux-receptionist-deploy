@@ -61,7 +61,11 @@ healthRouter.get('/', async (_req, res) => {
   const [redis, whisper, tts] = await Promise.all([
     checkRedis(),
     env.WHISPER_URL ? checkUrl(env.WHISPER_URL.replace('/transcribe', '/health').replace('/v1/audio/transcriptions', '/health')) : Promise.resolve(undefined),
-    env.KOKORO_URL ? checkUrl(env.KOKORO_URL.replace('/v1/kokoro', '/health')) : Promise.resolve(undefined),
+    env.TTS_MODE === 'coqui_xtts' && env.COQUI_XTTS_URL
+      ? checkUrl(env.COQUI_XTTS_URL.replace('/tts', '/health'))
+      : env.KOKORO_URL
+        ? checkUrl(env.KOKORO_URL.replace('/v1/kokoro', '/health'))
+        : Promise.resolve(undefined),
   ]);
 
   const checks: HealthStatus['checks'] = { redis };

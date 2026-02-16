@@ -191,6 +191,8 @@ services:
       - STT_DEBUG_DUMP_WHISPER_WAVS=true
       - STT_PREWHISPER_DUMP_FIRST_N=5
       - DEAD_AIR_MS=${DEAD_AIR_MS:-10000}
+      # Thinking filler — play a short phrase while STT/LLM/TTS processes
+      - THINKING_FILLER_ENABLED=${THINKING_FILLER_ENABLED:-true}
       # Streaming segmentation
       - BRAIN_STREAM_SEGMENT_MIN_CHARS=${BRAIN_STREAM_SEGMENT_MIN_CHARS:-160}
       - BRAIN_STREAM_SEGMENT_NEXT_CHARS=${BRAIN_STREAM_SEGMENT_NEXT_CHARS:-220}
@@ -439,6 +441,9 @@ services:
       - WHISPER_NO_SPEECH_THRESHOLD=0.3
       - WHISPER_BEAM_SIZE=5
       - WHISPER_MAX_CONCURRENT=3
+      # Confidence-based retry: retry with higher beam on low-confidence results
+      - WHISPER_RETRY_LOGPROB_THRESHOLD=-0.5
+      - WHISPER_RETRY_BEAM_SIZE=10
     # ports:
     #   - "${WHISPER_PORT:-9000}:9000"  # Internal only — accessible via Docker network
     networks:

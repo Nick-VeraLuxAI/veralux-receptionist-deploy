@@ -16,6 +16,7 @@ import { healthRouter } from './routes/health';
 import { createTelnyxWebhookRouter } from './routes/telnyxWebhook';
 import { createWebRtcRouter } from './routes/webrtc';
 import { synthesizeSpeech } from './tts';
+import { warmFillerCache } from './audio/thinkingFiller';
 import { metricsHandler, metricsMiddleware, startStageTimer } from './metrics';
 import { TelnyxClient } from './telnyx/telnyxClient';
 
@@ -1020,6 +1021,11 @@ export function buildServer(): { app: express.Express; server: http.Server; sess
   );
 
   scheduleGreetingWithRetry();
+
+  // Pre-synthesize thinking filler audio so it's ready before the first call.
+  if (env.THINKING_FILLER_ENABLED) {
+    warmFillerCache();
+  }
 
   app.disable('x-powered-by');
   app.use(
