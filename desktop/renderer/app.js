@@ -365,22 +365,7 @@ $('#log-filter').addEventListener('input', (e) => {
 async function loadSettings() {
   const content = await veralux.loadSettings();
   $('#env-editor').value = content;
-  $('#settings-status').textContent = '';
 }
-
-$('#btn-save-settings').addEventListener('click', async () => {
-  const content = $('#env-editor').value;
-  const result = await veralux.saveSettings(content);
-  if (result.success) {
-    $('#settings-status').textContent = 'Saved. Restart services to apply changes.';
-    $('#settings-status').style.color = 'var(--success)';
-  } else {
-    $('#settings-status').textContent = `Error: ${result.error}`;
-    $('#settings-status').style.color = 'var(--danger)';
-  }
-});
-
-$('#btn-reload-settings').addEventListener('click', loadSettings);
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
 

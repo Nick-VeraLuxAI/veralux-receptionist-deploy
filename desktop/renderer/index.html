@@ -64,14 +64,12 @@
       <div class="log-output" id="log-output"></div>
     </div>
 
-    <!-- Settings -->
+    <!-- Settings (read-only) -->
     <div class="tab-panel" id="settings">
       <div class="settings-toolbar">
-        <button class="btn btn-primary btn-sm" id="btn-save-settings">Save .env</button>
-        <button class="btn btn-sm" id="btn-reload-settings">Reload</button>
-        <span class="settings-status" id="settings-status"></span>
+        <span class="settings-lock-notice" style="color:var(--muted);font-size:0.85rem;">System configuration is locked. Contact your administrator to make changes.</span>
       </div>
-      <textarea class="env-editor" id="env-editor" spellcheck="false"></textarea>
+      <textarea class="env-editor" id="env-editor" spellcheck="false" readonly></textarea>
     </div>
 
   </div>

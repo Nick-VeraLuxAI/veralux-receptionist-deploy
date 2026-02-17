@@ -28,9 +28,8 @@ contextBridge.exposeInMainWorld('veralux', {
   onLogData: (cb)               => ipcRenderer.on('logs:data', (_e, data) => cb(data)),
   removeLogListeners: ()        => ipcRenderer.removeAllListeners('logs:data'),
 
-  // Settings
+  // Settings (read-only)
   loadSettings: () => ipcRenderer.invoke('settings:load'),
-  saveSettings: (content) => ipcRenderer.invoke('settings:save', content),
 
   // Auth
   getAdminKey: () => ipcRenderer.invoke('auth:admin-key'),

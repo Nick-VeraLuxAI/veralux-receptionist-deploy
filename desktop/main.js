@@ -395,14 +395,7 @@ function setupIPC() {
     } catch { return ''; }
   });
 
-  ipcMain.handle('settings:save', (_e, content) => {
-    try {
-      fs.writeFileSync(ENV_PATH, content, 'utf-8');
-      return { success: true };
-    } catch (err) {
-      return { success: false, error: err.message };
-    }
-  });
+  // settings:save intentionally removed — .env is read-only for end users
 
   // Get services definition
   ipcMain.handle('services:list', () => SERVICES);
