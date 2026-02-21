@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src http://localhost:*;" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src http://localhost:*; connect-src 'self' http://localhost:*; media-src blob:;" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>VeraLux Receptionist</title>
   <link rel="stylesheet" href="styles.css" />
@@ -18,6 +18,7 @@
     <div class="tab-nav">
       <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
       <button class="tab-btn" data-tab="owner-panel">Owner Panel</button>
+      <button class="tab-btn" data-tab="test-chat">Test Chat</button>
       <button class="tab-btn" data-tab="logs">Logs</button>
       <button class="tab-btn" data-tab="settings">Settings</button>
     </div>
@@ -51,6 +52,23 @@
         <span>Owner configuration panel</span>
       </div>
       <iframe id="owner-frame" src="about:blank"></iframe>
+    </div>
+
+    <!-- Test Chat -->
+    <div class="tab-panel" id="test-chat">
+      <div class="chat-toolbar">
+        <span class="chat-title">Pipeline Test</span>
+        <label class="chat-autoplay-label">
+          <input type="checkbox" id="chat-autoplay" checked />
+          <span>Auto-play audio</span>
+        </label>
+        <button class="btn btn-sm" id="btn-chat-clear">Clear</button>
+      </div>
+      <div class="chat-messages" id="chat-messages"></div>
+      <div class="chat-input-bar">
+        <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" />
+        <button class="btn btn-primary btn-sm" id="btn-chat-send">Send</button>
+      </div>
     </div>
 
     <!-- Logs -->

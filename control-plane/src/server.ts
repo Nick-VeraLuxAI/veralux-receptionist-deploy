@@ -3598,6 +3598,152 @@ app.get("/api/test-pipeline", async (req, res) => {
 });
 
 /* ────────────────────────────────────────────────
+   Chat endpoint: text → Brain (with tenant context) → TTS → { text, audio }
+   ──────────────────────────────────────────────── */
+
+app.options("/api/chat", (_req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "content-type");
+  res.status(204).end();
+});
+
+app.post("/api/chat", async (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+
+  const { message, history } = req.body as {
+    message?: string;
+    history?: { role: string; content: string }[];
+  };
+
+  if (!message || typeof message !== "string" || !message.trim()) {
+    return res.status(400).json({ error: "message is required" });
+  }
+
+  const tenant = tenants.getOrCreate(DEFAULT_TENANT_ID);
+  const prompts = tenant.config.getPrompts();
+
+  const assistantContext: Record<string, string> = {};
+  if (prompts.businessHours?.trim()) {
+    assistantContext["Business Hours"] = prompts.businessHours.trim();
+  }
+  if (prompts.businessAddress?.trim()) {
+    assistantContext["Address / Location"] = prompts.businessAddress.trim();
+  }
+  if (prompts.businessFaq?.trim()) {
+    assistantContext["Additional Info & FAQ"] = prompts.businessFaq.trim();
+  }
+  if (tenant.pricing?.items?.length) {
+    const pricingLines = tenant.pricing.items
+      .map((item) => `- ${item.name}: ${item.price}${item.description ? ` (${item.description})` : ""}`)
+      .join("\n");
+    const notes = tenant.pricing.notes?.trim();
+    assistantContext["Pricing & Services"] = pricingLines + (notes ? `\nNote: ${notes}` : "");
+  }
+
+  const transferProfiles = tenant.forwardingProfiles
+    .filter((p) => p.number)
+    .map((p) => {
+      let destination = p.number;
+      try { destination = normalizeE164(p.number); } catch { /* keep original */ }
+      const descText = ((p as any).description || "").trim();
+      const roleText = (p.role || "").trim();
+      const respSource = descText || roleText || p.name;
+      return {
+        id: p.id,
+        name: roleText || p.name,
+        holder: p.name,
+        responsibilities: respSource.split(/[,&]/).map((s: string) => s.trim()).filter(Boolean),
+        description: descText,
+        destination,
+      };
+    });
+
+  const result: Record<string, unknown> = {};
+
+  try {
+    // Step 1: Brain reply
+    const llmStart = Date.now();
+    const brainResp = await fetch(TEST_BRAIN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transcript: message.trim(),
+        history: Array.isArray(history) ? history : [],
+        transferProfiles,
+        ...(Object.keys(assistantContext).length > 0 ? { assistantContext } : {}),
+      }),
+    });
+    const brainData = await brainResp.json() as { text?: string; transfer?: unknown; hangup?: boolean };
+    result.llmMs = Date.now() - llmStart;
+    result.text = brainData.text || "";
+    result.transfer = brainData.transfer || null;
+    result.hangup = brainData.hangup || false;
+
+    if (!result.text) {
+      return res.json(result);
+    }
+
+    // Step 2: TTS synthesis
+    const ttsStart = Date.now();
+    const ttsCfg = tenant.config.getTtsConfig();
+    const ttsMode = (ttsCfg as any).ttsMode;
+    const useKokoro = ttsMode === "kokoro_http";
+
+    let ttsUrl: string;
+    let ttsBody: Record<string, unknown>;
+
+    if (useKokoro) {
+      const kokoroBase = (process.env.KOKORO_URL || "http://kokoro:7001").replace(/\/+$/, "");
+      ttsUrl = kokoroBase.endsWith("/tts") ? kokoroBase : kokoroBase + "/tts";
+      ttsBody = {
+        text: result.text,
+        voice_id: (ttsCfg as any).kokoroVoice || "af_bella",
+        rate: (ttsCfg as any).kokoroSpeed ?? 1.3,
+      };
+    } else {
+      const xttsBase = ((ttsCfg as any).coquiXttsUrl || process.env.COQUI_XTTS_URL || "http://xtts:7002/tts").replace(/\/+$/, "");
+      ttsUrl = xttsBase.endsWith("/tts") ? xttsBase : xttsBase + "/tts";
+      ttsBody = {
+        text: result.text,
+        language: (ttsCfg as any).language || "en",
+      };
+      if ((ttsCfg as any).defaultVoiceMode === "cloned" && (ttsCfg as any).clonedVoice?.speakerWavUrl) {
+        ttsBody.speaker_wav = (ttsCfg as any).clonedVoice.speakerWavUrl;
+      } else if ((ttsCfg as any).voiceId) {
+        ttsBody.voice_id = (ttsCfg as any).voiceId;
+        ttsBody.speaker = (ttsCfg as any).voiceId;
+      }
+      const speed = (ttsCfg as any).coquiSpeed;
+      if (speed != null) ttsBody.speed = speed;
+    }
+
+    const ttsResp = await fetch(ttsUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(ttsBody),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (ttsResp.ok) {
+      const contentType = ttsResp.headers.get("content-type") || "audio/wav";
+      const arrayBuf = await ttsResp.arrayBuffer();
+      result.audioBase64 = Buffer.from(arrayBuf).toString("base64");
+      result.contentType = contentType;
+    } else {
+      console.warn("[chat] TTS failed:", ttsResp.status, await ttsResp.text().catch(() => ""));
+      result.ttsError = `TTS returned ${ttsResp.status}`;
+    }
+    result.ttsMs = Date.now() - ttsStart;
+  } catch (err) {
+    console.error("[chat] error:", err);
+    result.error = String(err);
+  }
+
+  res.json(result);
+});
+
+/* ────────────────────────────────────────────────
    Admin UI shell
    ──────────────────────────────────────────────── */
 

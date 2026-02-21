@@ -360,6 +360,139 @@ $('#log-filter').addEventListener('input', (e) => {
   logFilter = e.target.value;
 });
 
+// ─── Test Chat ────────────────────────────────────────────────────────────────
+
+const CHAT_API = 'http://localhost:4000/api/chat';
+let chatHistory = [];
+let chatBusy = false;
+let currentAudioUrl = null;
+
+$('#btn-chat-send').addEventListener('click', sendChatMessage);
+$('#chat-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
+});
+
+$('#btn-chat-clear').addEventListener('click', () => {
+  chatHistory = [];
+  $('#chat-messages').innerHTML = '';
+  if (currentAudioUrl) { URL.revokeObjectURL(currentAudioUrl); currentAudioUrl = null; }
+});
+
+async function sendChatMessage() {
+  const input = $('#chat-input');
+  const text = input.value.trim();
+  if (!text || chatBusy) return;
+
+  input.value = '';
+  chatBusy = true;
+  $('#btn-chat-send').disabled = true;
+
+  appendChatBubble(text, 'user');
+  chatHistory.push({ role: 'user', content: text });
+
+  const typingEl = appendChatBubble('Thinking...', 'ai', { typing: true });
+
+  try {
+    const resp = await fetch(CHAT_API, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, history: chatHistory.slice(0, -1) }),
+    });
+
+    const data = await resp.json();
+    typingEl.remove();
+
+    if (data.error && !data.text) {
+      appendChatBubble('Error: ' + data.error, 'ai');
+    } else {
+      const replyText = data.text || '(empty response)';
+      chatHistory.push({ role: 'assistant', content: replyText });
+
+      const meta = [];
+      if (data.llmMs != null) meta.push(`LLM ${data.llmMs}ms`);
+      if (data.ttsMs != null) meta.push(`TTS ${data.ttsMs}ms`);
+
+      const badges = [];
+      if (data.transfer) badges.push({ cls: 'transfer', label: `Transfer → ${data.transfer.to || 'unknown'}` });
+      if (data.hangup) badges.push({ cls: 'hangup', label: 'Hangup' });
+
+      let audioBlob = null;
+      if (data.audioBase64 && data.contentType) {
+        const binary = atob(data.audioBase64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        audioBlob = new Blob([bytes], { type: data.contentType });
+      }
+
+      appendChatBubble(replyText, 'ai', { meta, badges, audioBlob });
+
+      if (audioBlob && $('#chat-autoplay').checked) {
+        playAudioBlob(audioBlob);
+      }
+    }
+  } catch (err) {
+    typingEl.remove();
+    appendChatBubble('Request failed: ' + err.message, 'ai');
+  }
+
+  chatBusy = false;
+  $('#btn-chat-send').disabled = false;
+  input.focus();
+}
+
+function appendChatBubble(text, role, opts = {}) {
+  const container = $('#chat-messages');
+  const bubble = document.createElement('div');
+  bubble.className = `chat-bubble ${role}`;
+  if (opts.typing) bubble.classList.add('typing');
+
+  const textEl = document.createElement('div');
+  textEl.className = 'chat-text';
+  textEl.textContent = text;
+  bubble.appendChild(textEl);
+
+  if (opts.badges) {
+    for (const b of opts.badges) {
+      const badge = document.createElement('span');
+      badge.className = `chat-badge ${b.cls}`;
+      badge.textContent = b.label;
+      bubble.appendChild(badge);
+    }
+  }
+
+  if (opts.meta || opts.audioBlob) {
+    const metaEl = document.createElement('div');
+    metaEl.className = 'chat-meta';
+
+    if (opts.meta) {
+      const span = document.createElement('span');
+      span.textContent = opts.meta.join(' · ');
+      metaEl.appendChild(span);
+    }
+
+    if (opts.audioBlob) {
+      const playBtn = document.createElement('button');
+      playBtn.className = 'chat-play-btn';
+      playBtn.textContent = '▶ Play';
+      playBtn.addEventListener('click', () => playAudioBlob(opts.audioBlob));
+      metaEl.appendChild(playBtn);
+    }
+
+    bubble.appendChild(metaEl);
+  }
+
+  container.appendChild(bubble);
+  container.scrollTop = container.scrollHeight;
+  return bubble;
+}
+
+function playAudioBlob(blob) {
+  if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
+  currentAudioUrl = URL.createObjectURL(blob);
+  const audio = new Audio(currentAudioUrl);
+  audio.play().catch((err) => console.warn('Audio playback failed:', err));
+}
+
 // ─── Settings ─────────────────────────────────────────────────────────────────
 
 async function loadSettings() {
