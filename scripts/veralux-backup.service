@@ -1,0 +1,14 @@
+[Unit]
+Description=Veralux Receptionist - Daily Database Backup & Retention Cleanup
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=receptionist
+WorkingDirectory=/home/receptionist/veralux-receptionist-deploy
+ExecStart=/home/receptionist/veralux-receptionist-deploy/scripts/backup.sh
+ExecStartPost=/home/receptionist/veralux-receptionist-deploy/scripts/db-retention.sh 90
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=veralux-backup

@@ -157,6 +157,14 @@ export async function healthcheckRedis(): Promise<{
   return await publisher.healthcheckRedis();
 }
 
+/**
+ * Exposes the raw Redis client for direct key operations (e.g. capacity settings).
+ */
+export async function getRawRedis(): Promise<RedisKv & { scard?: (key: string) => Promise<number> }> {
+  const c = await getClient();
+  return c as unknown as RedisKv & { scard?: (key: string) => Promise<number> };
+}
+
 export async function closeRuntimeRedis(): Promise<void> {
   if (!client) return;
   try {

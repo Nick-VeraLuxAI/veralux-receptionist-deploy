@@ -5,11 +5,13 @@
 
 import type {
   Workflow, WorkflowEvent, PipelineContext, StepResult, WorkflowStep,
+  CallEndedEvent,
 } from "./types";
 import { createRun, updateRun, getWorkflow } from "./db";
 import { actionHandlers } from "./actions";
 import { retryJob } from "./jobQueue";
 import type { WorkflowJob } from "./jobQueue";
+import { pool } from "../db";
 
 /**
  * Execute a full workflow pipeline.
@@ -18,9 +20,9 @@ export async function executePipeline(job: WorkflowJob): Promise<void> {
   const { workflowId, tenantId, event } = job;
 
   // Load the workflow definition
-  const workflow = await getWorkflow(workflowId);
+  const workflow = await getWorkflow(workflowId, tenantId);
   if (!workflow) {
-    console.warn(`[pipeline] Workflow ${workflowId} not found, skipping`);
+    console.warn(`[pipeline] Workflow ${workflowId} not found for tenant ${tenantId}, skipping`);
     return;
   }
 
@@ -70,7 +72,7 @@ export async function executePipeline(job: WorkflowJob): Promise<void> {
         stepsCompleted: i,
         result: results,
         error: result.error,
-      });
+      }, tenantId);
       break;
     }
 
@@ -90,7 +92,7 @@ export async function executePipeline(job: WorkflowJob): Promise<void> {
       await updateRun(run.id, {
         stepsCompleted: i + 1,
         result: results,
-      });
+      }, tenantId);
 
       console.log(
         `[pipeline] Step ${i + 1}/${steps.length} (${step.action}) completed in ${result.durationMs}ms`
@@ -116,7 +118,7 @@ export async function executePipeline(job: WorkflowJob): Promise<void> {
         stepsCompleted: i,
         result: results,
         error: result.error,
-      });
+      }, tenantId);
       break;
     }
   }
@@ -126,10 +128,32 @@ export async function executePipeline(job: WorkflowJob): Promise<void> {
       status: "completed",
       stepsCompleted: steps.length,
       result: results,
-    });
+    }, tenantId);
     console.log(
       `[pipeline] Workflow "${workflow.name}" completed successfully (${steps.length} steps)`
     );
+
+    // If any step produced a summary, attach it to the call_history record
+    const summaryStep = results.find(r => r.action === "ai_summarize" && r.status === "ok");
+    if (summaryStep?.output?.summary) {
+      const callEvent = event as CallEndedEvent;
+      const callId = callEvent.callId;
+      if (callId) {
+        try {
+          const client = await pool.connect();
+          try {
+            await client.query(
+              "UPDATE call_history SET summary = $1 WHERE call_id = $2 AND tenant_id = $3 AND summary IS NULL",
+              [summaryStep.output.summary, callId, tenantId]
+            );
+          } finally {
+            client.release();
+          }
+        } catch (err) {
+          console.error("[pipeline] Failed to update call_history summary:", err);
+        }
+      }
+    }
   } else {
     // Retry the job if possible
     const retried = await retryJob(job);

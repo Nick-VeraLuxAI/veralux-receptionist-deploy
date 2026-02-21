@@ -6,6 +6,7 @@ import { fetch } from 'undici';
 
 import { env } from '../../env';
 import { log } from '../../log';
+import { withRetry } from '../../retry';
 import { observeStageDuration, startStageTimer, incStageError } from '../../metrics';
 
 import type { STTProvider } from '../provider';
@@ -587,18 +588,28 @@ export class WhisperHttpProvider implements STTProvider {
 
       // IMPORTANT:
       // ✅ Do NOT pass opts.signal into fetch() (it will cancel the HTTP request).
-      const response = await fetch(whisperUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'audio/wav',
-          'Content-Length': String(body.length), // explicit; harmless if ignored
-          Accept: 'application/json, text/plain;q=0.9, */*;q=0.1',
+      // We use a separate timeout signal so transient hangs don't block the call forever.
+      const { response, contentType, respText } = await withRetry(
+        async () => {
+          const res = await fetch(whisperUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'audio/wav',
+              'Content-Length': String(body.length),
+              Accept: 'application/json, text/plain;q=0.9, */*;q=0.1',
+            },
+            body: body as any,
+            signal: AbortSignal.timeout(10_000),
+          });
+          const ct = res.headers.get('content-type') ?? '';
+          const txt = await res.text().catch(() => '');
+          if (!res.ok && res.status >= 500) {
+            throw new Error(`whisper error ${res.status}: ${txt.slice(0, 200)}`);
+          }
+          return { response: res, contentType: ct, respText: txt };
         },
-        body: body as any,
-      });
-
-      const contentType = response.headers.get('content-type') ?? '';
-      const respText = await response.text().catch(() => '');
+        { label: 'whisper_stt', retries: 1 },
+      );
 
       const httpMs = Date.now() - httpStartedAtMs;
 

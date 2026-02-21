@@ -53,8 +53,9 @@ services:
       - JWT_SECRET=${JWT_SECRET}
       - API_KEY=${API_KEY}
       - LLM_PROVIDER=${LLM_PROVIDER:-openai}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-ollama}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-http://host.docker.internal:11434/v1}
+      - OPENAI_MODEL=${BRAIN_MODEL:-qwen2.5:7b}
       - LOCAL_LLM_URL=${LOCAL_LLM_URL:-}
       - TELNYX_PHONE_NUMBER=${TELNYX_PHONE_NUMBER}
       - TELNYX_API_KEY=${TELNYX_API_KEY}
@@ -64,7 +65,11 @@ services:
       - ADMIN_API_KEY=${ADMIN_API_KEY}
       - INSTALLER_USERNAME=${INSTALLER_USERNAME:-VeraLux}
       - INSTALLER_PASSWORD=${INSTALLER_PASSWORD:-}
+      - SAAS_MODE=${SAAS_MODE:-false}
       - ADMIN_ALLOWED_ORIGINS=${ADMIN_ALLOWED_ORIGINS:-http://localhost:4000}
+      - ADMIN_RATE_USE_REDIS=true
+      - ADMIN_RATE_MAX=${ADMIN_RATE_MAX:-100}
+      - ADMIN_RATE_WINDOW_MS=${ADMIN_RATE_WINDOW_MS:-300000}
       # Stripe
       - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
       - STRIPE_PUBLISHABLE_KEY=${STRIPE_PUBLISHABLE_KEY}
@@ -87,6 +92,11 @@ services:
       - GLOBAL_CONCURRENCY_CAP=${GLOBAL_CONCURRENCY_CAP:-100}
       - TENANT_CONCURRENCY_CAP_DEFAULT=${TENANT_CONCURRENCY_CAP_DEFAULT:-10}
       - TENANT_CALLS_PER_MIN_CAP_DEFAULT=${TENANT_CALLS_PER_MIN_CAP_DEFAULT:-60}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - test-recordings:/app/control-plane/public/test-recordings
+    group_add:
+      - "${DOCKER_GID:-984}"
     ports:
       - "${CONTROL_PORT:-4000}:4000"
     networks:
@@ -107,6 +117,8 @@ services:
         condition: service_healthy
       control:
         condition: service_healthy
+      brain:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4001/health/live"]
       interval: 15s
@@ -126,10 +138,13 @@ services:
       - REDIS_URL=redis://redis:6379
       - CONTROL_URL=http://control:4000
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      # LLM / OpenAI
+      # LLM / Brain
+      - BRAIN_URL=http://brain:3001/reply
+      - BRAIN_TIMEOUT_MS=${BRAIN_TIMEOUT_MS:-15000}
       - LLM_PROVIDER=${LLM_PROVIDER:-openai}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-ollama}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-http://host.docker.internal:11434/v1}
+      - OPENAI_MODEL=${BRAIN_MODEL:-qwen2.5:7b}
       - LOCAL_LLM_URL=${LOCAL_LLM_URL:-}
       # Telnyx Configuration
       - TELNYX_API_KEY=${TELNYX_API_KEY}
@@ -137,7 +152,11 @@ services:
       - TELNYX_PHONE_NUMBER=${TELNYX_PHONE_NUMBER}
       - TELNYX_VERIFY_SIGNATURES=${TELNYX_VERIFY_SIGNATURES:-true}
       - TELNYX_ACCEPT_CODECS=${TELNYX_ACCEPT_CODECS:-PCMU,AMR-WB}
+      - TELNYX_STREAM_CODEC=${TELNYX_STREAM_CODEC:-AMR-WB}
       - TELNYX_AMRWB_DECODE=${TELNYX_AMRWB_DECODE:-true}
+      - TELNYX_AMRWB_FORCE_BE=${TELNYX_AMRWB_FORCE_BE:-true}
+      - TELNYX_AMRWB_DEFAULT_BE=${TELNYX_AMRWB_DEFAULT_BE:-false}
+      - AMRWB_ALLOW_OCTET_FALLBACK=${AMRWB_ALLOW_OCTET_FALLBACK:-true}
       - PLAYBACK_PSTN_SAMPLE_RATE=${PLAYBACK_PSTN_SAMPLE_RATE:-24000}
       # URLs
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
@@ -152,9 +171,32 @@ services:
       - AUDIO_STORAGE_DIR=${AUDIO_STORAGE_DIR:-/app/audio}
       - WHISPER_URL=${WHISPER_URL:-http://whisper:9000/transcribe}
       # Speech-to-Text Settings
+      - STT_LANGUAGE=${STT_LANGUAGE:-en}
+      - STT_NO_FRAME_FINALIZE_MS=${STT_NO_FRAME_FINALIZE_MS:-2000}
       - STT_CHUNK_MS=${STT_CHUNK_MS:-100}
-      - STT_SILENCE_MS=${STT_SILENCE_MS:-700}
+      - STT_SILENCE_MS=${STT_SILENCE_MS:-500}
+      - STT_SPEECH_FRAMES_REQUIRED=${STT_SPEECH_FRAMES_REQUIRED:-2}
+      - STT_AEC_ENABLED=${STT_AEC_ENABLED:-true}
+      - STT_RMS_FLOOR=${STT_RMS_FLOOR:-0.008}
+      - STT_PEAK_FLOOR=${STT_PEAK_FLOOR:-0.02}
+      # Silero VAD (neural voice activity detection — advisory only, gates are authoritative)
+      - STT_VAD_ENABLED=${STT_VAD_ENABLED:-true}
+      - STT_VAD_THRESHOLD=${STT_VAD_THRESHOLD:-0.15}
+      - STT_VAD_SPEECH_FRAMES_REQUIRED=${STT_VAD_SPEECH_FRAMES_REQUIRED:-2}
+      - STT_VAD_SILENCE_FRAMES_REQUIRED=${STT_VAD_SILENCE_FRAMES_REQUIRED:-8}
+      # Pre-Whisper audio normalization (canonical 16k mono WAV)
+      - STT_PREWHISPER_GATE=true
+      - STT_FORCE_NORMALIZE_WAV=true
+      # Debug: dump audio files sent to Whisper (disable after debugging)
+      - STT_DEBUG_DUMP_WHISPER_WAVS=true
+      - STT_PREWHISPER_DUMP_FIRST_N=5
       - DEAD_AIR_MS=${DEAD_AIR_MS:-10000}
+      # Thinking filler — play a short phrase while STT/LLM/TTS processes
+      - THINKING_FILLER_ENABLED=${THINKING_FILLER_ENABLED:-true}
+      # Streaming segmentation
+      - BRAIN_STREAM_SEGMENT_MIN_CHARS=${BRAIN_STREAM_SEGMENT_MIN_CHARS:-160}
+      - BRAIN_STREAM_SEGMENT_NEXT_CHARS=${BRAIN_STREAM_SEGMENT_NEXT_CHARS:-220}
+      - BRAIN_STREAM_SINGLE_SEGMENT_MAX=${BRAIN_STREAM_SINGLE_SEGMENT_MAX:-300}
       # Rate Limiting
       - GLOBAL_CONCURRENCY_CAP=${GLOBAL_CONCURRENCY_CAP:-100}
       - TENANT_CONCURRENCY_CAP_DEFAULT=${TENANT_CONCURRENCY_CAP_DEFAULT:-10}
@@ -167,6 +209,44 @@ services:
       - audio-storage:/app/audio
     ports:
       - "${RUNTIME_PORT:-4001}:4001"
+    networks:
+      - veralux-network
+
+  # =============================================================================
+  # Brain (LLM) Service
+  # =============================================================================
+
+  brain:
+    image: ${REGISTRY:-ghcr.io/nick-veraluxai}/veralux-brain:${VERSION:-latest}
+    build:
+      context: ./veralux-voice-runtime/brain-llm
+      dockerfile: Dockerfile
+    container_name: veralux-brain
+    restart: unless-stopped
+    logging: *default-logging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+    environment:
+      - PORT=3001
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-ollama}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-http://host.docker.internal:11434/v1}
+      - OPENAI_MODEL=${BRAIN_MODEL:-qwen2.5:7b}
+    # ports:
+    #   - "${BRAIN_PORT:-3001}:3001"  # Internal only — accessible via Docker network
     networks:
       - veralux-network
 
@@ -230,19 +310,59 @@ services:
       - veralux-network
 
   # =============================================================================
+  # Nginx TLS Termination (Optional - enable with: docker compose --profile tls up)
+  # =============================================================================
+
+  nginx:
+    image: ${REGISTRY:-ghcr.io/nick-veraluxai}/veralux-nginx:${VERSION:-latest}
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: veralux-nginx
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+      - tls
+    depends_on:
+      control:
+        condition: service_healthy
+      runtime:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/nginx-health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/certs:/etc/nginx/certs:ro
+      - certbot-webroot:/var/www/certbot
+      - certbot-certs:/etc/letsencrypt
+    networks:
+      - veralux-network
+
+  # =============================================================================
   # Tunnel Service (Optional - enable with: docker compose --profile tunnel up)
   # =============================================================================
 
-  # Option A: Cloudflare Tunnel (recommended for production)
+  # Cloudflare Tunnel — exposes the instance to the internet securely
   cloudflared:
     image: cloudflare/cloudflared:latest
     container_name: veralux-cloudflared
     restart: unless-stopped
     logging: *default-logging
-    profiles:
-      - tunnel
-      - cloudflare
-    command: tunnel run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    command: tunnel --protocol http2 run --token ${CLOUDFLARE_TUNNEL_TOKEN}
     environment:
       - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
     network_mode: host
@@ -286,10 +406,10 @@ services:
   # =============================================================================
 
   whisper-gpu:
-    image: ${REGISTRY:-ghcr.io/nick-veraluxai}/whisper:${VERSION:-latest}
+    image: ${REGISTRY:-ghcr.io/nick-veraluxai}/whisper-gpu:${VERSION:-latest}
     build:
       context: ./veralux-audio-stack
-      dockerfile: Dockerfile.whisper
+      dockerfile: Dockerfile.whisper-gpu
     container_name: veralux-whisper
     restart: unless-stopped
     logging: *default-logging
@@ -300,21 +420,32 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s
+      start_period: 180s
     deploy:
       resources:
         limits:
           cpus: "4.0"
-          memory: 4G
+          memory: 6G
         reservations:
           devices:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
     environment:
-      - MODEL_SIZE=${WHISPER_MODEL_SIZE:-base}
-    ports:
-      - "${WHISPER_PORT:-9000}:9000"
+      - WHISPER_MODEL=${WHISPER_MODEL:-large-v3}
+      - WHISPER_DEVICE=cuda
+      - WHISPER_COMPUTE_TYPE=float16
+      # Disable internal Silero VAD — our runtime already gates speech
+      - WHISPER_VAD_FILTER=false
+      # Lower no-speech threshold for compressed telephony audio
+      - WHISPER_NO_SPEECH_THRESHOLD=0.3
+      - WHISPER_BEAM_SIZE=5
+      - WHISPER_MAX_CONCURRENT=3
+      # Confidence-based retry: retry with higher beam on low-confidence results
+      - WHISPER_RETRY_LOGPROB_THRESHOLD=-0.5
+      - WHISPER_RETRY_BEAM_SIZE=10
+    # ports:
+    #   - "${WHISPER_PORT:-9000}:9000"  # Internal only — accessible via Docker network
     networks:
       veralux-network:
         aliases:
@@ -348,8 +479,10 @@ services:
               capabilities: [gpu]
     environment:
       - VOICE_ID=${KOKORO_VOICE_ID:-default}
-    ports:
-      - "${KOKORO_PORT:-7001}:7001"
+      - ONNX_PROVIDER=CUDAExecutionProvider
+      - PIP_EXTRA=onnxruntime-gpu
+    # ports:
+    #   - "${KOKORO_PORT:-7001}:7001"  # Internal only — accessible via Docker network
     networks:
       veralux-network:
         aliases:
@@ -384,8 +517,9 @@ services:
     environment:
       - LANGUAGE=${XTTS_LANGUAGE:-en}
       - COQUI_TOS_AGREED=1
-    ports:
-      - "${XTTS_PORT:-7002}:7002"
+      - XTTS_USE_GPU=true
+    # ports:
+    #   - "${XTTS_PORT:-7002}:7002"  # Internal only — accessible via Docker network
     networks:
       veralux-network:
         aliases:
@@ -423,8 +557,8 @@ services:
     environment:
       - MODEL_SIZE=${WHISPER_MODEL_SIZE:-base}
       - CUDA_VISIBLE_DEVICES=""
-    ports:
-      - "${WHISPER_PORT:-9000}:9000"
+    # ports:
+    #   - "${WHISPER_PORT:-9000}:9000"  # Internal only — accessible via Docker network
     networks:
       veralux-network:
         aliases:
@@ -457,8 +591,8 @@ services:
     environment:
       - VOICE_ID=${KOKORO_VOICE_ID:-default}
       - CUDA_VISIBLE_DEVICES=""
-    ports:
-      - "${KOKORO_PORT:-7001}:7001"
+    # ports:
+    #   - "${KOKORO_PORT:-7001}:7001"  # Internal only — accessible via Docker network
     networks:
       veralux-network:
         aliases:
@@ -492,12 +626,71 @@ services:
       - LANGUAGE=${XTTS_LANGUAGE:-en}
       - CUDA_VISIBLE_DEVICES=""
       - COQUI_TOS_AGREED=1
-    ports:
-      - "${XTTS_PORT:-7002}:7002"
+    # ports:
+    #   - "${XTTS_PORT:-7002}:7002"  # Internal only — accessible via Docker network
     networks:
       veralux-network:
         aliases:
           - xtts
+
+  # =============================================================================
+  # Monitoring (Optional - enable with: docker compose --profile monitoring up)
+  # =============================================================================
+
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: veralux-prometheus
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+      - monitoring
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.1"
+          memory: 128M
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+      - "--storage.tsdb.retention.size=1GB"
+    networks:
+      - veralux-network
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: veralux-grafana
+    restart: unless-stopped
+    logging: *default-logging
+    profiles:
+      - monitoring
+    depends_on:
+      - prometheus
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+        reservations:
+          cpus: "0.1"
+          memory: 64M
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-veralux}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    networks:
+      - veralux-network
 
 # =============================================================================
 # Volumes & Networks
@@ -510,6 +703,16 @@ volumes:
     name: veralux-redis-data
   audio-storage:
     name: veralux-audio-storage
+  certbot-webroot:
+    name: veralux-certbot-webroot
+  certbot-certs:
+    name: veralux-certbot-certs
+  prometheus-data:
+    name: veralux-prometheus-data
+  grafana-data:
+    name: veralux-grafana-data
+  test-recordings:
+    name: veralux-test-recordings
 
 networks:
   veralux-network:

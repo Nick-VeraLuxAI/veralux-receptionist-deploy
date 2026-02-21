@@ -63,10 +63,14 @@ WORKDIR /app/control-plane
 
 RUN chmod +x scripts/docker-entrypoint.sh
 
+# Pre-create volume mount points so Docker inherits correct ownership
+RUN mkdir -p public/test-recordings public/voice-recordings
+
 # Set ownership and switch to non-root user
 RUN chown -R veralux:veralux /app
 USER veralux
 
 EXPOSE 4000
+STOPSIGNAL SIGTERM
 
 ENTRYPOINT ["/app/control-plane/scripts/docker-entrypoint.sh"]
