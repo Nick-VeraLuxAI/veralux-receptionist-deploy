@@ -5,6 +5,7 @@ import type { RuntimeTenantConfig } from '../tenants/tenantConfig';
 import { synthesizeSpeech as synthesizeKokoro } from './kokoroTTS';
 import { synthesizeSpeechCoquiXtts } from './coquiXtts';
 import type { TTSRequest, TTSResult } from './types';
+import { buildCoquiTtsCacheKey, buildKokoroTtsCacheKey, ttsLruCache } from './ttsLruCache';
 
 /** Build TTS config from .env when no tenant config is set. Kokoro and Coqui use separate voice defaults. */
 function ttsConfigFromEnv(): RuntimeTenantConfig['tts'] {
@@ -68,6 +69,45 @@ function normalizeTTSText(text: string): string {
   return t;
 }
 
+function buildEffectiveCoquiRequest(
+  request: TTSRequest,
+  config: Extract<RuntimeTenantConfig['tts'], { mode: 'coqui_xtts' }>,
+): TTSRequest {
+  return {
+    text: request.text,
+    voice: request.voice ?? config.voice,
+    coquiXttsUrl: config.coquiXttsUrl,
+    speakerWavUrl: request.speakerWavUrl ?? config.speakerWavUrl,
+    language: request.language ?? config.language,
+    format: request.format ?? config.format,
+    sampleRate: request.sampleRate ?? config.sampleRate,
+    coquiTemperature: request.coquiTemperature ?? config.coquiTemperature,
+    coquiLengthPenalty: request.coquiLengthPenalty ?? config.coquiLengthPenalty,
+    coquiRepetitionPenalty: request.coquiRepetitionPenalty ?? config.coquiRepetitionPenalty,
+    coquiTopK: request.coquiTopK ?? config.coquiTopK,
+    coquiTopP: request.coquiTopP ?? config.coquiTopP,
+    coquiSpeed: request.coquiSpeed ?? config.coquiSpeed,
+    coquiSplitSentences: request.coquiSplitSentences ?? config.coquiSplitSentences,
+  };
+}
+
+function buildEffectiveKokoroRequest(
+  request: TTSRequest,
+  config: Extract<RuntimeTenantConfig['tts'], { mode: 'kokoro_http' }>,
+): TTSRequest {
+  const kokoroSpeed =
+    request.kokoroSpeed ??
+    ('kokoroSpeed' in config ? (config as { kokoroSpeed?: number }).kokoroSpeed : undefined);
+  return {
+    text: request.text,
+    voice: request.voice ?? config.voice,
+    format: request.format ?? config.format,
+    sampleRate: request.sampleRate ?? config.sampleRate,
+    kokoroUrl: config.kokoroUrl ?? request.kokoroUrl,
+    kokoroSpeed,
+  };
+}
+
 /**
  * Synthesize speech using the TTS backend selected by tenant config or .env.
  * When ttsConfig is provided, uses it; otherwise uses TTS_MODE, KOKORO_URL, and COQUI_XTTS_URL from .env.
@@ -82,33 +122,43 @@ export async function synthesizeSpeech(
   request = { ...request, text: normalizeTTSText(request.text) };
 
   let result: TTSResult;
+  let cacheKey: string | undefined;
+
   if (config.mode === 'coqui_xtts') {
-    result = await synthesizeSpeechCoquiXtts({
-      text: request.text,
-      voice: request.voice ?? config.voice,
-      coquiXttsUrl: config.coquiXttsUrl,
-      speakerWavUrl: request.speakerWavUrl ?? config.speakerWavUrl,
-      language: request.language ?? config.language,
-      format: request.format ?? config.format,
-      sampleRate: request.sampleRate ?? config.sampleRate,
-      coquiTemperature: request.coquiTemperature ?? config.coquiTemperature,
-      coquiLengthPenalty: request.coquiLengthPenalty ?? config.coquiLengthPenalty,
-      coquiRepetitionPenalty: request.coquiRepetitionPenalty ?? config.coquiRepetitionPenalty,
-      coquiTopK: request.coquiTopK ?? config.coquiTopK,
-      coquiTopP: request.coquiTopP ?? config.coquiTopP,
-      coquiSpeed: request.coquiSpeed ?? config.coquiSpeed,
-      coquiSplitSentences: request.coquiSplitSentences ?? config.coquiSplitSentences,
-    });
+    const effective = buildEffectiveCoquiRequest(request, config);
+    cacheKey = ttsLruCache ? buildCoquiTtsCacheKey(effective) : undefined;
+    if (cacheKey) {
+      const hit = ttsLruCache!.get(cacheKey);
+      if (hit) {
+        log.debug({ event: 'tts_cache_hit', provider: 'coqui_xtts', text_len: request.text.length }, 'tts cache hit');
+        result = hit;
+      } else {
+        result = await synthesizeSpeechCoquiXtts(effective);
+        ttsLruCache!.recordMiss();
+        ttsLruCache!.set(cacheKey, request.text.length, result);
+      }
+    } else {
+      result = await synthesizeSpeechCoquiXtts(effective);
+    }
   } else {
-    const kokoroConfig = config.mode === 'kokoro_http' ? config : undefined;
-    result = await synthesizeKokoro({
-      text: request.text,
-      voice: request.voice ?? kokoroConfig?.voice,
-      format: request.format ?? kokoroConfig?.format,
-      sampleRate: request.sampleRate ?? kokoroConfig?.sampleRate,
-      kokoroUrl: kokoroConfig?.kokoroUrl ?? request.kokoroUrl,
-      kokoroSpeed: request.kokoroSpeed ?? (kokoroConfig as any)?.kokoroSpeed,
-    });
+    const effective = buildEffectiveKokoroRequest(
+      request,
+      config as Extract<RuntimeTenantConfig['tts'], { mode: 'kokoro_http' }>,
+    );
+    cacheKey = ttsLruCache ? buildKokoroTtsCacheKey(effective) : undefined;
+    if (cacheKey) {
+      const hit = ttsLruCache!.get(cacheKey);
+      if (hit) {
+        log.debug({ event: 'tts_cache_hit', provider: 'kokoro_http', text_len: request.text.length }, 'tts cache hit');
+        result = hit;
+      } else {
+        result = await synthesizeKokoro(effective);
+        ttsLruCache!.recordMiss();
+        ttsLruCache!.set(cacheKey, request.text.length, result);
+      }
+    } else {
+      result = await synthesizeKokoro(effective);
+    }
   }
 
   if (result.contentType?.toLowerCase().includes('wav') && result.audio.length >= 44) {

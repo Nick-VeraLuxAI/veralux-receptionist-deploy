@@ -60,6 +60,7 @@ function renderServiceGrid() {
         ${badge ? `<span class="tts-badge ${badge.cls}" id="tts-badge-${svc.id}">${badge.label}</span>` : ''}
         <span class="svc-status" id="status-${svc.id}">...</span>
       </div>
+      ${svc.id === 'runtime' ? `<div class="service-card-tts-cache" id="tts-cache-row-${svc.id}">TTS cache: …</div>` : ''}
       <div class="service-card-meta">
         <span id="response-${svc.id}">—</span>
         <span id="uptime-${svc.id}">—</span>
@@ -86,8 +87,22 @@ function updateTtsBadges() {
   }
 }
 
+function formatTtsCacheLine(c) {
+  if (!c) return 'TTS cache: —';
+  if (!c.enabled) return 'TTS cache: off';
+  const total = (c.hits || 0) + (c.misses || 0);
+  const hitPct = total > 0 ? Math.round((100 * c.hits) / total) : null;
+  const hitPart = hitPct != null ? ` · ${hitPct}% hit` : '';
+  return `TTS cache: ${c.entries}/${c.max_entries} phrases · ${c.hits} hits · ${c.misses} misses${hitPart}`;
+}
+
 function updateDashboard(data) {
   const { services: svcHealth, gpu } = data;
+
+  const ttsRow = $('#tts-cache-row-runtime');
+  if (ttsRow) {
+    ttsRow.textContent = formatTtsCacheLine(data.ttsCache);
+  }
 
   // Update active TTS mode if provided
   if (data.activeTtsMode && data.activeTtsMode !== activeTtsMode) {
@@ -583,7 +598,12 @@ function hideEula() {
     if (health.services && Object.keys(health.services).length > 0) {
       if (health.activeTtsMode) activeTtsMode = health.activeTtsMode;
       updateTtsBadges();
-      updateDashboard({ services: health.services, gpu: null, activeTtsMode: activeTtsMode });
+      updateDashboard({
+        services: health.services,
+        gpu: null,
+        activeTtsMode: activeTtsMode,
+        ttsCache: health.ttsCache,
+      });
     } else if (Object.keys(health).length > 0 && !health.services) {
       // Backwards compat: old format was flat { serviceId: healthData }
       updateDashboard({ services: health, gpu: null });

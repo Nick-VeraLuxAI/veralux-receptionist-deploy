@@ -38,6 +38,7 @@ const TTS_FETCH_INTERVAL_MS = 60000; // re-check TTS mode every 60s, not every p
 let mainWindow = null;
 let tray = null;
 let healthState = {};       // { serviceId: { status, responseMs, uptime, error } }
+let lastTtsCache = null;    // from voice runtime GET /health/live (tts_cache)
 let healthInterval = null;
 let logProcesses = {};      // { containerId: ChildProcess }
 
@@ -70,6 +71,32 @@ function httpHealth(port, path, timeoutMs = 4000) {
     });
     req.on('error', () => resolve({ ok: false, ms: Date.now() - start }));
     req.on('timeout', () => { req.destroy(); resolve({ ok: false, ms: timeoutMs }); });
+  });
+}
+
+/** JSON GET for voice runtime live probe (includes tts_cache stats). */
+function httpGetJsonPort(port, pathStr, timeoutMs = 4000) {
+  return new Promise(resolve => {
+    const req = http.get({ hostname: '127.0.0.1', port, path: pathStr, timeout: timeoutMs }, res => {
+      let body = '';
+      res.on('data', d => (body += d));
+      res.on('end', () => {
+        if (res.statusCode < 200 || res.statusCode >= 400) {
+          resolve(null);
+          return;
+        }
+        try {
+          resolve(JSON.parse(body));
+        } catch {
+          resolve(null);
+        }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(null);
+    });
   });
 }
 
@@ -174,12 +201,23 @@ async function pollHealth() {
   const shouldFetchTts = !activeTtsMode || (now - lastTtsFetchTime) >= TTS_FETCH_INTERVAL_MS;
   const gpuPromise = checkGpu();
   const ttsPromise = shouldFetchTts ? fetchActiveTtsMode() : Promise.resolve(activeTtsMode);
-  const [gpu, ttsMode] = await Promise.all([gpuPromise, ttsPromise]);
+  const runtimeSvc = SERVICES.find(s => s.id === 'runtime');
+  const livePromise =
+    runtimeSvc?.port && results.runtime?.status !== 'stopped'
+      ? httpGetJsonPort(runtimeSvc.port, '/health/live')
+      : Promise.resolve(null);
+  const [gpu, ttsMode, liveJson] = await Promise.all([gpuPromise, ttsPromise, livePromise]);
   if (shouldFetchTts && ttsMode) lastTtsFetchTime = now;
   if (ttsMode) activeTtsMode = ttsMode;
+  lastTtsCache = liveJson?.tts_cache ?? null;
   healthState = results;
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send('health-update', { services: results, gpu, activeTtsMode });
+    mainWindow.webContents.send('health-update', {
+      services: results,
+      gpu,
+      activeTtsMode,
+      ttsCache: lastTtsCache,
+    });
   }
   updateTrayIcon();
 }
@@ -401,7 +439,7 @@ function setupIPC() {
   ipcMain.handle('services:list', () => SERVICES);
 
   // Health snapshot
-  ipcMain.handle('health:get', () => ({ services: healthState, activeTtsMode }));
+  ipcMain.handle('health:get', () => ({ services: healthState, activeTtsMode, ttsCache: lastTtsCache }));
 
   // ─── EULA / License Agreement ──────────────────────────────────────────────
   ipcMain.handle('eula:check', () => {

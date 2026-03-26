@@ -234,6 +234,11 @@ const EnvSchema = z.object({
   GREETING_TEXT: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   KOKORO_VOICE_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   TTS_SAMPLE_RATE: z.preprocess(ttsSampleRateFallback, z.coerce.number().int().positive().default(8000)),
+  /** In-process LRU cache for repeated TTS (e.g. hours, pricing). */
+  TTS_CACHE_ENABLED: z.preprocess(stringToBoolean, z.boolean().default(true)),
+  TTS_CACHE_MAX_ENTRIES: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(256)),
+  TTS_CACHE_MAX_TEXT_CHARS: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(512)),
+  TTS_CACHE_MAX_AUDIO_BYTES: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(2_097_152)),
   PLAYBACK_PROFILE: z.preprocess(emptyToUndefined, z.enum(['pstn', 'hd']).default('pstn')),
   PLAYBACK_PSTN_SAMPLE_RATE: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(8000)),
   PLAYBACK_ENABLE_HIGHPASS: z.preprocess(stringToBoolean, z.boolean().default(true)),

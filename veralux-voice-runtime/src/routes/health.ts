@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { getRedisClient } from '../redis/client';
 import { env } from '../env';
 import { log } from '../log';
+import { getTtsLruCacheStats } from '../tts/ttsLruCache';
 
 export const healthRouter = Router();
 
@@ -43,7 +44,10 @@ async function checkUrl(url: string, timeout = 5000): Promise<{ ok: boolean; lat
 
 // Basic liveness probe (always returns 200 if process is running)
 healthRouter.get('/live', (_req, res) => {
-  res.status(200).json({ status: 'ok' });
+  res.status(200).json({
+    status: 'ok',
+    tts_cache: getTtsLruCacheStats(),
+  });
 });
 
 // Readiness probe (checks dependencies)
