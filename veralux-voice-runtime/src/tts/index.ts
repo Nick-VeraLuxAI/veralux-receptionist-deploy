@@ -5,6 +5,7 @@ import type { RuntimeTenantConfig } from '../tenants/tenantConfig';
 import { synthesizeSpeech as synthesizeKokoro } from './kokoroTTS';
 import { synthesizeSpeechCoquiXtts } from './coquiXtts';
 import type { TTSRequest, TTSResult } from './types';
+import { buildCoquiTtsCacheKey, buildKokoroTtsCacheKey, ttsLruCache } from './ttsLruCache';
 
 /** Build TTS config from .env when no tenant config is set. Kokoro and Coqui use separate voice defaults. */
 function ttsConfigFromEnv(): RuntimeTenantConfig['tts'] {
@@ -33,6 +34,81 @@ function ttsConfigFromEnv(): RuntimeTenantConfig['tts'] {
 }
 
 /**
+ * Normalize text for TTS pronunciation.
+ * Converts time formats, ordinals, and common abbreviations so the
+ * speech engine reads them naturally instead of digit-by-digit.
+ */
+function normalizeTTSText(text: string): string {
+  let t = text;
+
+  // "9:00am" / "9:00 AM" / "10:00pm" → "9 AM" / "10 PM"
+  t = t.replace(/\b(\d{1,2}):00\s*(am|pm|AM|PM|a\.m\.|p\.m\.)\b/gi, (_, h, p) => {
+    return `${h} ${p.replace(/\./g, '').toUpperCase()}`;
+  });
+
+  // "9:30am" / "9:30 PM" → "9 30 AM" / "9 30 PM"
+  t = t.replace(/\b(\d{1,2}):(\d{2})\s*(am|pm|AM|PM|a\.m\.|p\.m\.)\b/gi, (_, h, m, p) => {
+    return `${h} ${m} ${p.replace(/\./g, '').toUpperCase()}`;
+  });
+
+  // Bare "9:00" / "17:00" (24-hour, no am/pm) → "9" / "5 PM"
+  t = t.replace(/\b([01]?\d|2[0-3]):00\b/g, (_, h) => {
+    const hour = parseInt(h, 10);
+    if (hour === 0) return '12 AM';
+    if (hour <= 12) return String(hour);
+    return `${hour - 12} PM`;
+  });
+
+  // "$4.50" → "4 dollars 50 cents" — helps TTS with prices
+  t = t.replace(/\$(\d+)\.(\d{2})\b/g, (_, d, c) => {
+    const cents = parseInt(c, 10);
+    return cents > 0 ? `${d} dollars and ${cents} cents` : `${d} dollars`;
+  });
+  t = t.replace(/\$(\d+)\b/g, '$1 dollars');
+
+  return t;
+}
+
+function buildEffectiveCoquiRequest(
+  request: TTSRequest,
+  config: Extract<RuntimeTenantConfig['tts'], { mode: 'coqui_xtts' }>,
+): TTSRequest {
+  return {
+    text: request.text,
+    voice: request.voice ?? config.voice,
+    coquiXttsUrl: config.coquiXttsUrl,
+    speakerWavUrl: request.speakerWavUrl ?? config.speakerWavUrl,
+    language: request.language ?? config.language,
+    format: request.format ?? config.format,
+    sampleRate: request.sampleRate ?? config.sampleRate,
+    coquiTemperature: request.coquiTemperature ?? config.coquiTemperature,
+    coquiLengthPenalty: request.coquiLengthPenalty ?? config.coquiLengthPenalty,
+    coquiRepetitionPenalty: request.coquiRepetitionPenalty ?? config.coquiRepetitionPenalty,
+    coquiTopK: request.coquiTopK ?? config.coquiTopK,
+    coquiTopP: request.coquiTopP ?? config.coquiTopP,
+    coquiSpeed: request.coquiSpeed ?? config.coquiSpeed,
+    coquiSplitSentences: request.coquiSplitSentences ?? config.coquiSplitSentences,
+  };
+}
+
+function buildEffectiveKokoroRequest(
+  request: TTSRequest,
+  config: Extract<RuntimeTenantConfig['tts'], { mode: 'kokoro_http' }>,
+): TTSRequest {
+  const kokoroSpeed =
+    request.kokoroSpeed ??
+    ('kokoroSpeed' in config ? (config as { kokoroSpeed?: number }).kokoroSpeed : undefined);
+  return {
+    text: request.text,
+    voice: request.voice ?? config.voice,
+    format: request.format ?? config.format,
+    sampleRate: request.sampleRate ?? config.sampleRate,
+    kokoroUrl: config.kokoroUrl ?? request.kokoroUrl,
+    kokoroSpeed,
+  };
+}
+
+/**
  * Synthesize speech using the TTS backend selected by tenant config or .env.
  * When ttsConfig is provided, uses it; otherwise uses TTS_MODE, KOKORO_URL, and COQUI_XTTS_URL from .env.
  */
@@ -42,33 +118,47 @@ export async function synthesizeSpeech(
 ): Promise<TTSResult> {
   const config = ttsConfig ?? ttsConfigFromEnv();
 
+  // Normalize text for natural TTS pronunciation
+  request = { ...request, text: normalizeTTSText(request.text) };
+
   let result: TTSResult;
+  let cacheKey: string | undefined;
+
   if (config.mode === 'coqui_xtts') {
-    result = await synthesizeSpeechCoquiXtts({
-      text: request.text,
-      voice: request.voice ?? config.voice,
-      coquiXttsUrl: config.coquiXttsUrl,
-      speakerWavUrl: request.speakerWavUrl ?? config.speakerWavUrl,
-      language: request.language ?? config.language,
-      format: request.format ?? config.format,
-      sampleRate: request.sampleRate ?? config.sampleRate,
-      coquiTemperature: request.coquiTemperature ?? config.coquiTemperature,
-      coquiLengthPenalty: request.coquiLengthPenalty ?? config.coquiLengthPenalty,
-      coquiRepetitionPenalty: request.coquiRepetitionPenalty ?? config.coquiRepetitionPenalty,
-      coquiTopK: request.coquiTopK ?? config.coquiTopK,
-      coquiTopP: request.coquiTopP ?? config.coquiTopP,
-      coquiSpeed: request.coquiSpeed ?? config.coquiSpeed,
-      coquiSplitSentences: request.coquiSplitSentences ?? config.coquiSplitSentences,
-    });
+    const effective = buildEffectiveCoquiRequest(request, config);
+    cacheKey = ttsLruCache ? buildCoquiTtsCacheKey(effective) : undefined;
+    if (cacheKey) {
+      const hit = ttsLruCache!.get(cacheKey);
+      if (hit) {
+        log.debug({ event: 'tts_cache_hit', provider: 'coqui_xtts', text_len: request.text.length }, 'tts cache hit');
+        result = hit;
+      } else {
+        result = await synthesizeSpeechCoquiXtts(effective);
+        ttsLruCache!.recordMiss();
+        ttsLruCache!.set(cacheKey, request.text.length, result);
+      }
+    } else {
+      result = await synthesizeSpeechCoquiXtts(effective);
+    }
   } else {
-    const kokoroConfig = config.mode === 'kokoro_http' ? config : undefined;
-    result = await synthesizeKokoro({
-      text: request.text,
-      voice: request.voice ?? kokoroConfig?.voice,
-      format: request.format ?? kokoroConfig?.format,
-      sampleRate: request.sampleRate ?? kokoroConfig?.sampleRate,
-      kokoroUrl: kokoroConfig?.kokoroUrl ?? request.kokoroUrl,
-    });
+    const effective = buildEffectiveKokoroRequest(
+      request,
+      config as Extract<RuntimeTenantConfig['tts'], { mode: 'kokoro_http' }>,
+    );
+    cacheKey = ttsLruCache ? buildKokoroTtsCacheKey(effective) : undefined;
+    if (cacheKey) {
+      const hit = ttsLruCache!.get(cacheKey);
+      if (hit) {
+        log.debug({ event: 'tts_cache_hit', provider: 'kokoro_http', text_len: request.text.length }, 'tts cache hit');
+        result = hit;
+      } else {
+        result = await synthesizeKokoro(effective);
+        ttsLruCache!.recordMiss();
+        ttsLruCache!.set(cacheKey, request.text.length, result);
+      }
+    } else {
+      result = await synthesizeKokoro(effective);
+    }
   }
 
   if (result.contentType?.toLowerCase().includes('wav') && result.audio.length >= 44) {

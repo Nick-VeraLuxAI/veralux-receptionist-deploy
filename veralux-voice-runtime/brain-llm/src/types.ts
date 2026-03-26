@@ -39,4 +39,5 @@ export interface BrainTransferAction {
 export interface BrainReplyResponse {
   text: string;
   transfer?: BrainTransferAction;
+  hangup?: boolean;
 }

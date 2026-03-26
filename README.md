@@ -1,6 +1,17 @@
 # Veralux Receptionist - Deployment Bundle
 
-This package contains everything needed to deploy Veralux Receptionist using Docker.
+This package contains everything needed to deploy Veralux Receptionist using Docker — an AI-powered phone receptionist with voice cloning, real-time voice tuning, and a full business owner dashboard.
+
+## Features
+
+- **AI Receptionist** — Answers calls, takes messages, transfers calls, and quotes pricing
+- **Voice Cloning** — Clone your own voice from a microphone recording or audio file upload
+- **XTTS Voice Tuning** — Fine-tune speed, temperature, top-p, top-k, repetition penalty, and length penalty
+- **Owner Portal** — Business owners can customize greetings, instructions, voice settings, pricing, call forwarding, and view analytics
+- **Admin Panel** — System-level configuration and tenant management
+- **Desktop App** — Electron-based desktop application with VeraLux branding (Linux)
+- **Custom Greetings** — Greeting text set in the owner panel is automatically synced to the runtime and regenerated as audio
+- **WebRTC HD Calls** — Browser-based high-definition calling alongside traditional PSTN
 
 ## Requirements
 
@@ -262,6 +273,144 @@ Optional GPU Services (--profile gpu):
 │   Whisper   │  │   Kokoro    │  │    XTTS     │
 │    :9000    │  │    :7001    │  │    :7002    │
 └─────────────┘  └─────────────┘  └─────────────┘
+```
+
+### Data Flow
+
+1. **Configuration** — Business owners configure greetings, prompts, voice settings, and pricing through the Owner Portal or Portal UI (served by the Control Plane on `:4000`).
+2. **Sync** — The Control Plane persists configuration to PostgreSQL and publishes it to Redis. When prompts (including greeting text) are saved, it also triggers greeting audio regeneration on the Runtime.
+3. **Calls** — Incoming calls hit the Runtime via Telnyx webhooks. The Runtime reads tenant configuration from Redis, synthesizes speech via XTTS or Kokoro, and uses Whisper for speech-to-text.
+4. **Voice Cloning** — Audio samples uploaded through the portal are stored and referenced as `speakerWavUrl` in the TTS configuration, allowing XTTS to clone the uploaded voice.
+
+---
+
+## Owner Portal & Admin Panel
+
+### Owner Portal (`/portal.html`)
+
+The owner portal is the primary interface for business owners. Access it at `http://<your-domain>:4000/portal.html`.
+
+**Features:**
+- **Greeting & Prompts** — Customize the greeting message, business description, tone of voice, and policy rules
+- **Voice Tuning** — Six sliders to fine-tune XTTS voice output:
+  - Speed (0.5–2.0)
+  - Temperature (0.01–1.50)
+  - Top P (0.10–1.00)
+  - Top K (1–200)
+  - Repetition Penalty (1.0–5.0)
+  - Length Penalty (0.5–2.0)
+- **Voice Cloning** — Record from microphone or upload a `.wav`/`.mp3` file, preview, label, and save as a custom voice
+- **Voice Selection** — Switch between preset and cloned voices
+- **Call Forwarding** — Configure numbers and roles for call transfers
+- **Pricing** — Set up service/product pricing the receptionist can quote
+- **Analytics** — View call activity and lead capture
+- **Billing** — Manage subscription (if Stripe is configured)
+
+### Owner Panel (`/owner.html`)
+
+A simpler owner interface with the same voice tuning and cloning capabilities. Access at `http://<your-domain>:4000/owner.html`.
+
+### Admin Panel (`/admin.html`)
+
+System administration interface for managing tenants, API keys, and system-level configuration. Access at `http://<your-domain>:4000/admin.html`.
+
+---
+
+## Desktop Application
+
+An Electron-based desktop app is included in the `desktop/` directory for Linux systems.
+
+### Running the Desktop App
+
+```bash
+cd desktop
+npm install
+npx electron --no-sandbox .
+```
+
+Or use the launcher script:
+
+```bash
+./desktop/start.sh
+```
+
+A `.desktop` file can be created to add a launcher to your Linux desktop. The app uses the VeraLux logo (`desktop/assets/icon.png`) for branding.
+
+---
+
+## Voice Configuration API
+
+The Control Plane exposes a TTS configuration API at `/api/tts/config` (requires `X-Admin-Key` header).
+
+### GET `/api/tts/config`
+
+Returns the current voice configuration including mode, voice ID, cloned voice settings, and XTTS tuning parameters.
+
+### POST `/api/tts/config`
+
+Accepts JSON body with any of the following fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ttsMode` | string | `coqui_xtts` or `kokoro_http` |
+| `voiceId` | string | Voice identifier |
+| `defaultVoiceMode` | string | `preset` or `cloned` |
+| `clonedVoice` | object | `{ speakerWavUrl, label }` |
+| `coquiSpeed` | number | Speed (0.5–2.0, default 1.18) |
+| `coquiTemperature` | number | Temperature (0.01–1.50, default 0.80) |
+| `coquiTopP` | number | Top P (0.10–1.00, default 0.92) |
+| `coquiTopK` | number | Top K (1–200, default 50) |
+| `coquiRepetitionPenalty` | number | Repetition penalty (1.0–5.0, default 2.0) |
+| `coquiLengthPenalty` | number | Length penalty (0.5–2.0, default 1.0) |
+
+### POST `/api/admin/voice-recordings`
+
+Upload a voice sample for cloning. Send as `multipart/form-data` with an `audio` field containing a `.wav`, `.mp3`, `.ogg`, or `.webm` file (max 10 MB). Returns `{ url }` pointing to the stored file.
+
+---
+
+## Project Structure
+
+```
+veralux-receptionist-deploy/
+├── control-plane/          # Control Plane service
+│   ├── src/                # TypeScript source
+│   ├── public/             # Web UI (owner.html, portal.html, admin.html)
+│   ├── migrations/         # PostgreSQL migrations
+│   └── Dockerfile
+├── veralux-voice-runtime/  # Voice Runtime service
+│   ├── src/                # TypeScript source
+│   └── Dockerfile
+├── shared/                 # Shared schemas and contracts
+│   └── src/
+│       └── runtimeContract.ts
+├── desktop/                # Electron desktop app
+│   ├── assets/icon.png     # VeraLux logo
+│   ├── main.js             # Electron main process
+│   ├── renderer/           # UI (HTML/CSS/JS)
+│   └── start.sh            # Launch script
+├── docker-compose.yml      # Service orchestration
+├── install.sh              # Interactive installer
+├── deploy.sh               # Deployment management
+└── .env                    # Environment configuration
+```
+
+---
+
+## Building Docker Images
+
+To rebuild images from source after making changes:
+
+```bash
+# Build both services
+docker compose build control runtime
+
+# Or build individually
+docker compose build control
+docker compose build runtime
+
+# Restart with new images
+COMPOSE_PROJECT_NAME=veralux docker compose up -d control runtime
 ```
 
 ---

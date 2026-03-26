@@ -132,7 +132,16 @@ function buildStageGuidance(state: CallState): string {
     return buildSchedulingGuidance(state);
   }
   if (state.stage === "greeting" || state.stage === "qualifying") {
-    return [buildIntakeGuidance(state), "", buildQuotingGuidance(state)].join("\n");
+    return [
+      buildIntakeGuidance(state),
+      "",
+      buildQuotingGuidance(state),
+      "",
+      "RESPONSE RULES:",
+      "- Ask ONE question at a time. Wait for the caller to answer before asking the next.",
+      "- Do NOT say 'anything else I can help with?' or 'is there anything else?' during this stage. You are still collecting information — save that for after you have everything you need.",
+      "- End your response with your qualifying question and nothing else.",
+    ].join("\n");
   }
   if (state.stage === "handoff") {
     return [

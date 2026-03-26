@@ -31,7 +31,17 @@ function int16ToFloat32(i16: Int16Array): Float32Array {
 }
 
 function resolveDefaultModelPath(): string {
-  return path.join(process.cwd(), 'src', 'stt', 'vad', 'models', 'silero_vad.onnx');
+  // Try multiple locations: dist/ (Docker), src/ (dev), and __dirname-relative
+  const candidates = [
+    path.join(__dirname, 'models', 'silero_vad.onnx'),                    // relative to compiled .js
+    path.join(process.cwd(), 'dist', 'stt', 'vad', 'models', 'silero_vad.onnx'), // Docker dist/
+    path.join(process.cwd(), 'src', 'stt', 'vad', 'models', 'silero_vad.onnx'),  // dev src/
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  // Fallback to the first candidate (will produce a clear error if missing)
+  return candidates[0]!;
 }
 
 /**

@@ -81,8 +81,9 @@ export class InMemoryCallStore {
     let changed = false;
 
     for (const [callId, call] of this.calls.entries()) {
-      const last = call.lastActivityAt ?? call.createdAt ?? 0;
-      if (last && now - last > CALL_TTL_MS) {
+      const last = call.lastActivityAt ?? call.createdAt;
+      // If no timestamp at all, the call is an orphan from a DB reload — remove it.
+      if (last === undefined || last === 0 || now - last > CALL_TTL_MS) {
         this.calls.delete(callId);
         this.onDeleteCall?.(callId);
         changed = true;

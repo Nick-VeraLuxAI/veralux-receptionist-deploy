@@ -1,0 +1,16 @@
+{
+  "name": "veralux-desktop",
+  "version": "1.0.0",
+  "description": "VeraLux Receptionist Desktop Control Center",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "author": "Nick <nick@veralux.ai>",
+  "license": "SEE LICENSE IN ../LICENSE",
+  "private": true,
+  "dependencies": {
+    "electron": "^33.0.0"
+  }
+}

@@ -11,6 +11,7 @@ WORKDIR /app
 
 # Install build/runtime dependencies required by native modules (wrtc, onnxruntime, opus, etc.)
 # wget is needed for Docker health checks
+# libspeexdsp-dev provides SpeexDSP for Acoustic Echo Cancellation (AEC)
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       python3 \
@@ -19,6 +20,7 @@ RUN apt-get update && \
       pkg-config \
       libopus0 \
       libgomp1 \
+      libspeexdsp-dev \
       ffmpeg \
       wget && \
     rm -rf /var/lib/apt/lists/*
@@ -43,6 +45,10 @@ RUN npm run build -w @veralux/shared
 COPY veralux-voice-runtime/ veralux-voice-runtime/
 WORKDIR /app/veralux-voice-runtime
 RUN npm run build
+
+# Copy Silero VAD model into dist/ so the runtime can find it at runtime
+RUN mkdir -p dist/stt/vad/models && \
+    cp -f src/stt/vad/models/silero_vad.onnx dist/stt/vad/models/silero_vad.onnx 2>/dev/null || true
 
 # Strip devDependencies after the build completes to shrink the final image.
 WORKDIR /app
@@ -76,5 +82,6 @@ USER veralux
 WORKDIR /app/veralux-voice-runtime
 
 EXPOSE 4001
+STOPSIGNAL SIGTERM
 
 CMD ["node", "dist/index.js"]

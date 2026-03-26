@@ -36,6 +36,8 @@ export type ActionType =
   | "fire_webhook"
   | "ai_summarize"
   | "ai_extract"
+  | "ai_extract_quote"
+  | "build_quote"
   | "store_lead";
 
 export interface WorkflowStep {
@@ -144,4 +146,5 @@ export interface PipelineContext {
 
 export interface WorkflowSettings {
   ownerCanEdit: boolean;
+  customBrandingEnabled: boolean;
 }

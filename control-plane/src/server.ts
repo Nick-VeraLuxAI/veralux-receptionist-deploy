@@ -7,6 +7,14 @@ import fs from "fs";
 import multer from "multer";
 import { z } from "zod";
 import {
+  createWorkflowSchema, updateWorkflowSchema, workflowSettingsSchema,
+  createTenantSchema, configUpdateSchema, promptConfigSchema,
+  ttsConfigSchema, forwardingProfilesSchema, pricingSchema,
+  createAdminKeySchema, secretSchema, capacitySchema,
+  cloudflareTokenSchema, stripeCheckoutSchema, stripePlanSchema,
+  subscriptionSchema,
+} from "./validationSchemas";
+import {
   requestIdMiddleware,
   requestTimeout,
   globalErrorHandler,
@@ -32,6 +40,7 @@ import {
   publishTenantConfig,
   unmapDid,
   closeRuntimeRedis,
+  getRawRedis,
 } from "./runtime/runtimePublisher";
 import {
   type LLMProvider,
@@ -49,7 +58,7 @@ import {
   type AdminRole,
 } from "./auth";
 import { secretStore } from "./secretStore";
-import { listAuditLogs, upsertUserBySub, listMembershipsForUser, closePool, pingPool, getSubscription, upsertSubscription, pool as dbPool } from "./db";
+import { listAuditLogs, upsertUserBySub, listMembershipsForUser, closePool, pingPool, getSubscription, upsertSubscription, pool as dbPool, type BrandingConfig, insertCallHistory, listCallHistory, getCallHistoryById } from "./db";
 import { rateLimit } from "./rateLimit";
 import { closeRedis as closeRateLimitRedis } from "./redis";
 import { normalizePhoneNumber } from "./utils/phone";
@@ -108,6 +117,15 @@ app.use(
 app.use(express.static("public"));
 
 // ────────────────────────────────────────────────
+// Cookie Parser + CSRF Protection
+// ────────────────────────────────────────────────
+import cookieParser from "cookie-parser";
+import { csrfProtection, getCsrfToken } from "./csrf";
+app.use(cookieParser());
+app.use(csrfProtection);
+app.get("/api/csrf-token", getCsrfToken);
+
+// ────────────────────────────────────────────────
 // Production Middleware (request ID, timeout, logging)
 // ────────────────────────────────────────────────
 app.use(requestIdMiddleware);
@@ -148,6 +166,43 @@ const voiceRecordingUpload = multer({
       cb(null, true);
     } else {
       cb(new Error("Only WAV files are allowed"));
+    }
+  },
+});
+
+// ────────────────────────────────────────────────
+// Logo Upload Configuration
+// ────────────────────────────────────────────────
+const LOGOS_DIR = process.env.LOGOS_DIR || path.join(__dirname, "..", "public", "uploads", "logos");
+
+if (!fs.existsSync(LOGOS_DIR)) {
+  fs.mkdirSync(LOGOS_DIR, { recursive: true });
+}
+
+const logoStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, LOGOS_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname) || ".png";
+    cb(null, `logo-${uniqueSuffix}${ext}`);
+  },
+});
+
+const LOGO_MAX_SIZE_MB = parseInt(process.env.LOGO_MAX_SIZE_MB || "5", 10);
+
+const logoUpload = multer({
+  storage: logoStorage,
+  limits: {
+    fileSize: LOGO_MAX_SIZE_MB * 1024 * 1024,
+  },
+  fileFilter: (_req, file, cb) => {
+    const allowed = ["image/png", "image/jpeg", "image/jpg", "image/webp", "image/svg+xml"];
+    if (allowed.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only PNG, JPEG, WebP, and SVG images are allowed"));
     }
   },
 });
@@ -295,14 +350,10 @@ const ADMIN_ALLOWED_ORIGINS = (process.env.ADMIN_ALLOWED_ORIGINS || "")
   .filter(Boolean);
 
 function isAllowedOrigin(origin?: string): boolean {
-  // In production without an origin header, log a warning but allow for backward compatibility
-  // This allows server-to-server calls (e.g., from runtime) that don't set Origin
-  if (!origin) {
-    if (IS_PROD && process.env.REQUIRE_CORS_ORIGIN === "true") {
-      return false;
-    }
-    return true;
-  }
+  // No Origin header = non-browser request (e.g., Electron main process, service-to-service, curl).
+  // These are protected by the admin API key / JWT auth — allow them through CORS.
+  if (!origin) return true;
+  // If an Origin header IS present, it must match the allowlist (prevents cross-site browser attacks)
   if (!ADMIN_ALLOWED_ORIGINS.length) return !IS_PROD; // prod requires allowlist
   return ADMIN_ALLOWED_ORIGINS.includes(origin);
 }
@@ -523,14 +574,59 @@ async function syncLLMContextToRuntime(tenant: TenantContext): Promise<void> {
     }
 
     const prompts = tenant.config.getPrompts();
+
+    // Build assistantContext from business info fields so the LLM
+    // can answer caller questions about hours, location, pricing, etc.
+    const assistantContext: Record<string, string> = {};
+    if (prompts.businessHours?.trim()) {
+      assistantContext["Business Hours"] = prompts.businessHours.trim();
+    }
+    if (prompts.businessAddress?.trim()) {
+      assistantContext["Address / Location"] = prompts.businessAddress.trim();
+    }
+    if (prompts.businessFaq?.trim()) {
+      assistantContext["Additional Info & FAQ"] = prompts.businessFaq.trim();
+    }
+    // Include pricing catalog so the LLM can answer cost questions during live calls
+    if (tenant.pricing?.items?.length) {
+      const pricingLines = tenant.pricing.items
+        .map((item) => `- ${item.name}: ${item.price}${item.description ? ` (${item.description})` : ""}`)
+        .join("\n");
+      const notes = tenant.pricing.notes?.trim();
+      assistantContext["Pricing & Services"] = pricingLines + (notes ? `\nNote: ${notes}` : "");
+    }
+
+    // Build a domain-specific STT prompt from the tenant's pricing catalog
+    // so Whisper is biased toward recognizing service/product names.
+    const sttPromptParts = [
+      "Phone call with a receptionist at a local service business.",
+    ];
+    if (tenant.pricing?.items?.length) {
+      const names = tenant.pricing.items.map((item) => item.name).join(", ");
+      sttPromptParts.push(`The business offers: ${names}.`);
+    }
+    sttPromptParts.push(
+      "The caller may ask about pricing, scheduling, business hours, or to speak with the owner or manager.",
+    );
+    const sttPrompt = sttPromptParts.join(" ");
+
     const updatedConfig: RuntimeTenantConfig = {
       ...existing,
+      greetingText: prompts.greetingText,
+      // Inject the dynamic STT prompt so Whisper recognizes domain vocabulary
+      stt: {
+        ...existing.stt,
+        prompt: sttPrompt,
+      },
+      // Provide business info to the LLM as assistantContext
+      ...(Object.keys(assistantContext).length > 0 ? { assistantContext } : {}),
       llmContext: {
         forwardingProfiles: tenant.forwardingProfiles.map((p) => ({
           id: p.id,
           name: p.name,
           number: p.number,
           role: p.role,
+          description: (p as any).description || "",
         })),
         pricing: {
           items: tenant.pricing.items.map((item) => ({
@@ -548,10 +644,46 @@ async function syncLLMContextToRuntime(tenant: TenantContext): Promise<void> {
           voicePrompt: prompts.voicePrompt,
         },
       },
+      // Map forwarding profiles to the runtime's transferProfiles format
+      // so the brain/LLM can route calls to the right person
+      transferProfiles: tenant.forwardingProfiles
+        .filter((p) => p.number)
+        .map((p) => {
+          // Normalize destination to E.164 format (e.g. "2089164911" → "+12089164911")
+          let destination = p.number;
+          try { destination = normalizeE164(p.number); } catch { /* keep original if normalization fails */ }
+          // Build responsibilities from description (preferred), then role, then name
+          const descText = ((p as any).description || "").trim();
+          const roleText = (p.role || "").trim();
+          const respSource = descText || roleText || p.name;
+          return {
+            id: p.id,
+            name: roleText || p.name,
+            holder: p.name,
+            responsibilities: respSource.split(/[,&]/).map((s: string) => s.trim()).filter(Boolean),
+            description: descText,
+            destination,
+          };
+        }),
     };
 
     await publishTenantConfig(tenant.id, updatedConfig);
     console.debug(`[syncLLMContext] Updated LLM context for tenant ${tenant.id}`);
+
+    // Trigger greeting regeneration on the runtime
+    if (prompts.greetingText) {
+      try {
+        const runtimeUrl = process.env.VOICE_RUNTIME_URL || "http://runtime:4001";
+        await fetch(`${runtimeUrl}/admin/regenerate-greeting`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ greetingText: prompts.greetingText }),
+        });
+        console.debug(`[syncLLMContext] Triggered greeting regeneration for tenant ${tenant.id}`);
+      } catch (greetErr) {
+        console.error(`[syncLLMContext] Failed to trigger greeting regeneration:`, greetErr);
+      }
+    }
   } catch (err) {
     console.error(`[syncLLMContext] Failed to sync LLM context for tenant ${tenant.id}:`, err);
   }
@@ -749,6 +881,135 @@ app.post("/api/dev/receptionist-audio", (_req, res) =>
 );
 
 /* ────────────────────────────────────────────────
+   Public Auth — Self-Service Signup & Login
+   ──────────────────────────────────────────────── */
+
+import {
+  signup, login, signupSchema, loginSchema,
+  createInvitation, acceptInvitation, inviteSchema,
+  getUserProfile, listInvitations,
+  forgotPassword, resetPassword, forgotPasswordSchema, resetPasswordSchema,
+  verifyEmail, sendVerification,
+  refreshAccessToken, refreshTokenSchema,
+} from "./tenantProvisioning";
+
+const SAAS_MODE = (process.env.SAAS_MODE || "false").toLowerCase() === "true";
+
+// ── Auth-specific rate limiter (stricter: 10 req / 5 min per IP) ──
+const authRateLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 10,                  // 10 attempts per window
+  keyFn: (req) => req.ip || "anon",
+  useRedis: parseBooleanish(process.env.ADMIN_RATE_USE_REDIS, false),
+});
+
+// Signup (public — only available in SaaS mode)
+app.post("/api/auth/signup", authRateLimiter, asyncHandler(async (req, res) => {
+  if (!SAAS_MODE) {
+    return res.status(404).json({ error: "Signup is disabled in on-premise mode" });
+  }
+  const body = validateBody(signupSchema, req.body);
+  const result = await signup(body);
+  res.status(201).json(result);
+}));
+
+// Login (public)
+app.post("/api/auth/login", authRateLimiter, asyncHandler(async (req, res) => {
+  if (!SAAS_MODE) {
+    return res.status(404).json({ error: "Login via email/password is disabled in on-premise mode" });
+  }
+  const body = validateBody(loginSchema, req.body);
+  const result = await login(body);
+  res.json(result);
+}));
+
+// Get current user profile (authenticated)
+app.get("/api/auth/me", asyncHandler(async (req, res) => {
+  const auth = req as AuthedRequest;
+  if (!auth.ctx?.userId) {
+    return res.status(401).json({ error: "Not authenticated" });
+  }
+  const profile = await getUserProfile(auth.ctx.userId);
+  if (!profile) return res.status(404).json({ error: "User not found" });
+  res.json(profile);
+}));
+
+// Invite a user to a tenant (authenticated, admin only)
+app.post("/api/admin/invitations", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const body = validateBody(inviteSchema, req.body);
+  const auth = req as AuthedRequest;
+  const result = await createInvitation(tenant.id, body.email, body.role as string, auth.ctx?.userId ?? null);
+  res.status(201).json(result);
+}));
+
+// List invitations for a tenant
+app.get("/api/admin/invitations", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const invitations = await listInvitations(tenant.id);
+  res.json({ invitations });
+}));
+
+// Accept an invitation (authenticated)
+app.post("/api/auth/accept-invite", asyncHandler(async (req, res) => {
+  const { token: inviteToken } = req.body as { token?: string };
+  if (!inviteToken) return res.status(400).json({ error: "Invitation token required" });
+  const auth = req as AuthedRequest;
+  const userId = auth.ctx?.userId;
+  if (!userId) return res.status(401).json({ error: "Not authenticated" });
+  const result = await acceptInvitation(inviteToken, userId);
+  res.json(result);
+}));
+
+// Forgot password (public)
+app.post("/api/auth/forgot-password", authRateLimiter, asyncHandler(async (req, res) => {
+  if (!SAAS_MODE) {
+    return res.status(404).json({ error: "Not available in on-premise mode" });
+  }
+  const body = validateBody(forgotPasswordSchema, req.body);
+  await forgotPassword(body.email);
+  // Always return success to prevent email enumeration
+  res.json({ success: true, message: "If that email exists, a reset link has been sent." });
+}));
+
+// Reset password (public)
+app.post("/api/auth/reset-password", authRateLimiter, asyncHandler(async (req, res) => {
+  if (!SAAS_MODE) {
+    return res.status(404).json({ error: "Not available in on-premise mode" });
+  }
+  const body = validateBody(resetPasswordSchema, req.body);
+  await resetPassword(body.token, body.password);
+  res.json({ success: true, message: "Password has been reset. You can now log in." });
+}));
+
+// Verify email (public, via link)
+app.get("/api/auth/verify-email", asyncHandler(async (req, res) => {
+  const token = req.query.token as string;
+  if (!token) return res.status(400).json({ error: "Verification token required" });
+  const result = await verifyEmail(token);
+  // Redirect to a success page or return JSON
+  res.json({ success: true, email: result.email, message: "Email verified successfully." });
+}));
+
+// Resend verification email (authenticated)
+app.post("/api/auth/resend-verification", asyncHandler(async (req, res) => {
+  const auth = req as AuthedRequest;
+  const userId = auth.ctx?.userId;
+  if (!userId) return res.status(401).json({ error: "Not authenticated" });
+  await sendVerification(userId);
+  res.json({ success: true, message: "Verification email sent." });
+}));
+
+// Refresh access token (public — uses refresh token)
+app.post("/api/auth/refresh", authRateLimiter, asyncHandler(async (req, res) => {
+  const body = validateBody(refreshTokenSchema, req.body);
+  const result = await refreshAccessToken(body.refreshToken);
+  res.json(result);
+}));
+
+/* ────────────────────────────────────────────────
    Health
    ──────────────────────────────────────────────── */
 
@@ -806,14 +1067,42 @@ app.get("/ready", async (_req, res) => {
   res.json({ status: "ok", checks });
 });
 
+// Prometheus-compatible metrics endpoint (for scraping)
+app.get("/metrics", async (_req, res) => {
+  try {
+    const text = await generateMetrics();
+    res.set("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+    res.send(text);
+  } catch (err: any) {
+    res.status(500).send(`# Error: ${err.message}\n`);
+  }
+});
+
+// System health dashboard data (admin-only)
+app.get("/api/admin/system/health", asyncHandler(async (req, res) => {
+  const health = await getSystemHealth();
+  res.json(health);
+}));
+
 /* ────────────────────────────────────────────────
    Installer admin-auth (used by install.sh)
    ──────────────────────────────────────────────── */
 
 const INSTALLER_USERNAME = process.env.INSTALLER_USERNAME || "VeraLux";
-const INSTALLER_PASSWORD = process.env.INSTALLER_PASSWORD || "JesusisKing";
+const INSTALLER_PASSWORD = process.env.INSTALLER_PASSWORD || "";
 
-app.post("/admin-auth", (req, res) => {
+if (!INSTALLER_PASSWORD && IS_PROD) {
+  console.error(
+    "[SECURITY] INSTALLER_PASSWORD is not set. " +
+    "The /admin-auth endpoint will reject all requests until a password is configured."
+  );
+}
+
+app.post("/admin-auth", authRateLimiter, (req, res) => {
+  if (!INSTALLER_PASSWORD) {
+    return res.status(503).json({ success: false, error: "Installer auth is not configured" });
+  }
+
   const { username, password } = req.body || {};
 
   if (!username || !password) {
@@ -835,7 +1124,7 @@ app.post("/admin-auth", (req, res) => {
    Owner Portal – public auth (no adminGuard)
    ──────────────────────────────────────────────── */
 
-app.post("/api/owner/login", async (req, res) => {
+app.post("/api/owner/login", authRateLimiter, async (req, res) => {
   try {
     const { phone, passcode } = req.body || {};
 
@@ -1080,8 +1369,10 @@ app.post("/api/admin/prompts", async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);
   if (!tenant) return;
 
-  const { systemPreamble, schemaHint, policyPrompt, voicePrompt, greetingText } =
-    req.body as Partial<PromptConfig>;
+  const {
+    systemPreamble, schemaHint, policyPrompt, voicePrompt, greetingText,
+    businessHours, businessAddress, businessFaq,
+  } = req.body as Partial<PromptConfig>;
 
   const updated = tenant.config.setPrompts({
     systemPreamble,
@@ -1089,6 +1380,9 @@ app.post("/api/admin/prompts", async (req, res) => {
     policyPrompt,
     voicePrompt,
     greetingText,
+    businessHours,
+    businessAddress,
+    businessFaq,
   });
 
   tenants.persistConfig(tenant.id);
@@ -1146,6 +1440,76 @@ app.post("/api/admin/pricing", async (req, res) => {
   await syncLLMContextToRuntime(updated);
   res.json(updated.pricing);
 });
+
+/* ────────────────────────────────────────────────
+   Admin – Branding (logo, colors, company name)
+   ──────────────────────────────────────────────── */
+
+app.get("/api/admin/branding", (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  res.json(tenant.branding || {});
+});
+
+app.post("/api/admin/branding", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  const { companyName, primaryColor, secondaryColor, accentColor, logoUrl } = req.body || {};
+  const update: BrandingConfig = {};
+
+  if (companyName !== undefined) update.companyName = String(companyName).trim().slice(0, 200);
+  if (primaryColor !== undefined) update.primaryColor = String(primaryColor).trim().slice(0, 20);
+  if (secondaryColor !== undefined) update.secondaryColor = String(secondaryColor).trim().slice(0, 20);
+  if (accentColor !== undefined) update.accentColor = String(accentColor).trim().slice(0, 20);
+  if (logoUrl !== undefined) update.logoUrl = String(logoUrl).trim().slice(0, 500);
+
+  const updated = tenants.setBranding(tenant.id, update);
+  if (!updated) return res.status(404).json({ error: "tenant_not_found" });
+  res.json(updated.branding);
+}));
+
+// Upload a logo image
+app.post("/api/admin/branding/logo", logoUpload.single("logo"), asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  const file = (req as any).file;
+  if (!file) return res.status(400).json({ error: "No logo file provided" });
+
+  // Delete old logo file if it exists on disk
+  const oldLogo = tenant.branding?.logoUrl;
+  if (oldLogo && oldLogo.startsWith("/uploads/logos/")) {
+    const oldPath = path.join(__dirname, "..", "public", oldLogo);
+    if (fs.existsSync(oldPath)) {
+      try { fs.unlinkSync(oldPath); } catch { /* ignore */ }
+    }
+  }
+
+  const logoUrl = `/uploads/logos/${file.filename}`;
+  const updated = tenants.setBranding(tenant.id, { logoUrl });
+  if (!updated) return res.status(404).json({ error: "tenant_not_found" });
+
+  res.json({ logoUrl, branding: updated.branding });
+}));
+
+// Delete logo
+app.delete("/api/admin/branding/logo", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  const oldLogo = tenant.branding?.logoUrl;
+  if (oldLogo && oldLogo.startsWith("/uploads/logos/")) {
+    const oldPath = path.join(__dirname, "..", "public", oldLogo);
+    if (fs.existsSync(oldPath)) {
+      try { fs.unlinkSync(oldPath); } catch { /* ignore */ }
+    }
+  }
+
+  const updated = tenants.setBranding(tenant.id, { logoUrl: "" });
+  if (!updated) return res.status(404).json({ error: "tenant_not_found" });
+  res.json(updated.branding);
+}));
 
 /* ────────────────────────────────────────────────
    Admin – Subscription / Billing
@@ -1371,6 +1735,44 @@ app.post("/api/admin/stripe/sync", asyncHandler(async (req, res) => {
 }));
 
 /* ────────────────────────────────────────────────
+   Admin – Usage Metering & Billing Enforcement
+   ──────────────────────────────────────────────── */
+
+import {
+  getUsage, getUsageHistory, checkUsageLimits, incrementUsage, canAcceptCall,
+} from "./billing/usageMetering";
+import { generateMetrics, getSystemHealth, incrementCounter } from "./monitoring/metrics";
+
+// Get current usage for the tenant
+app.get("/api/admin/usage", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const usage = await getUsage(tenant.id);
+  res.json(usage || {
+    tenantId: tenant.id,
+    period: new Date().toISOString().slice(0, 7),
+    callCount: 0, callMinutes: 0, apiRequests: 0, sttMinutes: 0, ttsCharacters: 0,
+  });
+}));
+
+// Get usage history
+app.get("/api/admin/usage/history", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const months = parseInt(req.query.months as string) || 6;
+  const history = await getUsageHistory(tenant.id, months);
+  res.json({ history });
+}));
+
+// Get subscription status + usage limits
+app.get("/api/admin/billing/status", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const status = await checkUsageLimits(tenant.id);
+  res.json(status);
+}));
+
+/* ────────────────────────────────────────────────
    Admin – TTS config + preview (XTTS / Kokoro)
    ──────────────────────────────────────────────── */
 
@@ -1378,7 +1780,6 @@ app.post("/api/admin/stripe/sync", asyncHandler(async (req, res) => {
 type ExtendedTtsConfig = TTSConfig & {
   mode?: string;
   voice?: string;
-  coquiSpeed?: number;
 };
 
 app.get("/api/tts/config", (req, res) => {
@@ -1387,31 +1788,17 @@ app.get("/api/tts/config", (req, res) => {
   
   const baseCfg = tenant.config.getSafeTtsConfig();
   
-  // Return extended config with mode info
+  // Return extended config with mode info, tuning params, and Kokoro settings
   const extendedCfg: ExtendedTtsConfig = {
     ...baseCfg,
-    mode: (baseCfg as any).ttsMode || "kokoro_http",
-    ttsMode: (baseCfg as any).ttsMode || "kokoro_http",
+    mode: baseCfg.ttsMode || "coqui_xtts",
+    ttsMode: baseCfg.ttsMode || "coqui_xtts",
   };
-  
-  // Include voice cloning fields if present
-  if ((baseCfg as any).defaultVoiceMode) {
-    extendedCfg.defaultVoiceMode = (baseCfg as any).defaultVoiceMode;
-  }
-  if ((baseCfg as any).clonedVoice) {
-    extendedCfg.clonedVoice = (baseCfg as any).clonedVoice;
-  }
-  if ((baseCfg as any).coquiXttsUrl) {
-    extendedCfg.coquiXttsUrl = (baseCfg as any).coquiXttsUrl;
-  }
-  if ((baseCfg as any).kokoroUrl) {
-    extendedCfg.kokoroUrl = (baseCfg as any).kokoroUrl;
-  }
   
   res.json(extendedCfg);
 });
 
-app.post("/api/tts/config", (req, res) => {
+app.post("/api/tts/config", async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);
   if (!tenant) return;
 
@@ -1426,7 +1813,15 @@ app.post("/api/tts/config", (req, res) => {
     ttsMode,
     defaultVoiceMode,
     clonedVoice,
-  } = req.body as Partial<ExtendedTtsConfig>;
+    coquiTemperature,
+    coquiSpeed,
+    coquiTopP,
+    coquiTopK,
+    coquiRepetitionPenalty,
+    coquiLengthPenalty,
+    kokoroVoice,
+    kokoroSpeed,
+  } = req.body as Partial<ExtendedTtsConfig & { kokoroVoice?: string; kokoroSpeed?: number }>;
 
   // Determine the TTS URL based on mode
   const urlCandidate = coquiXttsUrl || kokoroUrl || xttsUrl;
@@ -1479,7 +1874,7 @@ app.post("/api/tts/config", (req, res) => {
     preset: presetValue,
   };
 
-  // Store mode-specific fields
+  // Store mode-specific fields — only update mode if explicitly provided
   if (ttsMode === "coqui_xtts") {
     configUpdate.ttsMode = "coqui_xtts";
     configUpdate.coquiXttsUrl = ttsUrlValue;
@@ -1492,33 +1887,377 @@ app.post("/api/tts/config", (req, res) => {
         label: clonedVoice.label?.trim() || undefined,
       };
     }
-  } else {
+  } else if (ttsMode === "kokoro_http") {
     configUpdate.ttsMode = "kokoro_http";
     configUpdate.kokoroUrl = ttsUrlValue;
     // Clear voice cloning fields for non-XTTS mode
     configUpdate.defaultVoiceMode = undefined;
     configUpdate.clonedVoice = undefined;
   }
+  // If ttsMode not provided (e.g. tuning-only save), preserve existing mode
+
+  // Kokoro-specific settings
+  if (typeof kokoroVoice === "string" && kokoroVoice.trim()) configUpdate.kokoroVoice = kokoroVoice.trim();
+  if (typeof kokoroSpeed === "number") configUpdate.kokoroSpeed = clamp(kokoroSpeed, 0.5, 1.5);
+
+  // XTTS tuning parameters
+  if (typeof coquiTemperature === "number") configUpdate.coquiTemperature = clamp(coquiTemperature, 0.01, 1.5);
+  if (typeof coquiSpeed === "number") configUpdate.coquiSpeed = clamp(coquiSpeed, 0.5, 2.0);
+  if (typeof coquiTopP === "number") configUpdate.coquiTopP = clamp(coquiTopP, 0.1, 1.0);
+  if (typeof coquiTopK === "number") configUpdate.coquiTopK = Math.round(clamp(coquiTopK, 1, 200));
+  if (typeof coquiRepetitionPenalty === "number") configUpdate.coquiRepetitionPenalty = clamp(coquiRepetitionPenalty, 1.0, 5.0);
+  if (typeof coquiLengthPenalty === "number") configUpdate.coquiLengthPenalty = clamp(coquiLengthPenalty, 0.5, 2.0);
 
   const updated = tenant.config.setTtsConfig(configUpdate);
 
   tenants.persistConfig(tenant.id);
-  
+
+  // Sync tuning params to runtime via Redis
+  try {
+    // Try the tenant.id first; if not in Redis, try looking up by the tenant meta name
+    let existing = await getTenantConfig(tenant.id);
+    if (!existing && tenant.meta?.name && tenant.meta.name !== tenant.id) {
+      existing = await getTenantConfig(tenant.meta.name);
+    }
+    if (existing) {
+      // Determine the effective mode for the Redis update
+      const effectiveSyncMode = configUpdate.ttsMode || (existing.tts as any)?.mode || "coqui_xtts";
+
+      // Build a clean runtime-compatible TTS config based on the mode
+      // The Zod schema uses a discriminated union, so we must include mode-specific required fields
+      const redisTts: Record<string, unknown> = { mode: effectiveSyncMode };
+
+      if (effectiveSyncMode === "kokoro_http") {
+        // Kokoro mode: requires kokoroUrl
+        redisTts.kokoroUrl = configUpdate.kokoroUrl
+          || (existing.tts as any)?.kokoroUrl
+          || process.env.KOKORO_URL
+          || "http://kokoro:7001";
+        // Voice and speed
+        const voice = configUpdate.kokoroVoice || (existing.tts as any)?.voice;
+        if (voice) redisTts.voice = voice;
+        if (configUpdate.kokoroSpeed != null) redisTts.kokoroSpeed = configUpdate.kokoroSpeed;
+        else if ((existing.tts as any)?.kokoroSpeed != null) redisTts.kokoroSpeed = (existing.tts as any).kokoroSpeed;
+      } else {
+        // XTTS mode: requires coquiXttsUrl
+        redisTts.coquiXttsUrl = configUpdate.coquiXttsUrl
+          || (existing.tts as any)?.coquiXttsUrl
+          || process.env.COQUI_XTTS_URL
+          || "http://xtts:7002/tts";
+        // Voice/language/cloning
+        const voice = configUpdate.voiceId || (existing.tts as any)?.voice;
+        if (voice) redisTts.voice = voice;
+        const lang = configUpdate.language || (existing.tts as any)?.language;
+        if (lang) redisTts.language = lang;
+        if (configUpdate.defaultVoiceMode !== undefined) redisTts.defaultVoiceMode = configUpdate.defaultVoiceMode;
+        else if ((existing.tts as any)?.defaultVoiceMode) redisTts.defaultVoiceMode = (existing.tts as any).defaultVoiceMode;
+        if (configUpdate.clonedVoice !== undefined) redisTts.clonedVoice = configUpdate.clonedVoice;
+        else if ((existing.tts as any)?.clonedVoice) redisTts.clonedVoice = (existing.tts as any).clonedVoice;
+        // XTTS tuning params — carry forward existing or apply new
+        const tuningKeys = ["coquiTemperature", "coquiSpeed", "coquiTopP", "coquiTopK", "coquiRepetitionPenalty", "coquiLengthPenalty"] as const;
+        for (const k of tuningKeys) {
+          if (configUpdate[k] != null) redisTts[k] = configUpdate[k];
+          else if ((existing.tts as any)?.[k] != null) redisTts[k] = (existing.tts as any)[k];
+        }
+      }
+
+      await publishTenantConfig(tenant.id, { ...existing, tts: redisTts } as any);
+    }
+  } catch (syncErr) {
+    console.error("[tts/config] Redis sync error:", syncErr);
+  }
+
+  // Trigger greeting WAV regeneration on the voice runtime so the greeting
+  // uses the newly-selected TTS engine / voice.
+  try {
+    const runtimeUrl = process.env.VOICE_RUNTIME_URL || "http://runtime:4001";
+    const regen = await fetch(`${runtimeUrl}/admin/regenerate-greeting`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (regen.ok) {
+      console.log("[tts/config] Greeting regenerated on voice runtime");
+    } else {
+      console.warn("[tts/config] Greeting regen failed:", regen.status, await regen.text().catch(() => ""));
+    }
+  } catch (regenErr) {
+    console.warn("[tts/config] Greeting regen request failed:", regenErr);
+  }
+
   // Return extended config with all fields
+  const effectiveMode = configUpdate.ttsMode || updated.ttsMode || "coqui_xtts";
   const response: ExtendedTtsConfig = {
     ...updated,
-    mode: configUpdate.ttsMode,
-    ttsMode: configUpdate.ttsMode,
-    defaultVoiceMode: configUpdate.defaultVoiceMode,
-    clonedVoice: configUpdate.clonedVoice,
-    coquiXttsUrl: configUpdate.coquiXttsUrl,
-    kokoroUrl: configUpdate.kokoroUrl,
+    mode: effectiveMode,
+    ttsMode: effectiveMode,
   };
   
   res.json(response);
 });
 
-app.post("/api/tts/preview", (_req, res) => respondVoiceRuntimeMoved(res));
+app.post("/api/tts/preview", async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  const {
+    text,
+    engine,
+    coquiSpeed,
+    coquiTemperature,
+    coquiTopP,
+    coquiTopK,
+    coquiRepetitionPenalty,
+    coquiLengthPenalty,
+    kokoroVoice,
+    kokoroSpeed,
+  } = req.body as {
+    text?: string;
+    engine?: string;
+    coquiSpeed?: number;
+    coquiTemperature?: number;
+    coquiTopP?: number;
+    coquiTopK?: number;
+    coquiRepetitionPenalty?: number;
+    coquiLengthPenalty?: number;
+    kokoroVoice?: string;
+    kokoroSpeed?: number;
+  };
+
+  const sampleText = (typeof text === "string" && text.trim())
+    ? text.trim()
+    : "Hello! Welcome to our business. How can I help you today?";
+
+  // Read current TTS config for this tenant
+  const ttsCfg = tenant.config.getTtsConfig();
+
+  // Determine which engine to preview: explicit "engine" param, or infer from ttsMode
+  const previewEngine = engine === "kokoro" || (engine !== "xtts" && (ttsCfg as any).ttsMode === "kokoro_http" && engine !== "xtts")
+    ? "kokoro"
+    : "xtts";
+
+  if (previewEngine === "kokoro") {
+    // ── Kokoro preview ──
+    const kokoroBaseUrl = process.env.KOKORO_URL || "http://kokoro:7001";
+    let kokoroUrl = kokoroBaseUrl.replace(/\/+$/, "");
+    if (!kokoroUrl.endsWith("/tts")) kokoroUrl += "/tts";
+
+    const voice = kokoroVoice || (ttsCfg as any).kokoroVoice || "af_bella";
+    const rate = kokoroSpeed ?? (ttsCfg as any).kokoroSpeed ?? 1.3;
+
+    const body: Record<string, unknown> = {
+      text: sampleText,
+      voice_id: voice,
+      rate,
+    };
+
+    try {
+      const upstream = await fetch(kokoroUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(30_000),
+      });
+
+      if (!upstream.ok) {
+        const errText = await upstream.text();
+        console.error("[tts/preview] Kokoro error:", upstream.status, errText);
+        return res.status(502).json({ error: "tts_preview_failed", message: `Kokoro returned ${upstream.status}` });
+      }
+
+      const contentType = upstream.headers.get("content-type") || "audio/wav";
+      const arrayBuf = await upstream.arrayBuffer();
+      res.set("Content-Type", contentType);
+      res.set("Content-Length", String(arrayBuf.byteLength));
+      res.send(Buffer.from(arrayBuf));
+    } catch (err: any) {
+      console.error("[tts/preview] Kokoro error:", err);
+      res.status(502).json({ error: "tts_preview_failed", message: err.message || "Failed to reach Kokoro service" });
+    }
+    return;
+  }
+
+  // ── XTTS preview ──
+  // Resolve XTTS URL: prefer explicit coqui URL from config/env, then fall back
+  const xttsBaseUrl = (ttsCfg as any).coquiXttsUrl
+    || process.env.COQUI_XTTS_URL
+    || process.env.XTTS_URL
+    || (ttsCfg as any).xttsUrl
+    || "http://xtts:7002/tts";
+
+  // Build XTTS URL — if it already ends with /tts, use as-is; otherwise append /tts
+  let xttsUrl = xttsBaseUrl.replace(/\/+$/, "");
+  if (!xttsUrl.endsWith("/tts")) {
+    xttsUrl += "/tts";
+  }
+
+  // Build the request body using provided params or falling back to saved config
+  const body: Record<string, string | number | boolean> = {
+    text: sampleText,
+    language: (ttsCfg as any).language || "en",
+  };
+
+  // Voice: use cloned voice if configured, otherwise speaker preset
+  if ((ttsCfg as any).defaultVoiceMode === "cloned" && (ttsCfg as any).clonedVoice?.speakerWavUrl) {
+    body.speaker_wav = (ttsCfg as any).clonedVoice.speakerWavUrl;
+  } else if ((ttsCfg as any).voiceId) {
+    body.voice_id = (ttsCfg as any).voiceId;
+    body.speaker = (ttsCfg as any).voiceId;
+  }
+
+  // Apply tuning — prefer request body overrides, fall back to saved config
+  const speed = coquiSpeed ?? (ttsCfg as any).coquiSpeed;
+  const temperature = coquiTemperature ?? (ttsCfg as any).coquiTemperature;
+  const topP = coquiTopP ?? (ttsCfg as any).coquiTopP;
+  const topK = coquiTopK ?? (ttsCfg as any).coquiTopK;
+  const repPenalty = coquiRepetitionPenalty ?? (ttsCfg as any).coquiRepetitionPenalty;
+  const lenPenalty = coquiLengthPenalty ?? (ttsCfg as any).coquiLengthPenalty;
+
+  if (speed != null) body.speed = speed;
+  if (temperature != null) body.temperature = temperature;
+  if (topP != null) body.top_p = topP;
+  if (topK != null) body.top_k = topK;
+  if (repPenalty != null) body.repetition_penalty = repPenalty;
+  if (lenPenalty != null) body.length_penalty = lenPenalty;
+
+  try {
+    const upstream = await fetch(xttsUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!upstream.ok) {
+      const errText = await upstream.text();
+      console.error("[tts/preview] XTTS error:", upstream.status, errText);
+      return res.status(502).json({ error: "tts_preview_failed", message: `XTTS returned ${upstream.status}` });
+    }
+
+    const contentType = upstream.headers.get("content-type") || "audio/wav";
+    const arrayBuf = await upstream.arrayBuffer();
+
+    res.set("Content-Type", contentType);
+    res.set("Content-Length", String(arrayBuf.byteLength));
+    res.send(Buffer.from(arrayBuf));
+  } catch (err: any) {
+    console.error("[tts/preview] error:", err);
+    res.status(502).json({ error: "tts_preview_failed", message: err.message || "Failed to reach XTTS service" });
+  }
+});
+
+/* ────────────────────────────────────────────────
+   Admin – Capacity / Concurrency Settings
+   ──────────────────────────────────────────────── */
+
+app.get("/api/admin/capacity", async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  try {
+    const redis = await getRawRedis();
+
+    // Read current values from Redis (per-tenant overrides + live counts)
+    const tenantConcurrencyCap = await redis.get(`tenantmap:tenant:${tenant.id}:cap:concurrency`);
+    const tenantRpmCap = await redis.get(`tenantmap:tenant:${tenant.id}:cap:rpm`);
+    const globalConcurrencyCap = await redis.get("cap:global:concurrency_cap");
+
+    // Read active counts
+    const globalActiveKey = "cap:global:active";
+    const tenantActiveKey = `cap:tenant:${tenant.id}:active`;
+    let globalActiveCount = 0;
+    let tenantActiveCount = 0;
+    try {
+      if (redis.scard) {
+        globalActiveCount = await redis.scard(globalActiveKey);
+        tenantActiveCount = await redis.scard(tenantActiveKey);
+      }
+    } catch { /* scard might not be available */ }
+
+    // Read TTS/STT concurrency limits (stored as runtime hints)
+    const whisperMaxConcurrent = await redis.get("cap:service:whisper:max_concurrent");
+    const kokoroMaxConcurrent = await redis.get("cap:service:kokoro:max_concurrent");
+    const xttsMaxConcurrent = await redis.get("cap:service:xtts:max_concurrent");
+
+    res.json({
+      global: {
+        concurrencyCap: globalConcurrencyCap ? parseInt(globalConcurrencyCap) : 100,
+        activeCalls: globalActiveCount,
+      },
+      tenant: {
+        id: tenant.id,
+        concurrencyCap: tenantConcurrencyCap ? parseInt(tenantConcurrencyCap) : 10,
+        rpmCap: tenantRpmCap ? parseInt(tenantRpmCap) : 60,
+        activeCalls: tenantActiveCount,
+      },
+      services: {
+        whisperMaxConcurrent: whisperMaxConcurrent ? parseInt(whisperMaxConcurrent) : 2,
+        kokoroMaxConcurrent: kokoroMaxConcurrent ? parseInt(kokoroMaxConcurrent) : 2,
+        xttsMaxConcurrent: xttsMaxConcurrent ? parseInt(xttsMaxConcurrent) : 0,
+      },
+    });
+  } catch (err) {
+    console.error("[capacity] GET failed:", err);
+    res.status(500).json({ error: "capacity_read_failed", message: String(err) });
+  }
+});
+
+app.post("/api/admin/capacity", async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  try {
+    const redis = await getRawRedis();
+    const { global: globalSettings, tenant: tenantSettings, services } = req.body;
+
+    const changes: string[] = [];
+
+    // Global concurrency cap
+    if (globalSettings?.concurrencyCap !== undefined) {
+      const cap = Math.max(1, Math.min(1000, Math.round(Number(globalSettings.concurrencyCap))));
+      await redis.set("cap:global:concurrency_cap", String(cap));
+      changes.push(`global concurrency → ${cap}`);
+    }
+
+    // Per-tenant concurrency cap
+    if (tenantSettings?.concurrencyCap !== undefined) {
+      const cap = Math.max(1, Math.min(500, Math.round(Number(tenantSettings.concurrencyCap))));
+      await redis.set(`tenantmap:tenant:${tenant.id}:cap:concurrency`, String(cap));
+      changes.push(`tenant concurrency → ${cap}`);
+    }
+
+    // Per-tenant RPM cap
+    if (tenantSettings?.rpmCap !== undefined) {
+      const cap = Math.max(1, Math.min(600, Math.round(Number(tenantSettings.rpmCap))));
+      await redis.set(`tenantmap:tenant:${tenant.id}:cap:rpm`, String(cap));
+      changes.push(`tenant RPM → ${cap}`);
+    }
+
+    // Service concurrency limits (stored as Redis hints for runtime to read)
+    if (services?.whisperMaxConcurrent !== undefined) {
+      const cap = Math.max(1, Math.min(50, Math.round(Number(services.whisperMaxConcurrent))));
+      await redis.set("cap:service:whisper:max_concurrent", String(cap));
+      changes.push(`whisper concurrency → ${cap}`);
+    }
+    if (services?.kokoroMaxConcurrent !== undefined) {
+      const cap = Math.max(1, Math.min(50, Math.round(Number(services.kokoroMaxConcurrent))));
+      await redis.set("cap:service:kokoro:max_concurrent", String(cap));
+      changes.push(`kokoro concurrency → ${cap}`);
+    }
+    if (services?.xttsMaxConcurrent !== undefined) {
+      const cap = Math.max(0, Math.min(50, Math.round(Number(services.xttsMaxConcurrent))));
+      await redis.set("cap:service:xtts:max_concurrent", String(cap));
+      changes.push(`xtts concurrency → ${cap}`);
+    }
+
+    console.log(`[capacity] Updated for tenant ${tenant.id}: ${changes.join(", ")}`);
+    res.json({ ok: true, changes });
+  } catch (err) {
+    console.error("[capacity] POST failed:", err);
+    res.status(500).json({ error: "capacity_update_failed", message: String(err) });
+  }
+});
 
 /* ────────────────────────────────────────────────
    Admin – health / analytics / calls / telephony secret
@@ -1573,6 +2312,98 @@ app.post("/api/admin/cloudflare/token", (req, res) => {
   }
   process.env.CLOUDFLARE_TUNNEL_TOKEN = sanitized;
   res.json({ status: "ok", hasToken: true });
+});
+
+/* ── Docker container management (Cloudflare tunnel) ─────────── */
+import http from "node:http";
+
+function dockerApiRequest(
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<{ statusCode: number; data: any }> {
+  return new Promise((resolve, reject) => {
+    const options: http.RequestOptions = {
+      socketPath: "/var/run/docker.sock",
+      path: `/v1.45${path}`,
+      method,
+      headers: { "Content-Type": "application/json" },
+    };
+    const req = http.request(options, (res) => {
+      let raw = "";
+      res.on("data", (chunk) => (raw += chunk));
+      res.on("end", () => {
+        try {
+          resolve({ statusCode: res.statusCode || 500, data: raw ? JSON.parse(raw) : {} });
+        } catch {
+          resolve({ statusCode: res.statusCode || 500, data: raw });
+        }
+      });
+    });
+    req.on("error", reject);
+    if (body) req.write(JSON.stringify(body));
+    req.end();
+  });
+}
+
+app.get("/api/admin/cloudflare/status", async (_req, res) => {
+  try {
+    const { statusCode, data } = await dockerApiRequest("GET", "/containers/veralux-cloudflared/json");
+    if (statusCode === 404) {
+      return res.json({ exists: false, running: false, status: "not_found", message: "Container does not exist" });
+    }
+    if (statusCode !== 200) {
+      return res.json({ exists: false, running: false, status: "error", message: String(data) });
+    }
+    const state = data.State || {};
+    res.json({
+      exists: true,
+      running: state.Running === true,
+      status: state.Status || "unknown",
+      startedAt: state.StartedAt,
+      health: state.Health?.Status,
+      image: data.Config?.Image,
+    });
+  } catch (err) {
+    console.error("[cloudflare/status] error:", err);
+    res.json({ exists: false, running: false, status: "docker_unavailable", message: "Cannot connect to Docker. Is the socket mounted?" });
+  }
+});
+
+app.post("/api/admin/cloudflare/start", async (_req, res) => {
+  try {
+    const { statusCode, data } = await dockerApiRequest("POST", "/containers/veralux-cloudflared/start");
+    if (statusCode === 204 || statusCode === 304) {
+      return res.json({ ok: true, message: statusCode === 304 ? "Already running" : "Started" });
+    }
+    res.status(statusCode).json({ ok: false, message: String(data?.message || data) });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: String(err) });
+  }
+});
+
+app.post("/api/admin/cloudflare/stop", async (_req, res) => {
+  try {
+    const { statusCode, data } = await dockerApiRequest("POST", "/containers/veralux-cloudflared/stop");
+    if (statusCode === 204 || statusCode === 304) {
+      return res.json({ ok: true, message: statusCode === 304 ? "Already stopped" : "Stopped" });
+    }
+    res.status(statusCode).json({ ok: false, message: String(data?.message || data) });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: String(err) });
+  }
+});
+
+app.post("/api/admin/cloudflare/restart", async (_req, res) => {
+  try {
+    const { statusCode, data } = await dockerApiRequest("POST", "/containers/veralux-cloudflared/restart");
+    if (statusCode === 204) {
+      return res.json({ ok: true, message: "Restarted" });
+    }
+    res.status(statusCode).json({ ok: false, message: String(data?.message || data) });
+  } catch (err) {
+    res.status(500).json({ ok: false, message: String(err) });
+  }
 });
 
 // ────────────────────────────────────────────────
@@ -1775,6 +2606,29 @@ app.post("/api/runtime/calls", adminGuard("admin"), (req, res) => {
     const endingCall = tenant.calls.getCall(callId);
     tenant.calls.deleteCall(callId);
 
+    // Track usage for billing (fire-and-forget)
+    const durationMs = endingCall?.createdAt
+      ? Date.now() - endingCall.createdAt
+      : (req.body.durationMs || 0);
+    const callMinutes = Math.max(1, Math.ceil(durationMs / 60000));
+    incrementUsage(tenantId, "call_count", 1).catch(() => {});
+    incrementUsage(tenantId, "call_minutes", callMinutes).catch(() => {});
+
+    // Archive to call_history (async, don't block response)
+    insertCallHistory({
+      tenantId,
+      callId,
+      callerId: endingCall?.callerId,
+      stage: endingCall?.stage ?? "closed",
+      lead: endingCall?.lead ?? {},
+      history: endingCall?.history ?? [],
+      transcript: req.body.transcript,
+      durationMs,
+      startedAt: endingCall?.createdAt ? new Date(endingCall.createdAt) : undefined,
+    }).catch(err => {
+      console.error("[runtime/calls] Failed to archive call:", err);
+    });
+
     // Fire workflow event bus (async, don't block response)
     if (endingCall) {
       const workflowEvent: CallEndedEvent = {
@@ -1782,9 +2636,7 @@ app.post("/api/runtime/calls", adminGuard("admin"), (req, res) => {
         tenantId,
         callId,
         callerId: endingCall.callerId,
-        durationMs: endingCall.createdAt
-          ? Date.now() - endingCall.createdAt
-          : undefined,
+        durationMs,
         turns: endingCall.history as any,
         transcript: req.body.transcript,
         lead: endingCall.lead as any,
@@ -1799,6 +2651,78 @@ app.post("/api/runtime/calls", adminGuard("admin"), (req, res) => {
   }
 
   return res.status(400).json({ error: "invalid_action", validActions: ["start", "update", "end"] });
+});
+
+/* ────────────────────────────────────────────────
+   Admin – Call History (completed calls archive)
+   ──────────────────────────────────────────────── */
+
+app.get("/api/admin/call-history", adminGuard("admin"), async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  const offset = Number(req.query.offset) || 0;
+  try {
+    const data = await listCallHistory(tenant.id, limit, offset);
+    res.json(data);
+  } catch (err) {
+    console.error("[call-history] list error:", err);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+app.get("/api/admin/call-history/:id", adminGuard("admin"), async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  try {
+    const row = await getCallHistoryById(req.params.id, tenant.id);
+    if (!row) return res.status(404).json({ error: "not_found" });
+    res.json(row);
+  } catch (err) {
+    console.error("[call-history] get error:", err);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/* ────────────────────────────────────────────────
+   Owner – Call History + Summaries
+   ──────────────────────────────────────────────── */
+
+app.get("/api/owner/call-history", async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const limit = Math.min(Number(req.query.limit) || 25, 100);
+  const offset = Number(req.query.offset) || 0;
+  try {
+    const data = await listCallHistory(tenant.id, limit, offset);
+    // Return a simplified view for owners (exclude raw history/lead)
+    const simplified = data.rows.map(r => ({
+      id: r.id,
+      callerId: r.caller_id,
+      stage: r.stage,
+      summary: r.summary,
+      transcript: r.transcript,
+      durationMs: r.duration_ms,
+      startedAt: r.started_at,
+      endedAt: r.ended_at,
+    }));
+    res.json({ rows: simplified, total: data.total });
+  } catch (err) {
+    console.error("[owner/call-history] error:", err);
+    res.status(500).json({ error: "internal_error" });
+  }
+});
+
+// Runtime billing check — called by voice runtime before accepting a call
+app.get("/api/runtime/billing/check", adminGuard("admin"), async (req, res) => {
+  const tenantId = req.query.tenantId as string;
+  if (!tenantId) return res.status(400).json({ error: "tenantId required" });
+  try {
+    const result = await canAcceptCall(tenantId);
+    res.json(result);
+  } catch (err: any) {
+    res.json({ allowed: true, reason: "billing_check_error" }); // fail-open
+  }
 });
 
 /* ────────────────────────────────────────────────
@@ -2323,19 +3247,16 @@ app.get("/api/admin/workflows", asyncHandler(async (req, res) => {
 app.post("/api/admin/workflows", asyncHandler(async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);
   if (!tenant) return;
-  const { name, triggerType, triggerConfig, steps, adminLocked } = req.body || {};
-  if (!name || !triggerType) {
-    return res.status(400).json({ error: "name and triggerType are required" });
-  }
+  const body = validateBody(createWorkflowSchema, req.body || {});
   const createdBy = (req as any).adminRole === "admin" ? "admin" : "owner";
   const wf = await createWorkflow({
     tenantId: tenant.id,
-    name,
-    triggerType,
-    triggerConfig: triggerConfig || {},
-    steps: steps || [],
-    createdBy,
-    adminLocked: adminLocked ?? false,
+    name: body.name,
+    triggerType: body.triggerType as any,
+    triggerConfig: (body.triggerConfig ?? {}) as any,
+    steps: (body.steps ?? []) as any,
+    createdBy: body.createdBy ?? createdBy,
+    adminLocked: body.adminLocked,
   });
   res.status(201).json(wf);
 }));
@@ -2345,14 +3266,12 @@ app.put("/api/admin/workflows/:id", asyncHandler(async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);
   if (!tenant) return;
   const { id } = req.params;
-  const existing = await getWorkflow(id);
-  if (!existing || existing.tenantId !== tenant.id) {
+  const existing = await getWorkflow(id, tenant.id);
+  if (!existing) {
     return res.status(404).json({ error: "Workflow not found" });
   }
-  const { name, enabled, triggerType, triggerConfig, steps, adminLocked } = req.body || {};
-  const updated = await updateWorkflow(id, {
-    name, enabled, triggerType, triggerConfig, steps, adminLocked,
-  });
+  const body = validateBody(updateWorkflowSchema, req.body || {});
+  const updated = await updateWorkflow(id, body as any, tenant.id);
   res.json(updated);
 }));
 
@@ -2361,11 +3280,11 @@ app.delete("/api/admin/workflows/:id", asyncHandler(async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);
   if (!tenant) return;
   const { id } = req.params;
-  const existing = await getWorkflow(id);
-  if (!existing || existing.tenantId !== tenant.id) {
+  const existing = await getWorkflow(id, tenant.id);
+  if (!existing) {
     return res.status(404).json({ error: "Workflow not found" });
   }
-  await deleteWorkflow(id);
+  await deleteWorkflow(id, tenant.id);
   res.json({ success: true });
 }));
 
@@ -2374,8 +3293,8 @@ app.post("/api/admin/workflows/:id/test", asyncHandler(async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);
   if (!tenant) return;
   const { id } = req.params;
-  const workflow = await getWorkflow(id);
-  if (!workflow || workflow.tenantId !== tenant.id) {
+  const workflow = await getWorkflow(id, tenant.id);
+  if (!workflow) {
     return res.status(404).json({ error: "Workflow not found" });
   }
   const sampleEvent: CallEndedEvent = {
@@ -2416,12 +3335,42 @@ app.get("/api/admin/leads", asyncHandler(async (req, res) => {
   res.json({ leads });
 }));
 
+// Email a quote to a customer
+app.post("/api/admin/quotes/:id/email", asyncHandler(async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+  const { id } = req.params;
+  const { to, notifyStaff } = req.body as { to?: string; notifyStaff?: string };
+
+  const { getLead } = await import("./automations");
+  const lead = await getLead(id, tenant.id);
+  if (!lead) return res.status(404).json({ error: "Quote not found" });
+
+  const quoteData = lead.rawExtract as any;
+  if (!quoteData?.quoteNumber) return res.status(400).json({ error: "This lead is not a quote" });
+
+  const recipientEmail = to || quoteData.customerEmail || lead.email;
+  if (!recipientEmail) return res.status(400).json({ error: "No email address available for this quote" });
+
+  const { sendQuoteEmail, sendQuoteNotificationEmail } = await import("./email");
+  const tenantName = tenant.meta?.name || tenant.id;
+
+  const sent = await sendQuoteEmail(recipientEmail, quoteData, tenantName, tenant.branding || {});
+
+  // Optionally notify staff
+  if (notifyStaff) {
+    await sendQuoteNotificationEmail(notifyStaff, quoteData, tenantName, tenant.branding || {});
+  }
+
+  res.json({ sent, to: recipientEmail });
+}));
+
 // Delete a lead
 app.delete("/api/admin/leads/:id", asyncHandler(async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);
   if (!tenant) return;
   const { id } = req.params;
-  const deleted = await deleteLead(id);
+  const deleted = await deleteLead(id, tenant.id);
   if (!deleted) return res.status(404).json({ error: "Lead not found" });
   res.json({ success: true });
 }));
@@ -2438,10 +3387,8 @@ app.get("/api/admin/workflows/settings", asyncHandler(async (req, res) => {
 app.patch("/api/admin/workflows/settings", asyncHandler(async (req, res) => {
   const tenant = getTenantForAdmin(req as AuthedRequest, res);
   if (!tenant) return;
-  const { ownerCanEdit } = req.body || {};
-  const settings = await updateWorkflowSettings(tenant.id, {
-    ownerCanEdit: ownerCanEdit !== undefined ? !!ownerCanEdit : undefined,
-  });
+  const body = validateBody(workflowSettingsSchema, req.body || {});
+  const settings = await updateWorkflowSettings(tenant.id, body);
   res.json(settings);
 }));
 
@@ -2462,6 +3409,339 @@ app.post("/api/telnyx/call-control", (_req, res) =>
 app.get("/api/telnyx/audio/:id.wav", (_req, res) =>
   respondVoiceRuntimeMoved(res)
 );
+
+/* ────────────────────────────────────────────────
+   Test Recorder — Record phrases, test Whisper + Brain
+   ──────────────────────────────────────────────── */
+const TEST_RECORDINGS_DIR = path.join(__dirname, "..", "public", "test-recordings");
+if (!fs.existsSync(TEST_RECORDINGS_DIR)) {
+  fs.mkdirSync(TEST_RECORDINGS_DIR, { recursive: true });
+}
+
+const testRecordingUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, TEST_RECORDINGS_DIR),
+    filename: (_req, file, cb) => {
+      const label = ((_req as any).body?.label || "recording").replace(/[^a-zA-Z0-9_-]/g, "_");
+      cb(null, `${label}-${Date.now()}${path.extname(file.originalname) || ".webm"}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
+
+// Whisper + Brain URLs (reachable from inside Docker network)
+// Use /transcribe_file (multipart) so Whisper gets filename hints for codec detection
+const TEST_WHISPER_URL = (process.env.WHISPER_URL || "http://whisper:9000/transcribe").replace(/\/transcribe$/, "/transcribe_file");
+const TEST_BRAIN_URL = process.env.BRAIN_URL || "http://brain:3001/reply";
+
+// List saved test recordings
+app.get("/api/test-recordings", (_req, res) => {
+  try {
+    const files = fs.readdirSync(TEST_RECORDINGS_DIR)
+      .filter(f => !f.startsWith("."))
+      .sort()
+      .map(filename => {
+        const match = filename.match(/^(.+)-\d+\.\w+$/);
+        return { filename, label: match ? match[1].replace(/_/g, " ") : filename };
+      });
+    res.json({ recordings: files });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// Save a test recording
+app.post("/api/test-recordings", testRecordingUpload.single("audio"), (req, res) => {
+  if (!req.file) {
+    res.status(400).json({ error: "No audio file" });
+    return;
+  }
+  res.json({ saved: true, filename: req.file.filename });
+});
+
+// Delete a test recording
+app.delete("/api/test-recordings/:filename", (req, res) => {
+  const filePath = path.join(TEST_RECORDINGS_DIR, path.basename(req.params.filename));
+  try {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    res.json({ deleted: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// Test pipeline: Whisper transcription → Brain reply (accepts upload or saved filename)
+app.post("/api/test-pipeline", testRecordingUpload.single("audio"), async (req, res) => {
+  let audioPath: string | undefined;
+  let cleanup = false;
+
+  if (req.file) {
+    audioPath = req.file.path;
+    cleanup = true;
+  } else if (req.query.file) {
+    audioPath = path.join(TEST_RECORDINGS_DIR, path.basename(String(req.query.file)));
+    if (!fs.existsSync(audioPath)) {
+      res.status(404).json({ error: "Recording not found" });
+      return;
+    }
+  }
+
+  if (!audioPath) {
+    res.status(400).json({ error: "No audio provided" });
+    return;
+  }
+
+  const result: Record<string, unknown> = {};
+
+  try {
+    // Helper: run a file through Whisper → Brain and return results
+    const ext = path.extname(audioPath!) || ".webm";
+    const audioData = fs.readFileSync(audioPath!);
+
+    // Step 1: Send to Whisper (multipart /transcribe_file)
+    const sttStart = Date.now();
+    const formData = new FormData();
+    formData.append("file", new Blob([audioData]), `audio${ext}`);
+    const whisperResp = await fetch(TEST_WHISPER_URL, { method: "POST", body: formData });
+    const whisperData = await whisperResp.json() as { text?: string };
+    result.sttMs = Date.now() - sttStart;
+    result.transcript = whisperData.text || "";
+
+    if (!result.transcript) {
+      result.error = "Whisper returned empty transcript";
+      res.json(result);
+      return;
+    }
+
+    // Step 2: Send transcript to Brain
+    const llmStart = Date.now();
+    const brainResp = await fetch(TEST_BRAIN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transcript: result.transcript,
+        history: [],
+        transferProfiles: [],
+        assistantContext: {},
+      }),
+    });
+    const brainData = await brainResp.json() as { text?: string; transfer?: unknown; hangup?: boolean };
+    result.llmMs = Date.now() - llmStart;
+    result.reply = brainData.text || "";
+    result.transfer = brainData.transfer || null;
+    result.hangup = brainData.hangup || false;
+  } catch (err) {
+    result.error = String(err);
+  } finally {
+    if (cleanup && audioPath) {
+      try { fs.unlinkSync(audioPath); } catch { /* ignore */ }
+    }
+  }
+
+  res.json(result);
+});
+
+// Re-test a saved recording (GET variant)
+app.get("/api/test-pipeline", async (req, res) => {
+  const filename = req.query.file;
+  if (!filename) {
+    res.status(400).json({ error: "?file= required" });
+    return;
+  }
+  const audioPath = path.join(TEST_RECORDINGS_DIR, path.basename(String(filename)));
+  if (!fs.existsSync(audioPath)) {
+    res.status(404).json({ error: "Recording not found" });
+    return;
+  }
+
+  const result: Record<string, unknown> = {};
+
+  try {
+    const ext = path.extname(audioPath) || ".webm";
+    const audioData = fs.readFileSync(audioPath);
+
+    const sttStart = Date.now();
+    const formData = new FormData();
+    formData.append("file", new Blob([audioData]), `audio${ext}`);
+    const whisperResp = await fetch(TEST_WHISPER_URL, { method: "POST", body: formData });
+    const whisperData = await whisperResp.json() as { text?: string };
+    result.sttMs = Date.now() - sttStart;
+    result.transcript = whisperData.text || "";
+
+    if (!result.transcript) {
+      result.error = "Whisper returned empty transcript";
+      res.json(result);
+      return;
+    }
+
+    const llmStart = Date.now();
+    const brainResp = await fetch(TEST_BRAIN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transcript: result.transcript,
+        history: [],
+        transferProfiles: [],
+        assistantContext: {},
+      }),
+    });
+    const brainData = await brainResp.json() as { text?: string; transfer?: unknown; hangup?: boolean };
+    result.llmMs = Date.now() - llmStart;
+    result.reply = brainData.text || "";
+    result.transfer = brainData.transfer || null;
+    result.hangup = brainData.hangup || false;
+  } catch (err) {
+    result.error = String(err);
+  }
+
+  res.json(result);
+});
+
+/* ────────────────────────────────────────────────
+   Chat endpoint: text → Brain (with tenant context) → TTS → { text, audio }
+   ──────────────────────────────────────────────── */
+
+app.options("/api/chat", (_req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+  res.set("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.set("Access-Control-Allow-Headers", "content-type");
+  res.status(204).end();
+});
+
+app.post("/api/chat", async (req, res) => {
+  res.set("Access-Control-Allow-Origin", "*");
+
+  const { message, history } = req.body as {
+    message?: string;
+    history?: { role: string; content: string }[];
+  };
+
+  if (!message || typeof message !== "string" || !message.trim()) {
+    return res.status(400).json({ error: "message is required" });
+  }
+
+  const tenant = tenants.getOrCreate(DEFAULT_TENANT_ID);
+  const prompts = tenant.config.getPrompts();
+
+  const assistantContext: Record<string, string> = {};
+  if (prompts.businessHours?.trim()) {
+    assistantContext["Business Hours"] = prompts.businessHours.trim();
+  }
+  if (prompts.businessAddress?.trim()) {
+    assistantContext["Address / Location"] = prompts.businessAddress.trim();
+  }
+  if (prompts.businessFaq?.trim()) {
+    assistantContext["Additional Info & FAQ"] = prompts.businessFaq.trim();
+  }
+  if (tenant.pricing?.items?.length) {
+    const pricingLines = tenant.pricing.items
+      .map((item) => `- ${item.name}: ${item.price}${item.description ? ` (${item.description})` : ""}`)
+      .join("\n");
+    const notes = tenant.pricing.notes?.trim();
+    assistantContext["Pricing & Services"] = pricingLines + (notes ? `\nNote: ${notes}` : "");
+  }
+
+  const transferProfiles = tenant.forwardingProfiles
+    .filter((p) => p.number)
+    .map((p) => {
+      let destination = p.number;
+      try { destination = normalizeE164(p.number); } catch { /* keep original */ }
+      const descText = ((p as any).description || "").trim();
+      const roleText = (p.role || "").trim();
+      const respSource = descText || roleText || p.name;
+      return {
+        id: p.id,
+        name: roleText || p.name,
+        holder: p.name,
+        responsibilities: respSource.split(/[,&]/).map((s: string) => s.trim()).filter(Boolean),
+        description: descText,
+        destination,
+      };
+    });
+
+  const result: Record<string, unknown> = {};
+
+  try {
+    // Step 1: Brain reply
+    const llmStart = Date.now();
+    const brainResp = await fetch(TEST_BRAIN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        transcript: message.trim(),
+        history: Array.isArray(history) ? history : [],
+        transferProfiles,
+        ...(Object.keys(assistantContext).length > 0 ? { assistantContext } : {}),
+      }),
+    });
+    const brainData = await brainResp.json() as { text?: string; transfer?: unknown; hangup?: boolean };
+    result.llmMs = Date.now() - llmStart;
+    result.text = brainData.text || "";
+    result.transfer = brainData.transfer || null;
+    result.hangup = brainData.hangup || false;
+
+    if (!result.text) {
+      return res.json(result);
+    }
+
+    // Step 2: TTS synthesis
+    const ttsStart = Date.now();
+    const ttsCfg = tenant.config.getTtsConfig();
+    const ttsMode = (ttsCfg as any).ttsMode;
+    const useKokoro = ttsMode === "kokoro_http";
+
+    let ttsUrl: string;
+    let ttsBody: Record<string, unknown>;
+
+    if (useKokoro) {
+      const kokoroBase = (process.env.KOKORO_URL || "http://kokoro:7001").replace(/\/+$/, "");
+      ttsUrl = kokoroBase.endsWith("/tts") ? kokoroBase : kokoroBase + "/tts";
+      ttsBody = {
+        text: result.text,
+        voice_id: (ttsCfg as any).kokoroVoice || "af_bella",
+        rate: (ttsCfg as any).kokoroSpeed ?? 1.3,
+      };
+    } else {
+      const xttsBase = ((ttsCfg as any).coquiXttsUrl || process.env.COQUI_XTTS_URL || "http://xtts:7002/tts").replace(/\/+$/, "");
+      ttsUrl = xttsBase.endsWith("/tts") ? xttsBase : xttsBase + "/tts";
+      ttsBody = {
+        text: result.text,
+        language: (ttsCfg as any).language || "en",
+      };
+      if ((ttsCfg as any).defaultVoiceMode === "cloned" && (ttsCfg as any).clonedVoice?.speakerWavUrl) {
+        ttsBody.speaker_wav = (ttsCfg as any).clonedVoice.speakerWavUrl;
+      } else if ((ttsCfg as any).voiceId) {
+        ttsBody.voice_id = (ttsCfg as any).voiceId;
+        ttsBody.speaker = (ttsCfg as any).voiceId;
+      }
+      const speed = (ttsCfg as any).coquiSpeed;
+      if (speed != null) ttsBody.speed = speed;
+    }
+
+    const ttsResp = await fetch(ttsUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(ttsBody),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (ttsResp.ok) {
+      const contentType = ttsResp.headers.get("content-type") || "audio/wav";
+      const arrayBuf = await ttsResp.arrayBuffer();
+      result.audioBase64 = Buffer.from(arrayBuf).toString("base64");
+      result.contentType = contentType;
+    } else {
+      console.warn("[chat] TTS failed:", ttsResp.status, await ttsResp.text().catch(() => ""));
+      result.ttsError = `TTS returned ${ttsResp.status}`;
+    }
+    result.ttsMs = Date.now() - ttsStart;
+  } catch (err) {
+    console.error("[chat] error:", err);
+    result.error = String(err);
+  }
+
+  res.json(result);
+});
 
 /* ────────────────────────────────────────────────
    Admin UI shell
@@ -2500,6 +3780,18 @@ async function start() {
   } catch (err) {
     console.error("Failed to initialize tenants/DB:", err);
     process.exit(1);
+  }
+
+  // Sync all tenants' LLM context (including assistantContext) to Redis
+  // so the voice runtime always has up-to-date business info at startup
+  try {
+    for (const meta of tenants.listMetas()) {
+      const tenant = tenants.getOrCreate(meta.id);
+      await syncLLMContextToRuntime(tenant);
+    }
+    console.log("[startup] LLM context synced to Redis for all tenants");
+  } catch (err) {
+    console.error("[startup] Failed to sync LLM context (non-fatal):", err);
   }
 
   // Initialize workflow automation engine
@@ -2569,7 +3861,7 @@ function shutdown(signal: string) {
     setTimeout(() => {
       console.error("[shutdown] Force exiting after timeout.");
       process.exit(1);
-    }, 8000).unref();
+    }, 30000).unref();
   } catch (e) {
     console.error("[shutdown] error:", e);
     process.exit(1);

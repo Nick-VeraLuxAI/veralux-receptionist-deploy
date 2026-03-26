@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VeraLux - Call Test Recorder</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: #0f1117; color: #e4e4e7;
+    min-height: 100vh; display: flex; flex-direction: column; align-items: center;
+    padding: 2rem 1rem;
+  }
+  h1 { font-size: 1.5rem; margin-bottom: 0.25rem; }
+  .subtitle { color: #71717a; margin-bottom: 2rem; font-size: 0.9rem; }
+  .card {
+    background: #1a1b23; border: 1px solid #27272a; border-radius: 12px;
+    padding: 1.5rem; width: 100%; max-width: 540px; margin-bottom: 1rem;
+  }
+  .card h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+  .record-area { display: flex; flex-direction: column; align-items: center; gap: 1rem; }
+  .btn {
+    padding: 0.75rem 2rem; border: none; border-radius: 8px; font-size: 1rem;
+    cursor: pointer; font-weight: 600; transition: all 0.15s;
+  }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-record { background: #dc2626; color: white; }
+  .btn-record:hover:not(:disabled) { background: #ef4444; }
+  .btn-record.recording { background: #991b1b; animation: pulse 1.5s infinite; }
+  .btn-stop { background: #3f3f46; color: white; }
+  .btn-stop:hover:not(:disabled) { background: #52525b; }
+  .btn-test { background: #2563eb; color: white; }
+  .btn-test:hover:not(:disabled) { background: #3b82f6; }
+  .btn-save { background: #16a34a; color: white; }
+  .btn-save:hover:not(:disabled) { background: #22c55e; }
+  .btn-row { display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.5); }
+    50% { box-shadow: 0 0 0 12px rgba(220, 38, 38, 0); }
+  }
+  .timer { font-size: 2rem; font-variant-numeric: tabular-nums; color: #a1a1aa; }
+  .timer.active { color: #ef4444; }
+  audio { width: 100%; margin-top: 0.5rem; border-radius: 8px; }
+  .label-input {
+    display: flex; gap: 0.5rem; width: 100%; margin-top: 0.5rem;
+  }
+  .label-input input {
+    flex: 1; padding: 0.5rem 0.75rem; background: #27272a; border: 1px solid #3f3f46;
+    border-radius: 6px; color: #e4e4e7; font-size: 0.9rem;
+  }
+  .label-input input::placeholder { color: #71717a; }
+  .results { margin-top: 1rem; }
+  .result-item {
+    background: #111218; border: 1px solid #27272a; border-radius: 8px;
+    padding: 1rem; margin-bottom: 0.75rem;
+  }
+  .result-label { font-size: 0.75rem; color: #71717a; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
+  .result-text { font-size: 0.95rem; line-height: 1.5; }
+  .result-text.transcript { color: #60a5fa; }
+  .result-text.reply { color: #34d399; }
+  .result-text.error { color: #f87171; }
+  .result-text.meta { color: #a1a1aa; font-size: 0.8rem; }
+  .saved-list { margin-top: 1rem; }
+  .saved-item {
+    display: flex; align-items: center; justify-content: space-between;
+    background: #111218; border: 1px solid #27272a; border-radius: 8px;
+    padding: 0.75rem 1rem; margin-bottom: 0.5rem;
+  }
+  .saved-item .name { font-size: 0.9rem; }
+  .saved-item .actions { display: flex; gap: 0.5rem; }
+  .btn-sm {
+    padding: 0.35rem 0.75rem; font-size: 0.8rem; border: none; border-radius: 6px;
+    cursor: pointer; font-weight: 500;
+  }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid #3f3f46;
+    border-top-color: #e4e4e7; border-radius: 50%; animation: spin 0.6s linear infinite;
+    vertical-align: middle; margin-right: 0.5rem; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .status { text-align: center; font-size: 0.85rem; color: #71717a; min-height: 1.5rem; }
+</style>
+</head>
+<body>
+
+<h1>Call Test Recorder</h1>
+<p class="subtitle">Record phrases, test them through Whisper + Brain, iterate fast.</p>
+
+<div class="card">
+  <h2>Record</h2>
+  <div class="record-area">
+    <div class="timer" id="timer">0:00</div>
+    <div class="btn-row">
+      <button class="btn btn-record" id="recordBtn" onclick="toggleRecord()">Record</button>
+      <button class="btn btn-stop" id="stopBtn" onclick="stopRecording()" disabled>Stop</button>
+    </div>
+    <audio id="playback" controls style="display:none"></audio>
+    <div class="label-input" id="labelArea" style="display:none">
+      <input type="text" id="labelInput" placeholder="Label (e.g. quote-for-sod)" />
+    </div>
+    <div class="btn-row" id="actionBtns" style="display:none">
+      <button class="btn btn-test" id="testBtn" onclick="testRecording()">Test Pipeline</button>
+      <button class="btn btn-save" id="saveBtn" onclick="saveRecording()">Save</button>
+    </div>
+    <div class="status" id="status"></div>
+  </div>
+  <div class="results" id="results"></div>
+</div>
+
+<div class="card">
+  <h2>Saved Recordings</h2>
+  <div id="savedList" class="saved-list">
+    <p style="color:#71717a; font-size:0.9rem;">Loading...</p>
+  </div>
+</div>
+
+<script>
+let mediaRecorder = null;
+let audioChunks = [];
+let audioBlob = null;
+let timerInterval = null;
+let startTime = 0;
+
+const $ = id => document.getElementById(id);
+
+async function toggleRecord() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') return;
+  audioChunks = [];
+  audioBlob = null;
+  $('results').innerHTML = '';
+  $('playback').style.display = 'none';
+  $('actionBtns').style.display = 'none';
+  $('labelArea').style.display = 'none';
+  $('status').textContent = '';
+
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.onstop = () => {
+      stream.getTracks().forEach(t => t.stop());
+      audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      const url = URL.createObjectURL(audioBlob);
+      $('playback').src = url;
+      $('playback').style.display = 'block';
+      $('actionBtns').style.display = 'flex';
+      $('labelArea').style.display = 'flex';
+    };
+    mediaRecorder.start();
+    startTime = Date.now();
+    $('recordBtn').classList.add('recording');
+    $('recordBtn').textContent = 'Recording...';
+    $('recordBtn').disabled = true;
+    $('stopBtn').disabled = false;
+    timerInterval = setInterval(updateTimer, 100);
+    $('timer').classList.add('active');
+  } catch (err) {
+    $('status').textContent = 'Mic access denied: ' + err.message;
+  }
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state === 'recording') {
+    mediaRecorder.stop();
+  }
+  clearInterval(timerInterval);
+  $('recordBtn').classList.remove('recording');
+  $('recordBtn').textContent = 'Record';
+  $('recordBtn').disabled = false;
+  $('stopBtn').disabled = true;
+  $('timer').classList.remove('active');
+}
+
+function updateTimer() {
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  const m = Math.floor(elapsed / 60);
+  const s = elapsed % 60;
+  $('timer').textContent = m + ':' + String(s).padStart(2, '0');
+}
+
+async function testRecording() {
+  if (!audioBlob) return;
+  $('testBtn').disabled = true;
+  $('status').innerHTML = '<span class="spinner"></span>Testing pipeline...';
+  $('results').innerHTML = '';
+
+  try {
+    const form = new FormData();
+    form.append('audio', audioBlob, 'recording.webm');
+    const resp = await fetch('/api/test-pipeline', { method: 'POST', body: form });
+    const data = await resp.json();
+
+    let html = '';
+    if (data.transcript) {
+      html += `<div class="result-item">
+        <div class="result-label">Whisper Transcript</div>
+        <div class="result-text transcript">"${data.transcript}"</div>
+        <div class="result-text meta">STT: ${data.sttMs}ms</div>
+      </div>`;
+    }
+    if (data.reply) {
+      html += `<div class="result-item">
+        <div class="result-label">Brain Reply</div>
+        <div class="result-text reply">"${data.reply}"</div>
+        <div class="result-text meta">LLM: ${data.llmMs}ms | Transfer: ${data.transfer ? JSON.stringify(data.transfer) : 'none'} | Hangup: ${data.hangup || false}</div>
+      </div>`;
+    }
+    if (data.error) {
+      html += `<div class="result-item">
+        <div class="result-label">Error</div>
+        <div class="result-text error">${data.error}</div>
+      </div>`;
+    }
+    $('results').innerHTML = html;
+    $('status').textContent = 'Done.';
+  } catch (err) {
+    $('status').textContent = 'Test failed: ' + err.message;
+  } finally {
+    $('testBtn').disabled = false;
+  }
+}
+
+async function saveRecording() {
+  if (!audioBlob) return;
+  const label = $('labelInput').value.trim() || 'recording-' + Date.now();
+  $('saveBtn').disabled = true;
+  $('status').innerHTML = '<span class="spinner"></span>Saving...';
+
+  try {
+    const form = new FormData();
+    form.append('audio', audioBlob, 'recording.webm');
+    form.append('label', label);
+    const resp = await fetch('/api/test-recordings', { method: 'POST', body: form });
+    const data = await resp.json();
+    $('status').textContent = data.saved ? 'Saved: ' + data.filename : 'Save failed';
+    loadSaved();
+  } catch (err) {
+    $('status').textContent = 'Save failed: ' + err.message;
+  } finally {
+    $('saveBtn').disabled = false;
+  }
+}
+
+async function loadSaved() {
+  try {
+    const resp = await fetch('/api/test-recordings');
+    const data = await resp.json();
+    if (!data.recordings?.length) {
+      $('savedList').innerHTML = '<p style="color:#71717a;font-size:0.9rem;">No saved recordings yet.</p>';
+      return;
+    }
+    $('savedList').innerHTML = data.recordings.map(r => `
+      <div class="saved-item">
+        <span class="name">${r.label || r.filename}</span>
+        <div class="actions">
+          <button class="btn-sm btn-test" onclick="testSaved('${r.filename}')">Test</button>
+          <button class="btn-sm btn-stop" onclick="deleteSaved('${r.filename}')">Delete</button>
+        </div>
+      </div>
+    `).join('');
+  } catch { $('savedList').innerHTML = '<p style="color:#71717a;">Failed to load.</p>'; }
+}
+
+async function testSaved(filename) {
+  $('status').innerHTML = '<span class="spinner"></span>Testing ' + filename + '...';
+  $('results').innerHTML = '';
+  try {
+    const resp = await fetch('/api/test-pipeline?file=' + encodeURIComponent(filename));
+    const data = await resp.json();
+    let html = '';
+    if (data.transcript) {
+      html += `<div class="result-item">
+        <div class="result-label">Whisper Transcript</div>
+        <div class="result-text transcript">"${data.transcript}"</div>
+        <div class="result-text meta">STT: ${data.sttMs}ms</div>
+      </div>`;
+    }
+    if (data.reply) {
+      html += `<div class="result-item">
+        <div class="result-label">Brain Reply</div>
+        <div class="result-text reply">"${data.reply}"</div>
+        <div class="result-text meta">LLM: ${data.llmMs}ms | Transfer: ${data.transfer ? JSON.stringify(data.transfer) : 'none'} | Hangup: ${data.hangup || false}</div>
+      </div>`;
+    }
+    if (data.error) {
+      html += `<div class="result-item"><div class="result-label">Error</div><div class="result-text error">${data.error}</div></div>`;
+    }
+    $('results').innerHTML = html;
+    $('status').textContent = 'Done.';
+  } catch (err) { $('status').textContent = 'Test failed: ' + err.message; }
+}
+
+async function deleteSaved(filename) {
+  if (!confirm('Delete ' + filename + '?')) return;
+  await fetch('/api/test-recordings/' + encodeURIComponent(filename), { method: 'DELETE' });
+  loadSaved();
+}
+
+loadSaved();
+</script>
+</body>
+</html>

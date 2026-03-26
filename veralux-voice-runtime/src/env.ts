@@ -200,6 +200,9 @@ const EnvSchema = z.object({
   /** Optional grace ms before late-final watchdog fires (read by callSession when set). */
   STT_LATE_FINAL_GRACE_MS: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().optional()),
 
+  /* Thinking filler — play a short phrase while STT/LLM/TTS processes */
+  THINKING_FILLER_ENABLED: z.preprocess(stringToBoolean, z.boolean().default(true)),
+
   /* Dead air protection */
   DEAD_AIR_MS: z.coerce.number().int().positive(),
   DEAD_AIR_NO_FRAMES_MS: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(1500)),
@@ -231,12 +234,17 @@ const EnvSchema = z.object({
   GREETING_TEXT: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   KOKORO_VOICE_ID: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   TTS_SAMPLE_RATE: z.preprocess(ttsSampleRateFallback, z.coerce.number().int().positive().default(8000)),
+  /** In-process LRU cache for repeated TTS (e.g. hours, pricing). */
+  TTS_CACHE_ENABLED: z.preprocess(stringToBoolean, z.boolean().default(true)),
+  TTS_CACHE_MAX_ENTRIES: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(256)),
+  TTS_CACHE_MAX_TEXT_CHARS: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(512)),
+  TTS_CACHE_MAX_AUDIO_BYTES: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(2_097_152)),
   PLAYBACK_PROFILE: z.preprocess(emptyToUndefined, z.enum(['pstn', 'hd']).default('pstn')),
   PLAYBACK_PSTN_SAMPLE_RATE: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(8000)),
   PLAYBACK_ENABLE_HIGHPASS: z.preprocess(stringToBoolean, z.boolean().default(true)),
 
   /* ───────────────────────── Brain / LLM ───────────────────────── */
-  /** When true, use local default brain (keyword rules). When false or unset, use BRAIN_URL if set (e.g. GPT-4o API). */
+  /** When true, use local default brain (keyword rules). When false or unset, use BRAIN_URL if set (e.g. brain-llm service). */
   BRAIN_USE_LOCAL: z.preprocess(stringToBoolean, z.boolean().default(false)),
   BRAIN_URL: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   BRAIN_TIMEOUT_MS: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(8000)),
@@ -246,6 +254,8 @@ const EnvSchema = z.object({
   BRAIN_STREAM_FIRST_AUDIO_MAX_MS: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(2000)),
   BRAIN_STREAM_SEGMENT_MIN_CHARS: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(120)),
   BRAIN_STREAM_SEGMENT_NEXT_CHARS: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(180)),
+  /** If the full LLM reply is at or below this char count, play it as a single audio file (no segmentation). */
+  BRAIN_STREAM_SINGLE_SEGMENT_MAX: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(300)),
 
   /* ───────────────────────── Call transcript / summarizer ───────────────────────── */
   /** When set, write full call transcript (caller + assistant text) to this dir at teardown. No audio. */

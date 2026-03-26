@@ -13,7 +13,7 @@ import { CallSession } from './callSession';
 import { CallSessionConfig, CallSessionId } from './types';
 import type { TransportMode, TransportSession } from '../transport/types';
 import type { Pcm16Frame } from '../media/types';
-import { reportCallEnd } from '../controlPlane';
+import { reportCallEnd, reportCallStart, reportCallerMessage } from '../controlPlane';
 import { clearTelnyxCodecSession } from '../audio/codecDecode';
 import { releaseFarEndBuffer } from '../audio/farEndReference';
 import { releaseAecProcessor } from '../audio/aecProcessor';
@@ -155,6 +155,13 @@ export class SessionManager {
         requestId: context.requestId,
       },
       'call session created',
+    );
+
+    // Report call start to control plane (analytics + call registry)
+    void reportCallStart(
+      session.tenantId ?? 'unknown',
+      session.callControlId,
+      session.from,
     );
 
     const transportMode = transport.mode;
@@ -479,10 +486,18 @@ export class SessionManager {
         ended_at: transcript.endedAt,
         duration_ms: transcript.durationMs,
         turns: transcript.turns.length,
-        transcript_turns: transcript.turns,
         requestId: context.requestId,
       },
       'call transcript',
+    );
+
+    log.debug(
+      {
+        event: 'call_transcript_detail',
+        call_control_id: transcript.callControlId,
+        transcript_turns: transcript.turns,
+      },
+      'call transcript detail (PII)',
     );
 
     // Report call end to control plane (workflow automation engine)

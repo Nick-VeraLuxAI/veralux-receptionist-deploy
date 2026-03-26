@@ -48,5 +48,13 @@ images.tar.zst
 # Database backups (contain production data)
 backups/
 
+# EULA acceptance (per-machine, not committed)
+.eula-accepted
+**/.eula-accepted
+
+# SSL certificates (self-signed or Let's Encrypt)
+nginx/certs/
+*.pem
+
 # Misc dev artifacts
 oldenv.txt

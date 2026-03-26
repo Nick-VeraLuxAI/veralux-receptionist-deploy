@@ -356,6 +356,7 @@ export class ChunkedSTT {
   private vadSpeechStreak = 0;
   private vadSilenceStreak = 0;
   private vadSpeechNow = false;
+  private vadLastProb = 0;
 
   // VAD hysteresis thresholds (prevents flapping)
   private readonly vadSpeechFramesRequired = clamp(safeNum(process.env.STT_VAD_SPEECH_FRAMES_REQUIRED, 2), 1, 20);
@@ -397,7 +398,16 @@ export class ChunkedSTT {
   private readonly onFinalResult?: (opts: { isEmpty: boolean; textLength: number; utteranceMs: number }) => void;
   private readonly consumePreRoll?: () => ExternalPreRoll | null;
   private readonly onFrameForPreRoll?: (buffer: Buffer, frameMs: number) => void;
-  private readonly prompt?: string;
+  private prompt?: string;
+
+  /**
+   * Update the Whisper prompt with conversation context.
+   * Appends recent transcript turns to the base prompt so Whisper
+   * can use prior conversation as context for better accuracy.
+   */
+  public updatePrompt(newPrompt: string): void {
+    this.prompt = newPrompt;
+  }
 
   // ===== BARGE-IN (NEW) =====
   private readonly onBargeInDetected?: (info: SpeechStartInfo & { duringPlayback: true }) => void;
@@ -1099,6 +1109,7 @@ export class ChunkedSTT {
       if (pcmForVad) {
         const res = await this.vad.pushPcm16le16k(pcmForVad);
         if (res) {
+          this.vadLastProb = res.prob;
           this.vadSpeechNow = !!res.isSpeech;
           if (res.isSpeech) {
             this.vadSpeechStreak += 1;
@@ -1118,7 +1129,14 @@ export class ChunkedSTT {
       else vadSpeechDecision = this.vadSpeechNow;
     }
 
-    const isSpeech = this.disableGates ? true : (vadSpeechDecision ?? (gateRms && gatePeak));
+    // Speech decision: amplitude gates are always authoritative.
+    // VAD can ADD sensitivity (detect quiet speech gates miss) but never BLOCK
+    // speech the gates detect. Silero VAD produces near-zero probabilities on
+    // AMR-WB telephony audio, so gates must be the primary signal.
+    const gatesSaysSpeech = gateRms && gatePeak;
+    const isSpeech = this.disableGates
+      ? true
+      : gatesSaysSpeech || (vadSpeechDecision === true);
 
     if (isSpeech && !gatedForPlayback) {
       this.sawSpeech = true;
@@ -1203,6 +1221,7 @@ export class ChunkedSTT {
           is_speech: isSpeech,
           vad_enabled: this.vadEnabled && this.vadReady,
           vad_raw: this.vadSpeechNow,
+          vad_prob: Math.round(this.vadLastProb * 1000) / 1000,
           vad_speech_streak: this.vadSpeechStreak,
           vad_silence_streak: this.vadSilenceStreak,
           vad_speech_req: this.vadSpeechFramesRequired,

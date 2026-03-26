@@ -68,6 +68,7 @@ test('tryAcquire builds expected keys and args', async () => {
     'cap:tenant:tenant-a:rpm:202401020304',
     'tenantmap:tenant:tenant-a:cap:concurrency',
     'tenantmap:tenant:tenant-a:cap:rpm',
+    'cap:global:concurrency_cap',
   ]);
   assert.deepEqual(call.args, ['call-2', '30', '5', '10', '600']);
 });

@@ -1,20 +1,22 @@
-# brain-gpt4o
+# brain-llm
 
-GPT-4o brain service for [veralux-voice-runtime](https://github.com/your-org/veralux-voice-runtime). The runtime POSTs transcript and history here; this service calls OpenAI and returns `{ text, transfer? }` in the format the runtime expects.
+LLM brain service for [veralux-voice-runtime](https://github.com/your-org/veralux-voice-runtime). The runtime POSTs transcript and history here; this service calls the configured LLM (via OpenAI-compatible API) and returns `{ text, transfer? }` in the format the runtime expects.
+
+Supports any OpenAI-compatible backend: **Ollama** (local), **OpenAI**, **Azure OpenAI**, **vLLM**, **LM Studio**, etc.
 
 ## Setup
 
 1. **Install and build**
 
    ```bash
-   cd brain-gpt4o
+   cd brain-llm
    npm install
    npm run build
    ```
 
 2. **Configure**
 
-   Set `OPENAI_API_KEY` in the **root** repo `.env` (same file as `BRAIN_URL`). The brain service loads it from there so you can manage all keys in one place.
+   Set `OPENAI_API_KEY` and `OPENAI_BASE_URL` in the **root** repo `.env`. For local Ollama, use `OPENAI_API_KEY=ollama`. The brain service loads it from there so you can manage all keys in one place.
 
 3. **Run**
 
@@ -47,7 +49,7 @@ The runtime will then call:
 
 - **POST /reply** — Request body: `{ tenantId?, callControlId, transcript, history?, transferProfiles? }`. Response: `{ text: string, transfer?: { to, audioUrl?, timeoutSecs? } }`.
 - **POST /reply/stream** — Same body; response is SSE: `event: token` with `data: { "t": "chunk" }`, then `event: done` with `data: { text, transfer? }`.
-- **GET /health** — `{ ok: true, model: "gpt-4o" }`.
+- **GET /health** — `{ ok: true, model: "<configured model>" }`.
 
 ## Transfer and transfer profiles
 
@@ -55,10 +57,10 @@ When the runtime sends **transferProfiles** (departments/positions and their num
 
 ## Model
 
-Default model is **gpt-4o**. Override with:
+Default model is **qwen2.5:7b** (via local Ollama). Override with:
 
 ```env
-OPENAI_MODEL=gpt-4o-mini
+OPENAI_MODEL=qwen2.5:7b
 ```
 
-(or any other chat model that supports tool/function calling).
+(or any other chat model supported by your configured backend).

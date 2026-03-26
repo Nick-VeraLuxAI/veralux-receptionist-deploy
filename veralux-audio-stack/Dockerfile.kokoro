@@ -1,19 +1,34 @@
 # Kokoro TTS server (port 7001)
-# Production-ready: non-root user, health check, gunicorn
-FROM python:3.10-slim-bookworm
+# Production-ready: non-root user, health check, gunicorn, GPU-accelerated ONNX
+# ─────────────────────────────────────────────────────────────────────────────
+# Uses NVIDIA CUDA runtime image for GPU inference via onnxruntime-gpu.
+# Falls back to CPU gracefully if no GPU is available at runtime.
+# ─────────────────────────────────────────────────────────────────────────────
+
+FROM nvidia/cuda:12.6.3-cudnn-runtime-ubuntu22.04
 
 WORKDIR /app
 
-# Install curl for health check
-RUN apt-get update && apt-get install -y --no-install-recommends curl \
+# Avoid interactive prompts during apt
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Python 3.10, pip, curl (for healthcheck), and espeak-ng (for kokoro phonemiser)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        python3 python3-pip python3-dev curl espeak-ng \
+    && ln -sf /usr/bin/python3 /usr/bin/python \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
 RUN useradd --create-home --shell /bin/bash appuser
 
-# Install Python deps
+# Install Python deps.
+# kokoro-onnx pulls in onnxruntime (CPU-only). We must replace it with
+# onnxruntime-gpu so the CUDA execution provider is available.
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir fastapi uvicorn gunicorn slowapi kokoro-onnx soundfile numpy
+    && pip install --no-cache-dir \
+        fastapi uvicorn gunicorn slowapi kokoro-onnx soundfile numpy \
+    && pip uninstall -y onnxruntime \
+    && pip install --no-cache-dir onnxruntime-gpu
 
 # Download model files at build time
 RUN mkdir -p /app/models \
@@ -30,6 +45,8 @@ USER appuser
 
 ENV KOKORO_MODEL_PATH=/app/models/kokoro-v1.0.onnx
 ENV KOKORO_VOICES_PATH=/app/models/voices-v1.0.bin
+# Tell kokoro-onnx to use CUDA (falls back to CPU if unavailable)
+ENV ONNX_PROVIDER=CUDAExecutionProvider
 
 EXPOSE 7001
 
