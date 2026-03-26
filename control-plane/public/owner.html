@@ -378,7 +378,7 @@
     <main class="owner-main">
       <section class="owner-panel">
         <h2>Call Forwarding</h2>
-        <p class="help">Add the people the receptionist can forward calls to. Include a role and brief description so the AI knows when to route each call.</p>
+        <p class="help">Add the people the receptionist can forward calls to. Include a role and brief description so the AI knows when to route each call. While signed in, changes save automatically.</p>
         <div class="row">
           <input type="text" id="fp-name" class="sm" placeholder="Name" />
           <input type="text" id="fp-number" class="mid" placeholder="+15551234567" />
@@ -393,7 +393,7 @@
 
       <section class="owner-panel">
         <h2>Services & products</h2>
-        <p class="help">What your receptionist can tell callers about your services, products, and rates. Keep it short.</p>
+        <p class="help">What your receptionist can tell callers about your services, products, and rates. Keep it short. While signed in, changes save automatically.</p>
         <div class="row">
           <select id="price-type" class="sm" style="min-width:100px;">
             <option value="service">Service</option>
@@ -413,7 +413,7 @@
 
       <section class="owner-panel">
         <h2>Business information</h2>
-        <p class="help">Essential details about your business. Your receptionist will use this to answer caller questions accurately.</p>
+        <p class="help">Essential details about your business. Your receptionist will use this to answer caller questions accurately. While signed in, changes save automatically.</p>
         
         <label>Business hours</label>
         <div id="owner-hours-grid" style="display:grid; grid-template-columns:auto 1fr 1fr auto; gap:6px 10px; align-items:center; margin-bottom:8px;">
@@ -432,7 +432,7 @@
 
       <section class="owner-panel" id="brand-settings-section" style="display:none;">
         <h2>Brand settings</h2>
-        <p class="help">Customize how your business appears on quotes, emails, and exported documents. Upload your logo and pick your brand colors.</p>
+        <p class="help">Customize how your business appears on quotes, emails, and exported documents. Upload your logo and pick your brand colors. While signed in, text and colors save automatically (logo still uploads on drop or browse).</p>
 
         <label for="brand-company-name">Company display name</label>
         <input type="text" id="brand-company-name" placeholder="e.g. King-Sod Landscaping" />
@@ -505,7 +505,7 @@
 
       <section class="owner-panel">
         <h2>Receptionist personality</h2>
-        <p class="help">Customize how your AI receptionist introduces itself and interacts with callers.</p>
+        <p class="help">Customize how your AI receptionist introduces itself and interacts with callers. While signed in, changes save automatically.</p>
         
         <label for="owner-greetingText">Greeting message (what callers hear first)</label>
         <textarea id="owner-greetingText" rows="2" placeholder="e.g. Hi! Thanks for calling Sunny Day Plumbing. How can I help you today?"></textarea>
@@ -528,7 +528,7 @@
 
       <section class="owner-panel full-width">
         <h2>Receptionist voice</h2>
-        <p class="help">Choose how your receptionist sounds. Select a TTS engine and configure its settings.</p>
+        <p class="help">Choose how your receptionist sounds. Select a TTS engine and configure its settings. While signed in, changes save automatically.</p>
 
         <!-- ── TTS Engine Selector ── -->
         <label for="tts-engine-selector">TTS Engine</label>
@@ -843,7 +843,25 @@
       console.log("[Owner Panel] Variables initialized, ownerAuthorized =", ownerAuthorized);
       let forwardingProfilesCache = [];
       let pricingCache = { items: [], notes: "" };
-      
+      let pricingAutoStatusTimer = null;
+      let pricingNotesSaveTimer = null;
+      let forwardingAutoStatusTimer = null;
+      let promptsAutoSaveTimer = null;
+      let promptsAutoStatusTimer = null;
+      let businessInfoAutoSaveTimer = null;
+      let businessInfoAutoStatusTimer = null;
+      let voiceSettingsAutoStatusTimer = null;
+      let tuningAutoSaveTimer = null;
+      let tuningAutoStatusTimer = null;
+      let kokoroAutoSaveTimer = null;
+      let kokoroAutoStatusTimer = null;
+      let brandingAutoSaveTimer = null;
+      let brandingAutoStatusTimer = null;
+
+      function ownerCanPersist() {
+        return ownerAuthorized && !!ownerAuthToken;
+      }
+
       // Voice configuration cache
       let voiceConfig = {
         ttsMode: "coqui_xtts",
@@ -1328,6 +1346,7 @@
           li.querySelector("button").onclick = () => {
             forwardingProfilesCache.splice(i, 1);
             renderForwarding();
+            void persistForwardingIfPossible();
           };
           list.appendChild(li);
         });
@@ -1354,58 +1373,166 @@
           li.querySelector("button").onclick = () => {
             pricingCache.items.splice(i, 1);
             renderPricing();
+            void persistPricingIfPossible();
           };
           list.appendChild(li);
         });
       }
 
+      async function persistForwardingToServer(manual) {
+        await ownerFetch("/api/admin/forwarding-profiles", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ profiles: forwardingProfilesCache }),
+        });
+        const statusEl = $("fp-status");
+        if (statusEl) {
+          clearTimeout(forwardingAutoStatusTimer);
+          statusEl.textContent = manual ? "Saved." : "Saved automatically.";
+          statusEl.style.color = manual ? "" : "var(--muted)";
+          if (!manual) {
+            forwardingAutoStatusTimer = setTimeout(() => {
+              if (statusEl && statusEl.textContent === "Saved automatically.") statusEl.textContent = "";
+            }, 3000);
+          }
+        }
+      }
+
       async function saveForwarding() {
+        const statusEl = $("fp-status");
         try {
-          await ownerFetch("/api/admin/forwarding-profiles", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ profiles: forwardingProfilesCache }),
-          });
-          $("fp-status").textContent = "Saved.";
+          await persistForwardingToServer(true);
+          if (statusEl) statusEl.style.color = "";
         } catch (err) {
-          $("fp-status").textContent = "Failed: " + err.message;
+          if (statusEl) {
+            statusEl.textContent = "Failed: " + err.message;
+            statusEl.style.color = "var(--danger)";
+          }
+        }
+      }
+
+      async function persistForwardingIfPossible() {
+        if (!ownerAuthorized || !ownerAuthToken) return;
+        const statusEl = $("fp-status");
+        try {
+          await persistForwardingToServer(false);
+          if (statusEl) statusEl.style.color = "var(--muted)";
+        } catch (err) {
+          if (statusEl) {
+            statusEl.textContent = "Auto-save failed: " + err.message;
+            statusEl.style.color = "var(--danger)";
+          }
+        }
+      }
+
+      async function persistPricingToServer(manual) {
+        const notesEl = $("pricing-notes");
+        if (notesEl) pricingCache.notes = notesEl.value.trim();
+        await ownerFetch("/api/admin/pricing", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(pricingCache),
+        });
+        const statusEl = $("price-status");
+        if (statusEl) {
+          clearTimeout(pricingAutoStatusTimer);
+          statusEl.textContent = manual ? "Saved." : "Saved automatically.";
+          statusEl.style.color = manual ? "" : "var(--muted)";
+          if (!manual) {
+            pricingAutoStatusTimer = setTimeout(() => {
+              if (statusEl && statusEl.textContent === "Saved automatically.") statusEl.textContent = "";
+            }, 3000);
+          }
         }
       }
 
       async function savePricing() {
-        const notesEl = $("pricing-notes");
-        if (notesEl) pricingCache.notes = notesEl.value.trim();
+        const statusEl = $("price-status");
         try {
-          await ownerFetch("/api/admin/pricing", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(pricingCache),
-          });
-          $("price-status").textContent = "Saved.";
+          await persistPricingToServer(true);
+          if (statusEl) statusEl.style.color = "";
         } catch (err) {
-          $("price-status").textContent = "Failed: " + err.message;
+          if (statusEl) {
+            statusEl.textContent = "Failed: " + err.message;
+            statusEl.style.color = "var(--danger)";
+          }
         }
+      }
+
+      async function persistPricingIfPossible() {
+        if (!ownerAuthorized || !ownerAuthToken) return;
+        const statusEl = $("price-status");
+        try {
+          await persistPricingToServer(false);
+          if (statusEl) statusEl.style.color = "var(--muted)";
+        } catch (err) {
+          if (statusEl) {
+            statusEl.textContent = "Auto-save failed: " + err.message;
+            statusEl.style.color = "var(--danger)";
+          }
+        }
+      }
+
+      function schedulePricingNotesAutoSave() {
+        clearTimeout(pricingNotesSaveTimer);
+        pricingNotesSaveTimer = setTimeout(() => void persistPricingIfPossible(), 650);
+      }
+
+      async function persistOwnerPromptsToServer(manual) {
+        const statusEl = $("owner-prompts-status");
+        await ownerFetch("/api/admin/prompts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            greetingText: $("owner-greetingText").value,
+            systemPreamble: $("owner-systemPreamble").value,
+            policyPrompt: $("owner-policyPrompt").value,
+            voicePrompt: $("owner-voicePrompt").value,
+            schemaHint: $("owner-schemaHint").value,
+          }),
+        });
+        if (statusEl) {
+          clearTimeout(promptsAutoStatusTimer);
+          statusEl.style.color = manual ? "" : "var(--muted)";
+          statusEl.textContent = manual ? "Saved." : "Saved automatically.";
+          if (!manual) {
+            promptsAutoStatusTimer = setTimeout(() => {
+              if (statusEl.textContent === "Saved automatically.") statusEl.textContent = "";
+            }, 3000);
+          }
+        }
+        refreshReadyStatus();
       }
 
       async function saveOwnerPrompts() {
         const statusEl = $("owner-prompts-status");
         try {
-          await ownerFetch("/api/admin/prompts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              greetingText: $("owner-greetingText").value,
-              systemPreamble: $("owner-systemPreamble").value,
-              policyPrompt: $("owner-policyPrompt").value,
-              voicePrompt: $("owner-voicePrompt").value,
-              schemaHint: $("owner-schemaHint").value,
-            }),
-          });
-          if (statusEl) statusEl.textContent = "Saved.";
-          refreshReadyStatus();
+          await persistOwnerPromptsToServer(true);
+          if (statusEl) statusEl.style.color = "";
         } catch (err) {
-          if (statusEl) statusEl.textContent = "Failed: " + err.message;
+          if (statusEl) {
+            statusEl.textContent = "Failed: " + err.message;
+            statusEl.style.color = "var(--danger)";
+          }
         }
+      }
+
+      async function persistOwnerPromptsIfPossible() {
+        if (!ownerCanPersist()) return;
+        const statusEl = $("owner-prompts-status");
+        try {
+          await persistOwnerPromptsToServer(false);
+        } catch (err) {
+          if (statusEl) {
+            statusEl.textContent = "Auto-save failed: " + err.message;
+            statusEl.style.color = "var(--danger)";
+          }
+        }
+      }
+
+      function scheduleOwnerPromptsAutoSave() {
+        clearTimeout(promptsAutoSaveTimer);
+        promptsAutoSaveTimer = setTimeout(() => void persistOwnerPromptsIfPossible(), 700);
       }
 
       /* ── Business Hours Grid ──────────────────────── */
@@ -1440,14 +1567,14 @@
           openSel.innerHTML = '<option value="">—</option>' + HOUR_OPTIONS.map(o =>
             `<option value="${o.value}">${o.label}</option>`
           ).join("");
-          openSel.addEventListener("change", syncHoursToTextarea);
+          openSel.addEventListener("change", () => { syncHoursToTextarea(); scheduleOwnerBusinessInfoAutoSave(); });
           grid.appendChild(openSel);
           // Close time
           const closeSel = document.createElement("select");
           closeSel.id = `hrs-${id}-close`;
           closeSel.style.cssText = openSel.style.cssText;
           closeSel.innerHTML = openSel.innerHTML;
-          closeSel.addEventListener("change", syncHoursToTextarea);
+          closeSel.addEventListener("change", () => { syncHoursToTextarea(); scheduleOwnerBusinessInfoAutoSave(); });
           grid.appendChild(closeSel);
           // Closed toggle
           const closedLabel = document.createElement("label");
@@ -1462,6 +1589,7 @@
             openSel.style.opacity = this.checked ? "0.4" : "1";
             closeSel.style.opacity = this.checked ? "0.4" : "1";
             syncHoursToTextarea();
+            scheduleOwnerBusinessInfoAutoSave();
           });
           closedLabel.appendChild(cb);
           closedLabel.appendChild(document.createTextNode("Closed"));
@@ -1529,24 +1657,62 @@
         });
       }
 
-      async function saveOwnerBusinessInfo() {
+      async function persistOwnerBusinessInfoToServer(manual) {
         syncHoursToTextarea();
         const statusEl = $("owner-business-info-status");
-        try {
-          await ownerFetch("/api/admin/prompts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              businessHours: $("owner-businessHours").value,
-              businessAddress: $("owner-businessAddress").value,
-              businessFaq: $("owner-businessFaq").value,
-            }),
-          });
-          if (statusEl) statusEl.textContent = "Saved. Your receptionist will use this info immediately.";
-          refreshReadyStatus();
-        } catch (err) {
-          if (statusEl) statusEl.textContent = "Failed: " + err.message;
+        await ownerFetch("/api/admin/prompts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            businessHours: $("owner-businessHours").value,
+            businessAddress: $("owner-businessAddress").value,
+            businessFaq: $("owner-businessFaq").value,
+          }),
+        });
+        if (statusEl) {
+          clearTimeout(businessInfoAutoStatusTimer);
+          statusEl.style.color = manual ? "" : "var(--muted)";
+          statusEl.textContent = manual
+            ? "Saved. Your receptionist will use this info immediately."
+            : "Saved automatically.";
+          if (!manual) {
+            businessInfoAutoStatusTimer = setTimeout(() => {
+              if (statusEl.textContent === "Saved automatically.") statusEl.textContent = "";
+            }, 3000);
+          }
         }
+        refreshReadyStatus();
+      }
+
+      async function saveOwnerBusinessInfo() {
+        const statusEl = $("owner-business-info-status");
+        try {
+          await persistOwnerBusinessInfoToServer(true);
+          if (statusEl) statusEl.style.color = "";
+        } catch (err) {
+          if (statusEl) {
+            statusEl.textContent = "Failed: " + err.message;
+            statusEl.style.color = "var(--danger)";
+          }
+        }
+      }
+
+      async function persistOwnerBusinessInfoIfPossible() {
+        if (!ownerCanPersist()) return;
+        const statusEl = $("owner-business-info-status");
+        try {
+          await persistOwnerBusinessInfoToServer(false);
+        } catch (err) {
+          if (statusEl) {
+            statusEl.textContent = "Auto-save failed: " + err.message;
+            statusEl.style.color = "var(--danger)";
+          }
+        }
+      }
+
+      function scheduleOwnerBusinessInfoAutoSave() {
+        clearTimeout(businessInfoAutoSaveTimer);
+        businessInfoAutoSaveTimer = setTimeout(() => void persistOwnerBusinessInfoIfPossible(), 700);
       }
 
       /* ── Voice Settings ─────────────────────────── */
@@ -1662,6 +1828,7 @@
             voiceConfig.activeVoiceId = `cloned:${voice.id}`;
             $("voice-selector").value = `cloned:${voice.id}`;
             renderClonedVoicesList();
+            void persistVoiceSettingsIfPossible();
           };
           li.querySelector('[data-action="remove"]').onclick = () => {
             voiceConfig.clonedVoices = voiceConfig.clonedVoices.filter(v => v.id !== voice.id);
@@ -1671,40 +1838,71 @@
             }
             renderVoiceSelector();
             renderClonedVoicesList();
+            void persistVoiceSettingsIfPossible();
           };
           list.appendChild(li);
         });
       }
 
-      async function saveVoiceSettings() {
-        const statusEl = $("voice-settings-status");
+      function buildVoiceSettingsPayload() {
         const selector = $("voice-selector");
-        try {
-          const selectedValue = selector?.value || "preset:default";
-          voiceConfig.activeVoiceId = selectedValue;
-          const [type, id] = selectedValue.split(":");
-          const isCloned = type === "cloned";
-          const payload = {
-            ttsMode: "coqui_xtts",
-            defaultVoiceMode: isCloned ? "cloned" : "preset",
-            voiceId: voiceConfig.presetVoice,
-          };
-          if (isCloned) {
-            const voice = voiceConfig.clonedVoices.find(v => v.id === id);
-            if (voice) {
-              payload.clonedVoice = { speakerWavUrl: voice.speakerWavUrl, label: voice.label };
-            } else {
-              payload.defaultVoiceMode = "preset";
-            }
-          } else if (voiceConfig.clonedVoices.length > 0) {
-            payload.clonedVoice = { speakerWavUrl: voiceConfig.clonedVoices[0].speakerWavUrl, label: voiceConfig.clonedVoices[0].label };
+        const selectedValue = selector?.value || "preset:default";
+        voiceConfig.activeVoiceId = selectedValue;
+        const [type, id] = selectedValue.split(":");
+        const isCloned = type === "cloned";
+        const payload = {
+          ttsMode: "coqui_xtts",
+          defaultVoiceMode: isCloned ? "cloned" : "preset",
+          voiceId: voiceConfig.presetVoice,
+        };
+        if (isCloned) {
+          const voice = voiceConfig.clonedVoices.find(v => v.id === id);
+          if (voice) {
+            payload.clonedVoice = { speakerWavUrl: voice.speakerWavUrl, label: voice.label };
+          } else {
+            payload.defaultVoiceMode = "preset";
           }
-          await ownerFetch("/api/tts/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        } else if (voiceConfig.clonedVoices.length > 0) {
+          payload.clonedVoice = { speakerWavUrl: voiceConfig.clonedVoices[0].speakerWavUrl, label: voiceConfig.clonedVoices[0].label };
+        }
+        return payload;
+      }
+
+      async function persistVoiceSettingsToServer(manual) {
+        const statusEl = $("voice-settings-status");
+        const payload = buildVoiceSettingsPayload();
+        await ownerFetch("/api/tts/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        clearTimeout(voiceSettingsAutoStatusTimer);
+        if (manual) {
           statusEl.textContent = "Voice settings saved!";
           statusEl.style.color = "var(--success)";
           setTimeout(() => { if (statusEl.textContent === "Voice settings saved!") statusEl.textContent = ""; }, 3000);
+        } else {
+          statusEl.textContent = "Saved automatically.";
+          statusEl.style.color = "var(--muted)";
+          voiceSettingsAutoStatusTimer = setTimeout(() => {
+            if (statusEl.textContent === "Saved automatically.") statusEl.textContent = "";
+          }, 3000);
+        }
+      }
+
+      async function saveVoiceSettings() {
+        const statusEl = $("voice-settings-status");
+        try {
+          await persistVoiceSettingsToServer(true);
         } catch (err) {
           statusEl.textContent = "Failed to save: " + err.message;
+          statusEl.style.color = "var(--danger)";
+        }
+      }
+
+      async function persistVoiceSettingsIfPossible() {
+        if (!ownerCanPersist()) return;
+        const statusEl = $("voice-settings-status");
+        try {
+          await persistVoiceSettingsToServer(false);
+        } catch (err) {
+          statusEl.textContent = "Auto-save failed: " + err.message;
           statusEl.style.color = "var(--danger)";
         }
       }
@@ -1739,26 +1937,57 @@
           el.addEventListener("input", () => {
             const lbl = $(label);
             if (lbl) lbl.textContent = fmt(el.value);
+            scheduleTuningAutoSave();
           });
         });
+      }
+
+      async function persistTuningToServer(manual) {
+        const statusEl = $("tuning-status");
+        const payload = {};
+        TUNING_MAP.forEach(({ slider, key }) => {
+          const el = $(slider);
+          if (el) payload[key] = parseFloat(el.value);
+        });
+        await ownerFetch("/api/tts/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        clearTimeout(tuningAutoStatusTimer);
+        if (manual) {
+          statusEl.textContent = "Voice tuning saved!";
+          statusEl.style.color = "var(--success)";
+          setTimeout(() => { if (statusEl.textContent === "Voice tuning saved!") statusEl.textContent = ""; }, 3000);
+        } else {
+          statusEl.textContent = "Saved automatically.";
+          statusEl.style.color = "var(--muted)";
+          tuningAutoStatusTimer = setTimeout(() => {
+            if (statusEl.textContent === "Saved automatically.") statusEl.textContent = "";
+          }, 3000);
+        }
       }
 
       async function saveTuning() {
         const statusEl = $("tuning-status");
         try {
-          const payload = {};
-          TUNING_MAP.forEach(({ slider, key }) => {
-            const el = $(slider);
-            if (el) payload[key] = parseFloat(el.value);
-          });
-          await ownerFetch("/api/tts/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-          statusEl.textContent = "Voice tuning saved!";
-          statusEl.style.color = "var(--success)";
-          setTimeout(() => { if (statusEl.textContent === "Voice tuning saved!") statusEl.textContent = ""; }, 3000);
+          await persistTuningToServer(true);
         } catch (err) {
           statusEl.textContent = "Failed: " + err.message;
           statusEl.style.color = "var(--danger)";
         }
+      }
+
+      async function persistTuningIfPossible() {
+        if (!ownerCanPersist()) return;
+        const statusEl = $("tuning-status");
+        try {
+          await persistTuningToServer(false);
+        } catch (err) {
+          statusEl.textContent = "Auto-save failed: " + err.message;
+          statusEl.style.color = "var(--danger)";
+        }
+      }
+
+      function scheduleTuningAutoSave() {
+        clearTimeout(tuningAutoSaveTimer);
+        tuningAutoSaveTimer = setTimeout(() => void persistTuningIfPossible(), 650);
       }
 
       function resetTuning() {
@@ -1768,8 +1997,9 @@
           const lbl = $(label);
           if (lbl) lbl.textContent = fmt(TUNING_DEFAULTS[key]);
         });
-        $("tuning-status").textContent = "Reset to defaults. Click Save to apply.";
+        $("tuning-status").textContent = "Reset to defaults.";
         $("tuning-status").style.color = "var(--muted)";
+        void persistTuningIfPossible();
       }
 
       async function previewTuning() {
@@ -1841,34 +2071,69 @@
 
       function bindKokoroControls() {
         const speedSlider = $("kokoro-speed");
+        const voiceSel = $("kokoro-voice-selector");
         if (speedSlider) {
           speedSlider.addEventListener("input", () => {
             const lbl = $("kokoro-speed-val");
             if (lbl) lbl.textContent = parseFloat(speedSlider.value).toFixed(2);
+            scheduleKokoroAutoSave();
           });
+        }
+        if (voiceSel) {
+          voiceSel.addEventListener("change", () => scheduleKokoroAutoSave());
+        }
+      }
+
+      async function persistKokoroToServer(manual) {
+        const statusEl = $("kokoro-status");
+        const voiceSel = $("kokoro-voice-selector");
+        const speedSlider = $("kokoro-speed");
+        const payload = {
+          ttsMode: "kokoro_http",
+          kokoroVoice: voiceSel ? voiceSel.value : KOKORO_DEFAULTS.kokoroVoice,
+          kokoroSpeed: speedSlider ? parseFloat(speedSlider.value) : KOKORO_DEFAULTS.kokoroSpeed,
+        };
+        await ownerFetch("/api/tts/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+        voiceConfig.kokoroVoice = payload.kokoroVoice;
+        voiceConfig.kokoroSpeed = payload.kokoroSpeed;
+        clearTimeout(kokoroAutoStatusTimer);
+        if (manual) {
+          statusEl.textContent = "Kokoro settings saved!";
+          statusEl.style.color = "var(--success)";
+          setTimeout(() => { if (statusEl.textContent === "Kokoro settings saved!") statusEl.textContent = ""; }, 3000);
+        } else {
+          statusEl.textContent = "Saved automatically.";
+          statusEl.style.color = "var(--muted)";
+          kokoroAutoStatusTimer = setTimeout(() => {
+            if (statusEl.textContent === "Saved automatically.") statusEl.textContent = "";
+          }, 3000);
         }
       }
 
       async function saveKokoroSettings() {
         const statusEl = $("kokoro-status");
         try {
-          const voiceSel = $("kokoro-voice-selector");
-          const speedSlider = $("kokoro-speed");
-          const payload = {
-            ttsMode: "kokoro_http",
-            kokoroVoice: voiceSel ? voiceSel.value : KOKORO_DEFAULTS.kokoroVoice,
-            kokoroSpeed: speedSlider ? parseFloat(speedSlider.value) : KOKORO_DEFAULTS.kokoroSpeed,
-          };
-          await ownerFetch("/api/tts/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-          voiceConfig.kokoroVoice = payload.kokoroVoice;
-          voiceConfig.kokoroSpeed = payload.kokoroSpeed;
-          statusEl.textContent = "Kokoro settings saved!";
-          statusEl.style.color = "var(--success)";
-          setTimeout(() => { if (statusEl.textContent === "Kokoro settings saved!") statusEl.textContent = ""; }, 3000);
+          await persistKokoroToServer(true);
         } catch (err) {
           statusEl.textContent = "Failed: " + err.message;
           statusEl.style.color = "var(--danger)";
         }
+      }
+
+      async function persistKokoroIfPossible() {
+        if (!ownerCanPersist()) return;
+        const statusEl = $("kokoro-status");
+        try {
+          await persistKokoroToServer(false);
+        } catch (err) {
+          statusEl.textContent = "Auto-save failed: " + err.message;
+          statusEl.style.color = "var(--danger)";
+        }
+      }
+
+      function scheduleKokoroAutoSave() {
+        clearTimeout(kokoroAutoSaveTimer);
+        kokoroAutoSaveTimer = setTimeout(() => void persistKokoroIfPossible(), 650);
       }
 
       function resetKokoroSettings() {
@@ -1878,8 +2143,9 @@
         if (voiceSel) voiceSel.value = KOKORO_DEFAULTS.kokoroVoice;
         if (speedSlider) speedSlider.value = KOKORO_DEFAULTS.kokoroSpeed;
         if (speedLabel) speedLabel.textContent = KOKORO_DEFAULTS.kokoroSpeed.toFixed(2);
-        $("kokoro-status").textContent = "Reset to defaults. Click Save to apply.";
+        $("kokoro-status").textContent = "Reset to defaults.";
         $("kokoro-status").style.color = "var(--muted)";
+        void persistKokoroIfPossible();
       }
 
       async function previewKokoro() {
@@ -2189,12 +2455,14 @@
         $(pickerId).addEventListener("input", () => {
           $(hexId).value = $(pickerId).value;
           updateBrandPreview();
+          scheduleBrandingAutoSave();
         });
         $(hexId).addEventListener("input", () => {
           const v = $(hexId).value.trim();
           if (/^#[0-9a-fA-F]{6}$/.test(v)) {
             $(pickerId).value = v;
             updateBrandPreview();
+            scheduleBrandingAutoSave();
           }
         });
       }
@@ -2228,31 +2496,64 @@
         }
       }
 
+      async function persistBrandingToServer(manual) {
+        const status = $("brand-status");
+        const body = {
+          companyName: $("brand-company-name").value.trim(),
+          primaryColor: $("brand-primary-color").value,
+          secondaryColor: $("brand-secondary-color").value,
+          accentColor: $("brand-accent-color").value,
+        };
+        const res = await ownerFetch("/api/admin/branding", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        brandingCache = res;
+        clearTimeout(brandingAutoStatusTimer);
+        updateOwnerHeaderBranding();
+        if (manual) {
+          status.style.color = "var(--success)";
+          status.textContent = "Brand settings saved!";
+          setTimeout(() => { status.textContent = ""; status.style.color = ""; }, 4000);
+        } else {
+          status.style.color = "var(--muted)";
+          status.textContent = "Saved automatically.";
+          brandingAutoStatusTimer = setTimeout(() => {
+            if (status.textContent === "Saved automatically.") {
+              status.textContent = "";
+              status.style.color = "";
+            }
+          }, 3000);
+        }
+      }
+
       async function saveBranding() {
         const status = $("brand-status");
         status.textContent = "Saving...";
         try {
-          const body = {
-            companyName: $("brand-company-name").value.trim(),
-            primaryColor: $("brand-primary-color").value,
-            secondaryColor: $("brand-secondary-color").value,
-            accentColor: $("brand-accent-color").value,
-          };
-          const res = await ownerFetch("/api/admin/branding", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body),
-          });
-          brandingCache = res;
-          status.style.color = "var(--success)";
-          status.textContent = "Brand settings saved!";
-          // Update the header to reflect the new brand name
-          updateOwnerHeaderBranding();
+          await persistBrandingToServer(true);
         } catch (err) {
           status.style.color = "var(--danger)";
           status.textContent = "Failed to save: " + (err.message || err);
+          setTimeout(() => { status.textContent = ""; status.style.color = ""; }, 4000);
         }
-        setTimeout(() => { status.textContent = ""; status.style.color = ""; }, 4000);
+      }
+
+      async function persistBrandingIfPossible() {
+        if (!ownerCanPersist()) return;
+        const status = $("brand-status");
+        try {
+          await persistBrandingToServer(false);
+        } catch (err) {
+          status.style.color = "var(--danger)";
+          status.textContent = "Auto-save failed: " + (err.message || err);
+        }
+      }
+
+      function scheduleBrandingAutoSave() {
+        clearTimeout(brandingAutoSaveTimer);
+        brandingAutoSaveTimer = setTimeout(() => void persistBrandingIfPossible(), 700);
       }
 
       async function uploadBrandLogo(file) {
@@ -2311,6 +2612,7 @@
         $("brand-accent-color").value = "#d4af61";
         $("brand-accent-color-hex").value = "#d4af61";
         updateBrandPreview();
+        void persistBrandingIfPossible();
       }
 
       function setupBrandLogoDropZone() {
@@ -3167,6 +3469,7 @@
           forwardingProfilesCache.push({ id: "id_" + Date.now(), name, number, role, description });
           $("fp-name").value = $("fp-number").value = $("fp-role").value = $("fp-desc").value = "";
           renderForwarding();
+          void persistForwardingIfPossible();
         });
         $("fp-save").addEventListener("click", () => requireAuth(() => saveForwarding()));
         $("price-add").addEventListener("click", () => {
@@ -3179,8 +3482,21 @@
           pricingCache.items.push({ id: "id_" + Date.now(), type, name, price, description: desc || undefined });
           $("price-name").value = $("price-amount").value = $("price-desc").value = "";
           renderPricing();
+          void persistPricingIfPossible();
         });
         $("price-save").addEventListener("click", () => requireAuth(() => savePricing()));
+        const pricingNotesEl = $("pricing-notes");
+        if (pricingNotesEl) pricingNotesEl.addEventListener("input", () => schedulePricingNotesAutoSave());
+        ["owner-greetingText", "owner-systemPreamble", "owner-voicePrompt", "owner-policyPrompt"].forEach((id) => {
+          const el = $(id);
+          if (el) el.addEventListener("input", () => scheduleOwnerPromptsAutoSave());
+        });
+        ["owner-businessAddress", "owner-businessFaq"].forEach((id) => {
+          const el = $(id);
+          if (el) el.addEventListener("input", () => scheduleOwnerBusinessInfoAutoSave());
+        });
+        const voiceSelEl = $("voice-selector");
+        if (voiceSelEl) voiceSelEl.addEventListener("change", () => void persistVoiceSettingsIfPossible());
         $("bill-update-payment").addEventListener("click", () => requireAuth(() => updateOwnerPayment()));
         $("bill-manage-billing").addEventListener("click", () => requireAuth(() => openOwnerBillingPortal()));
         $("bill-pay-now").addEventListener("click", () => requireAuth(() => payNowOwner()));
@@ -3206,7 +3522,10 @@
         $("brand-save").addEventListener("click", () => requireAuth(() => saveBranding()));
         $("brand-reset").addEventListener("click", () => resetBranding());
         $("brand-logo-remove").addEventListener("click", () => requireAuth(() => removeBrandLogo()));
-        $("brand-company-name").addEventListener("input", () => updateBrandPreview());
+        $("brand-company-name").addEventListener("input", () => {
+          updateBrandPreview();
+          scheduleBrandingAutoSave();
+        });
         bindColorSync("brand-primary-color", "brand-primary-color-hex");
         bindColorSync("brand-secondary-color", "brand-secondary-color-hex");
         bindColorSync("brand-accent-color", "brand-accent-color-hex");
