@@ -39,7 +39,19 @@ function parsePublicKey(publicKey: string): crypto.KeyObject {
   }
 
   const keyBuffer = Buffer.from(publicKey, isHex(publicKey) ? 'hex' : 'base64');
-  return crypto.createPublicKey({ key: keyBuffer, format: 'der', type: 'spki' });
+
+  // Try DER SPKI first (44 bytes for Ed25519)
+  try {
+    return crypto.createPublicKey({ key: keyBuffer, format: 'der', type: 'spki' });
+  } catch {
+    // Raw 32-byte Ed25519 key — wrap in SPKI envelope
+    if (keyBuffer.length === 32) {
+      const ed25519SpkiHeader = Buffer.from('302a300506032b6570032100', 'hex');
+      const spki = Buffer.concat([ed25519SpkiHeader, keyBuffer]);
+      return crypto.createPublicKey({ key: spki, format: 'der', type: 'spki' });
+    }
+    throw new Error(`Unable to parse public key (${keyBuffer.length} bytes)`);
+  }
 }
 
 function getString(value: unknown): string | undefined {
@@ -111,11 +123,17 @@ function verifyHmacSignature(message: Buffer, signature: string, secret: string)
 export interface TelnyxSignatureInputWithSecret extends TelnyxSignatureInput {
   /** Optional per-tenant secret. If provided, used instead of global TELNYX_WEBHOOK_SECRET. */
   tenantSecret?: string | null;
+  /** Webhook message ID (kept for interface compat, not used in Telnyx Ed25519 signing). */
+  msgId?: string;
 }
 
 /**
  * Verify Telnyx webhook signature.
- * If tenantSecret is provided, it takes precedence over global TELNYX_WEBHOOK_SECRET.
+ *
+ * Telnyx Ed25519 signed payload format: "timestamp|payload"
+ * (per official telnyx-node SDK: https://github.com/team-telnyx/telnyx-node)
+ *
+ * HMAC fallback uses: "timestamp.payload" (legacy/per-tenant secret).
  */
 export function verifyTelnyxSignature({
   rawBody,
@@ -147,12 +165,6 @@ export function verifyTelnyxSignature({
     return { ok: false, skipped: false };
   }
 
-  const message = Buffer.concat([
-    Buffer.from(trimmedTimestamp, 'utf8'),
-    Buffer.from('.', 'utf8'),
-    rawBody,
-  ]);
-
   // Use tenant secret if provided, otherwise fall back to global
   const secret = tenantSecret?.trim() || process.env.TELNYX_WEBHOOK_SECRET?.trim();
   const shouldUseHmac = scheme === 'hmac-sha256' || (!!secret && scheme !== 'ed25519');
@@ -162,17 +174,37 @@ export function verifyTelnyxSignature({
       if (!secret) {
         return { ok: false, skipped: false };
       }
-      return { ok: verifyHmacSignature(message, trimmedSignature, secret), skipped: false };
+      // HMAC signed content: "timestamp.payload"
+      const hmacMessage = Buffer.concat([
+        Buffer.from(trimmedTimestamp, 'utf8'),
+        Buffer.from('.', 'utf8'),
+        rawBody,
+      ]);
+      return { ok: verifyHmacSignature(hmacMessage, trimmedSignature, secret), skipped: false };
     }
 
+    // Ed25519 verification (Telnyx native format)
     const publicKeyRaw = env.TELNYX_PUBLIC_KEY?.trim();
     if (!publicKeyRaw) {
       return { ok: false, skipped: false };
     }
 
     const publicKey = parsePublicKey(publicKeyRaw);
-    const signatureBuffer = Buffer.from(trimmedSignature, isHex(trimmedSignature) ? 'hex' : 'base64');
-    return { ok: crypto.verify(null, message, publicKey, signatureBuffer), skipped: false };
+    const signatureBuffer = Buffer.from(trimmedSignature, 'base64');
+
+    if (signatureBuffer.length !== 64) {
+      return { ok: false, skipped: false };
+    }
+
+    // Telnyx Ed25519 signed payload: "timestamp|payload"
+    // (pipe delimiter, per official telnyx-node SDK)
+    const signedPayload = Buffer.concat([
+      Buffer.from(trimmedTimestamp, 'utf8'),
+      Buffer.from('|', 'utf8'),
+      rawBody,
+    ]);
+
+    return { ok: crypto.verify(null, signedPayload, publicKey, signatureBuffer), skipped: false };
   } catch {
     return { ok: false, skipped: false };
   }

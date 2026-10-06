@@ -11,7 +11,7 @@ export interface LLMRuntimeConfig {
 }
 
 const DEFAULT_LOCAL_URL = "http://127.0.0.1:8080/completion";
-const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
+const DEFAULT_OPENAI_MODEL = "qwen2.5:7b";
 
 // STT defaults (env → fallback)
 const DEFAULT_WHISPER_URL =
@@ -58,6 +58,18 @@ export interface TTSConfig {
   kokoroUrl?: string;                     // URL for Kokoro server
   clonedVoice?: ClonedVoiceConfig;        // Cloned voice profile
   defaultVoiceMode?: VoiceMode;           // Default voice mode at call start
+
+  // XTTS tuning parameters
+  coquiTemperature?: number;
+  coquiSpeed?: number;
+  coquiTopP?: number;
+  coquiTopK?: number;
+  coquiRepetitionPenalty?: number;
+  coquiLengthPenalty?: number;
+
+  // Kokoro-specific settings
+  kokoroVoice?: string;
+  kokoroSpeed?: number;
 }
 
 // small helper so bad env values don’t wreck things
@@ -120,6 +132,12 @@ export interface PromptConfig {
   voicePrompt: string;
   /** Custom greeting text for the welcome message when a caller dials in */
   greetingText: string;
+  /** Business hours description (shown to callers via the LLM) */
+  businessHours: string;
+  /** Business address / location */
+  businessAddress: string;
+  /** Additional info & FAQ */
+  businessFaq: string;
 }
 
 export interface STTConfig {
@@ -158,6 +176,8 @@ const DEFAULT_VOICE_PROMPT = [
   "Be friendly, confident, and calm.",
   "Keep your responses short and natural, like you're actually on the phone.",
   "Use the caller's name when you know it.",
+  "Always respond in English only.",
+  "IMPORTANT: When you ask a qualifying or follow-up question (like 'How many square feet?' or 'What's your address?'), do NOT also ask 'Is there anything else I can help with?' in the same response. Only ask 'anything else?' once you have finished collecting all needed information and are ready to wrap up.",
 ].join(" ");
 
 export interface SerializedLLMConfig {
@@ -190,10 +210,16 @@ export class LLMConfigStore {
       policyPrompt: DEFAULT_POLICY_PROMPT,
       voicePrompt: DEFAULT_VOICE_PROMPT,
       greetingText: "",
+      businessHours: "",
+      businessAddress: "",
+      businessFaq: "",
       ...(initial?.prompts || {}),
     };
-    // Ensure greetingText exists for configs loaded before this field was added
+    // Ensure fields exist for configs loaded before they were added
     if (this.prompts.greetingText === undefined) this.prompts.greetingText = "";
+    if (this.prompts.businessHours === undefined) this.prompts.businessHours = "";
+    if (this.prompts.businessAddress === undefined) this.prompts.businessAddress = "";
+    if (this.prompts.businessFaq === undefined) this.prompts.businessFaq = "";
 
     this.stt = initial?.stt || {
       whisperUrl: DEFAULT_WHISPER_URL,
@@ -271,6 +297,16 @@ export class LLMConfigStore {
       greetingText: next.greetingText !== undefined
         ? next.greetingText.trim()
         : this.prompts.greetingText,
+      // Business info — allow clearing (empty string) so use !== undefined guard
+      businessHours: next.businessHours !== undefined
+        ? next.businessHours.trim()
+        : this.prompts.businessHours,
+      businessAddress: next.businessAddress !== undefined
+        ? next.businessAddress.trim()
+        : this.prompts.businessAddress,
+      businessFaq: next.businessFaq !== undefined
+        ? next.businessFaq.trim()
+        : this.prompts.businessFaq,
     };
     return this.prompts;
   }
@@ -317,6 +353,16 @@ export class LLMConfigStore {
       kokoroUrl: base.kokoroUrl,
       clonedVoice: base.clonedVoice,
       defaultVoiceMode: base.defaultVoiceMode || "preset",
+      // XTTS tuning parameters
+      coquiTemperature: (base as any).coquiTemperature,
+      coquiSpeed: (base as any).coquiSpeed,
+      coquiTopP: (base as any).coquiTopP,
+      coquiTopK: (base as any).coquiTopK,
+      coquiRepetitionPenalty: (base as any).coquiRepetitionPenalty,
+      coquiLengthPenalty: (base as any).coquiLengthPenalty,
+      // Kokoro-specific settings
+      kokoroVoice: base.kokoroVoice,
+      kokoroSpeed: base.kokoroSpeed,
     };
 
     return config;

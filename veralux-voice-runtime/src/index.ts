@@ -82,4 +82,12 @@ process.on('unhandledRejection', (reason) => {
 
 server.listen(env.PORT, () => {
   log.info({ port: env.PORT }, 'server listening');
+
+  if (env.TELNYX_SKIP_SIGNATURE) {
+    log.warn(
+      { event: 'security_warning', setting: 'TELNYX_SKIP_SIGNATURE=true' },
+      '[SECURITY] Telnyx webhook signature verification is DISABLED. ' +
+        'This should only be used for local development. Set TELNYX_SKIP_SIGNATURE=false in production.',
+    );
+  }
 });

@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; frame-src http://localhost:*; connect-src 'self' http://localhost:*; media-src blob:;" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VeraLux Receptionist</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+  <!-- Titlebar / Navigation -->
+  <div class="titlebar">
+    <div class="titlebar-brand">
+      <img class="logo" src="../assets/icon.png" alt="V" />
+      <span>VeraLux</span>
+    </div>
+    <div class="tab-nav">
+      <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+      <button class="tab-btn" data-tab="owner-panel">Owner Panel</button>
+      <button class="tab-btn" data-tab="test-chat">Test Chat</button>
+      <button class="tab-btn" data-tab="logs">Logs</button>
+      <button class="tab-btn" data-tab="settings">Settings</button>
+    </div>
+  </div>
+
+  <!-- Tab Panels -->
+  <div class="content">
+
+    <!-- Dashboard -->
+    <div class="tab-panel active" id="dashboard">
+      <div class="dashboard-controls">
+        <button class="btn btn-success btn-sm" id="btn-start-all">Start All</button>
+        <button class="btn btn-danger btn-sm" id="btn-stop-all">Stop All</button>
+        <button class="btn btn-sm" id="btn-restart-all">Restart All</button>
+        <button class="btn btn-recovery btn-sm" id="btn-recovery" title="Kill port conflicts, tear down, and restart all services">Recovery Mode</button>
+        <div class="status-summary" id="status-summary"></div>
+      </div>
+      <div class="gpu-bar" id="gpu-bar" style="display:none">
+        <span class="gpu-label">GPU</span>
+        <span id="gpu-util">—</span>
+        <div class="gpu-meter"><div class="gpu-meter-fill" id="gpu-fill" style="width:0%"></div></div>
+        <span id="gpu-mem">—</span>
+      </div>
+      <div class="service-grid" id="service-grid"></div>
+    </div>
+
+    <!-- Owner Panel -->
+    <div class="tab-panel" id="owner-panel">
+      <div class="owner-toolbar">
+        <button class="btn btn-sm" id="btn-reload-owner">Reload</button>
+        <span>Owner configuration panel</span>
+      </div>
+      <iframe id="owner-frame" src="about:blank"></iframe>
+    </div>
+
+    <!-- Test Chat -->
+    <div class="tab-panel" id="test-chat">
+      <div class="chat-toolbar">
+        <span class="chat-title">Pipeline Test</span>
+        <label class="chat-autoplay-label">
+          <input type="checkbox" id="chat-autoplay" checked />
+          <span>Auto-play audio</span>
+        </label>
+        <button class="btn btn-sm" id="btn-chat-clear">Clear</button>
+      </div>
+      <div class="chat-messages" id="chat-messages"></div>
+      <div class="chat-input-bar">
+        <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off" />
+        <button class="btn btn-primary btn-sm" id="btn-chat-send">Send</button>
+      </div>
+    </div>
+
+    <!-- Logs -->
+    <div class="tab-panel" id="logs">
+      <div class="logs-toolbar">
+        <select id="log-service-select"></select>
+        <input type="text" id="log-filter" placeholder="Filter logs..." />
+        <button class="btn btn-sm" id="btn-log-pause">Pause</button>
+        <button class="btn btn-sm" id="btn-log-clear">Clear</button>
+      </div>
+      <div class="log-output" id="log-output"></div>
+    </div>
+
+    <!-- Settings (read-only) -->
+    <div class="tab-panel" id="settings">
+      <div class="settings-toolbar">
+        <span class="settings-lock-notice" style="color:var(--muted);font-size:0.85rem;">System configuration is locked. Contact your administrator to make changes.</span>
+      </div>
+      <textarea class="env-editor" id="env-editor" spellcheck="false" readonly></textarea>
+    </div>
+
+  </div>
+
+  <!-- Status Bar -->
+  <div class="statusbar">
+    <span id="sb-overall"><span class="dot-inline" style="background:var(--muted)"></span> Connecting...</span>
+    <span id="sb-services"></span>
+  </div>
+
+  <!-- EULA / License Agreement Modal -->
+  <div class="eula-overlay" id="eula-overlay">
+    <div class="eula-modal">
+      <div class="eula-header">
+        <img class="eula-logo" src="../assets/icon.png" alt="V" />
+        <h2>VeraLux AI — License Agreement</h2>
+        <p class="eula-subtitle">Please read and accept the following license agreement to continue.</p>
+      </div>
+      <div class="eula-body">
+        <pre class="eula-text" id="eula-text">Loading license...</pre>
+      </div>
+      <div class="eula-footer">
+        <label class="eula-checkbox-label">
+          <input type="checkbox" id="eula-agree-checkbox" />
+          <span>I have read and agree to the terms of this license agreement</span>
+        </label>
+        <div class="eula-actions">
+          <button class="btn btn-danger btn-sm" id="btn-eula-decline">Decline &amp; Exit</button>
+          <button class="btn btn-primary btn-sm" id="btn-eula-accept" disabled>Accept &amp; Continue</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recovery Modal -->
+  <div class="recovery-overlay hidden" id="recovery-overlay">
+    <div class="recovery-modal">
+      <div class="recovery-header">
+        <span class="recovery-icon">&#9888;</span>
+        <h3>Recovery Mode</h3>
+      </div>
+      <div class="recovery-body">
+        <p class="recovery-desc">This will kill any processes blocking required ports, tear down all containers, and restart every service from scratch.</p>
+        <div class="recovery-log" id="recovery-log"></div>
+      </div>
+      <div class="recovery-footer">
+        <button class="btn btn-danger btn-sm" id="btn-recovery-confirm">Start Recovery</button>
+        <button class="btn btn-sm" id="btn-recovery-cancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="toast hidden" id="toast"></div>
+
+  <script src="app.js"></script>
+  <script src="vl-select.js"></script>
+</body>
+</html>

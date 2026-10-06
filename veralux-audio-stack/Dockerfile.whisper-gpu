@@ -1,0 +1,56 @@
+# Faster-Whisper transcription server (port 9000) — GPU variant
+# Uses NVIDIA CUDA 12 + cuDNN runtime for GPU-accelerated inference
+FROM nvidia/cuda:12.8.0-cudnn-runtime-ubuntu22.04
+
+WORKDIR /app
+
+# Prevent interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Python 3.10, ffmpeg, curl and build essentials
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3.10 \
+    python3.10-venv \
+    python3-pip \
+    ffmpeg \
+    curl \
+    && ln -sf /usr/bin/python3.10 /usr/bin/python3 \
+    && ln -sf /usr/bin/python3.10 /usr/bin/python \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user and model cache dir
+RUN useradd --create-home --shell /bin/bash appuser \
+    && mkdir -p /home/appuser/.cache/huggingface \
+    && chown -R appuser:appuser /home/appuser/.cache
+
+# Install Python deps — ctranslate2 pip wheel dynamically links to CUDA libs
+# provided by the base image (libcublas.so.12, libcudnn, etc.)
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir \
+       fastapi \
+       uvicorn \
+       gunicorn \
+       slowapi \
+       faster-whisper \
+       python-multipart
+
+# Copy app files
+COPY --chown=appuser:appuser whisper_server.py .
+
+USER appuser
+
+# Model cache: mount a volume at /home/appuser/.cache/huggingface to persist models
+ENV HF_HOME=/home/appuser/.cache/huggingface
+ENV WHISPER_MODEL=medium
+ENV WHISPER_DEVICE=cuda
+ENV WHISPER_COMPUTE_TYPE=float16
+
+EXPOSE 9000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=180s --retries=3 \
+    CMD curl -f http://localhost:9000/health || exit 1
+
+STOPSIGNAL SIGTERM
+CMD ["gunicorn", "whisper_server:app", "-k", "uvicorn.workers.UvicornWorker", \
+     "--bind", "0.0.0.0:9000", "--workers", "1", "--timeout", "120", \
+     "--graceful-timeout", "30"]

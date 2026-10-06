@@ -1,5 +1,6 @@
 import { env } from '../env';
 import { log } from '../log';
+import { withRetry } from '../retry';
 import { ConversationTurn } from '../calls/types';
 import type { TransferProfile } from '../tenants/tenantConfig';
 import { defaultBrainReply } from './defaultBrain';
@@ -52,6 +53,8 @@ export interface AssistantReplyResult {
   transfer?: AssistantTransferAction;
   /** If set, the runtime will switch voice mode before playing the response. */
   voiceDirective?: AssistantVoiceDirective;
+  /** If true, the runtime will play `text` (goodbye) then hang up the call. */
+  hangup?: boolean;
 }
 
 const ERROR_FALLBACK_TEXT = 'Sorry - I had a problem responding. Can you repeat that?';
@@ -237,42 +240,49 @@ export async function generateAssistantReply(
       'brain routed to http',
     );
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
+    const response = await withRetry(
+      async () => {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            tenantId: input.tenantId,
+            callControlId: input.callControlId,
+            transcript: input.transcript,
+            history: input.history,
+            ...(input.transferProfiles?.length
+              ? { transferProfiles: input.transferProfiles }
+              : {}),
+            ...(input.assistantContext &&
+            Object.keys(input.assistantContext).length > 0
+              ? { assistantContext: input.assistantContext }
+              : {}),
+          }),
+          signal: controller.signal,
+        });
+        if (!res.ok) {
+          const body = await readResponseText(res);
+          const preview = body.length > 500 ? `${body.slice(0, 500)}...` : body;
+          throw new Error(`brain reply failed ${res.status}: ${preview}`);
+        }
+        return res;
       },
-      body: JSON.stringify({
-        tenantId: input.tenantId,
-        callControlId: input.callControlId,
-        transcript: input.transcript,
-        history: input.history,
-        ...(input.transferProfiles?.length
-          ? { transferProfiles: input.transferProfiles }
-          : {}),
-        ...(input.assistantContext &&
-        Object.keys(input.assistantContext).length > 0
-          ? { assistantContext: input.assistantContext }
-          : {}),
-      }),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const body = await readResponseText(response);
-      const preview = body.length > 500 ? `${body.slice(0, 500)}...` : body;
-      throw new Error(`brain reply failed ${response.status}: ${preview}`);
-    }
+      { label: 'brain_reply', retries: 1 },
+    );
 
     const data = (await response.json()) as {
       text?: unknown;
       transfer?: { to?: unknown; audioUrl?: unknown; timeoutSecs?: unknown };
       voiceDirective?: { mode?: unknown; speakerWavUrl?: unknown };
+      hangup?: unknown;
     };
     const text = typeof data.text === 'string' ? data.text.trim() : '';
     const transfer = parseTransferAction(data.transfer);
     const voiceDirective = parseVoiceDirective(data.voiceDirective);
-    if (!text && !transfer?.to) {
+    const hangup = data.hangup === true;
+    if (!text && !transfer?.to && !hangup) {
       throw new Error('brain reply missing text and transfer');
     }
 
@@ -282,6 +292,7 @@ export async function generateAssistantReply(
     };
     if (transfer) result.transfer = transfer;
     if (voiceDirective) result.voiceDirective = voiceDirective;
+    if (hangup) result.hangup = true;
     return result;
   } catch (error) {
     log.error(
@@ -318,6 +329,7 @@ export async function generateAssistantReplyStream(
   let sawTokens = false;
   let transfer: AssistantTransferAction | undefined;
   let voiceDirective: AssistantVoiceDirective | undefined;
+  let hangup = false;
 
   try {
     log.info(
@@ -414,13 +426,14 @@ export async function generateAssistantReplyStream(
       }
 
       if (event === 'done') {
-        const p = payload as { text?: unknown; transfer?: unknown; voiceDirective?: unknown } | undefined;
+        const p = payload as { text?: unknown; transfer?: unknown; voiceDirective?: unknown; hangup?: unknown } | undefined;
         const text = p && typeof p.text === 'string' ? p.text : '';
         if (text) {
           fullText = text;
         }
         transfer = parseTransferAction(p?.transfer);
         voiceDirective = parseVoiceDirective(p?.voiceDirective);
+        if (p?.hangup === true) hangup = true;
         return false;
       }
 
@@ -456,6 +469,7 @@ export async function generateAssistantReplyStream(
     };
     if (transfer) result.transfer = transfer;
     if (voiceDirective) result.voiceDirective = voiceDirective;
+    if (hangup) result.hangup = true;
     return result;
   } catch (error) {
     log.warn(

@@ -239,6 +239,8 @@
       .owner-panel:hover { border-color: rgba(255,255,255,0.1); }
       .owner-panel h2 { margin: 0 0 8px; font-size: 18px; font-weight: 600; }
       .owner-panel .help { font-size: 13px; color: var(--text-soft); margin-bottom: 16px; line-height: 1.5; }
+      .owner-panel table td, .owner-panel table th { white-space: nowrap; }
+      .owner-panel table td.wrap-cell { white-space: normal; word-break: normal; overflow-wrap: normal; }
       label { display: block; margin-bottom: 8px; font-size: 13px; font-weight: 500; color: var(--text-soft); }
       input, textarea, select {
         width: 100%; padding: 12px 14px; margin-bottom: 14px;
@@ -246,6 +248,21 @@
         background: rgba(255,255,255,0.03); color: var(--text);
         font-family: inherit; font-size: 14px;
         transition: border-color 0.2s, box-shadow 0.2s;
+      }
+      select option {
+        background: var(--bg, #070708);
+        color: var(--text);
+      }
+      select option:checked {
+        background: var(--primary, #C9A04E);
+        color: #fff;
+      }
+      select optgroup {
+        background: rgba(201, 160, 78, 0.08);
+        color: var(--primary, #C9A04E);
+        font-style: normal;
+        font-weight: 600;
+        padding: 6px 0;
       }
       input::placeholder, textarea::placeholder { color: var(--muted); }
       input:focus, textarea:focus, select:focus {
@@ -329,12 +346,13 @@
       <main class="owner-main">
         <!-- Forwarding profiles -->
         <section class="owner-panel">
-          <h2>When to transfer calls</h2>
-          <p class="help">Who should the receptionist transfer callers to? Add your team members.</p>
+          <h2>Call Forwarding</h2>
+          <p class="help">Add the people the receptionist can forward calls to. Include a role and brief description so the AI knows when to route each call.</p>
           <div class="row">
             <input type="text" id="fp-name" class="sm" placeholder="Name" />
             <input type="text" id="fp-number" class="mid" placeholder="+15551234567" />
-            <input type="text" id="fp-role" class="mid" placeholder="Role (e.g. Owner)" />
+            <input type="text" id="fp-role" class="sm" placeholder="Role (e.g. Owner)" />
+            <input type="text" id="fp-desc" class="mid" placeholder="Brief description (e.g. Handles pricing &amp; estimates)" />
             <button type="button" id="fp-add">Add</button>
           </div>
           <ul id="fp-list" class="owner-list"></ul>
@@ -362,6 +380,180 @@
             <button type="button" class="secondary" id="refresh-prompts">Reset</button>
           </div>
           <div id="prompt-status" class="help" style="margin-top: 8px; min-height: 16px;"></div>
+        </section>
+
+        <!-- Receptionist Voice -->
+        <section class="owner-panel">
+          <h2>Receptionist voice</h2>
+          <p class="help">Choose how your receptionist sounds. Select a TTS engine and configure its settings.</p>
+
+          <!-- TTS Engine Selector -->
+          <label for="tts-engine-selector">TTS Engine</label>
+          <select id="tts-engine-selector" style="width:100%;padding:12px 14px;margin-bottom:14px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,0.03);color:var(--text);font-family:inherit;font-size:14px;">
+            <option value="coqui_xtts">XTTS (Coqui) &mdash; Voice cloning, expressive</option>
+            <option value="kokoro_http">Kokoro &mdash; Fast, multi-voice</option>
+          </select>
+          <div id="tts-engine-status" class="help" style="margin-bottom:16px;min-height:18px;"></div>
+
+          <!-- ══ XTTS Panel ══ -->
+          <div id="tts-xtts-panel">
+            <label for="voice-selector">Active voice</label>
+            <select id="voice-selector" style="width:100%;padding:12px 14px;margin-bottom:14px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,0.03);color:var(--text);font-family:inherit;font-size:14px;">
+              <option value="preset:default">Default Voice (Preset)</option>
+            </select>
+            <div id="voice-selector-status" class="help" style="margin-bottom:16px;min-height:18px;"></div>
+            <button type="button" id="save-voice-settings" style="margin-top:0;">Save voice settings</button>
+            <div id="voice-settings-status" class="help" style="margin-top:6px;min-height:18px;"></div>
+
+            <!-- XTTS Voice Tuning -->
+            <div style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border);">
+              <h3 style="margin:0 0 4px;font-size:15px;font-weight:600;color:var(--text);">XTTS Voice tuning</h3>
+              <p class="help" style="margin-bottom:14px;">Fine-tune how your receptionist's voice sounds.</p>
+              <div id="tuning-sliders">
+                <div style="margin-bottom:14px;">
+                  <label style="display:flex;justify-content:space-between;"><span>Speed</span><span id="tuning-speed-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">1.18</span></label>
+                  <input type="range" id="tuning-speed" min="0.5" max="2.0" step="0.01" value="1.18" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                  <div class="help" style="margin-top:2px;">Slower &larr; &rarr; Faster</div>
+                </div>
+                <div style="margin-bottom:14px;">
+                  <label style="display:flex;justify-content:space-between;"><span>Temperature</span><span id="tuning-temp-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">0.80</span></label>
+                  <input type="range" id="tuning-temp" min="0.01" max="1.50" step="0.01" value="0.80" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                  <div class="help" style="margin-top:2px;">Consistent &larr; &rarr; Expressive</div>
+                </div>
+                <div style="margin-bottom:14px;">
+                  <label style="display:flex;justify-content:space-between;"><span>Top P</span><span id="tuning-topp-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">0.92</span></label>
+                  <input type="range" id="tuning-topp" min="0.10" max="1.00" step="0.01" value="0.92" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                  <div class="help" style="margin-top:2px;">Focused &larr; &rarr; Varied</div>
+                </div>
+                <div style="margin-bottom:14px;">
+                  <label style="display:flex;justify-content:space-between;"><span>Top K</span><span id="tuning-topk-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">50</span></label>
+                  <input type="range" id="tuning-topk" min="1" max="200" step="1" value="50" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                  <div class="help" style="margin-top:2px;">Narrow &larr; &rarr; Broad</div>
+                </div>
+                <div style="margin-bottom:14px;">
+                  <label style="display:flex;justify-content:space-between;"><span>Repetition penalty</span><span id="tuning-rep-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">2.0</span></label>
+                  <input type="range" id="tuning-rep" min="1.0" max="5.0" step="0.1" value="2.0" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                  <div class="help" style="margin-top:2px;">Allow repetition &larr; &rarr; Penalize</div>
+                </div>
+                <div style="margin-bottom:14px;">
+                  <label style="display:flex;justify-content:space-between;"><span>Length penalty</span><span id="tuning-len-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">1.0</span></label>
+                  <input type="range" id="tuning-len" min="0.5" max="2.0" step="0.1" value="1.0" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                  <div class="help" style="margin-top:2px;">Shorter &larr; &rarr; Longer</div>
+                </div>
+              </div>
+              <div style="display:flex;gap:10px;margin-top:8px;">
+                <button type="button" id="save-tuning">Save tuning</button>
+                <button type="button" class="secondary" id="reset-tuning">Reset defaults</button>
+              </div>
+              <div id="tuning-status" class="help" style="margin-top:6px;min-height:18px;"></div>
+
+              <!-- XTTS Voice Preview -->
+              <div style="margin-top:16px;padding:14px;border-radius:12px;background:var(--surface-hover);border:1px solid var(--border);">
+                <label style="display:block;font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">Preview voice</label>
+                <p class="help" style="margin-bottom:8px;">Type a phrase and hear how it sounds with the current tuning settings.</p>
+                <input type="text" id="tuning-preview-text" placeholder="Hello! Welcome to our business. How can I help you today?" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;margin-bottom:8px;box-sizing:border-box;" />
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <button type="button" id="tuning-preview-btn" style="white-space:nowrap;">&#9654; Preview</button>
+                  <audio id="tuning-preview-audio" controls style="flex:1;height:36px;min-width:0;display:none;"></audio>
+                  <span id="tuning-preview-status" class="help" style="white-space:nowrap;"></span>
+                </div>
+              </div>
+            </div>
+          </div><!-- /tts-xtts-panel -->
+
+          <!-- ══ Kokoro Panel ══ -->
+          <div id="tts-kokoro-panel" style="display:none;">
+            <label for="kokoro-voice-selector">Voice</label>
+            <select id="kokoro-voice-selector" style="width:100%;padding:12px 14px;margin-bottom:14px;border:1px solid var(--border);border-radius:12px;background:rgba(255,255,255,0.03);color:var(--text);font-family:inherit;font-size:14px;">
+              <optgroup label="American Female">
+                <option value="af_alloy">Alloy</option><option value="af_aoede">Aoede</option><option value="af_bella" selected>Bella</option>
+                <option value="af_heart">Heart</option><option value="af_jessica">Jessica</option><option value="af_kore">Kore</option>
+                <option value="af_nicole">Nicole</option><option value="af_nova">Nova</option><option value="af_river">River</option>
+                <option value="af_sarah">Sarah</option><option value="af_sky">Sky</option>
+              </optgroup>
+              <optgroup label="American Male">
+                <option value="am_adam">Adam</option><option value="am_echo">Echo</option><option value="am_eric">Eric</option>
+                <option value="am_fenrir">Fenrir</option><option value="am_liam">Liam</option><option value="am_michael">Michael</option>
+                <option value="am_onyx">Onyx</option><option value="am_puck">Puck</option>
+              </optgroup>
+              <optgroup label="British Female">
+                <option value="bf_alice">Alice</option><option value="bf_emma">Emma</option>
+                <option value="bf_isabella">Isabella</option><option value="bf_lily">Lily</option>
+              </optgroup>
+              <optgroup label="British Male">
+                <option value="bm_daniel">Daniel</option><option value="bm_fable">Fable</option>
+                <option value="bm_george">George</option><option value="bm_lewis">Lewis</option>
+              </optgroup>
+            </select>
+
+            <!-- Kokoro Tuning -->
+            <div style="margin-top:10px;padding-top:16px;border-top:1px solid var(--border);">
+              <h3 style="margin:0 0 4px;font-size:15px;font-weight:600;color:var(--text);">Kokoro Voice tuning</h3>
+              <p class="help" style="margin-bottom:14px;">Adjust the speaking speed of the Kokoro voice.</p>
+              <div style="margin-bottom:14px;">
+                <label style="display:flex;justify-content:space-between;"><span>Speed</span><span id="kokoro-speed-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">1.00</span></label>
+                <input type="range" id="kokoro-speed" min="0.5" max="1.5" step="0.05" value="1.0" style="width:100%;accent-color:var(--primary);background:transparent;margin-bottom:0;" />
+                <div class="help" style="margin-top:2px;">Slower &larr; &rarr; Faster</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:10px;margin-top:8px;">
+              <button type="button" id="save-kokoro-settings">Save Kokoro settings</button>
+              <button type="button" class="secondary" id="reset-kokoro-settings">Reset defaults</button>
+            </div>
+            <div id="kokoro-status" class="help" style="margin-top:6px;min-height:18px;"></div>
+
+            <!-- Kokoro Voice Preview -->
+            <div style="margin-top:16px;padding:14px;border-radius:12px;background:var(--surface-hover);border:1px solid var(--border);">
+              <label style="display:block;font-size:13px;font-weight:600;color:var(--text);margin-bottom:6px;">Preview voice</label>
+              <p class="help" style="margin-bottom:8px;">Type a phrase and hear how the selected Kokoro voice sounds.</p>
+              <input type="text" id="kokoro-preview-text" placeholder="Hello! Welcome to our business. How can I help you today?" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font-size:14px;margin-bottom:8px;box-sizing:border-box;" />
+              <div style="display:flex;align-items:center;gap:10px;">
+                <button type="button" id="kokoro-preview-btn" style="white-space:nowrap;">&#9654; Preview</button>
+                <audio id="kokoro-preview-audio" controls style="flex:1;height:36px;min-width:0;display:none;"></audio>
+                <span id="kokoro-preview-status" class="help" style="white-space:nowrap;"></span>
+              </div>
+            </div>
+          </div><!-- /tts-kokoro-panel -->
+
+          <!-- Voice Cloning (XTTS only) -->
+          <div id="tts-xtts-cloning-panel" style="margin-top:20px;padding-top:20px;border-top:1px solid var(--border);">
+            <h3 style="margin:0 0 4px;font-size:15px;font-weight:600;color:var(--text);">Voice cloning</h3>
+            <p class="help" style="margin-bottom:14px;">Record or upload a voice sample to clone. Read clearly for 10-30 seconds in a quiet room.</p>
+            <div style="margin-bottom:16px;">
+              <label>Record from microphone</label>
+              <div style="display:flex;gap:10px;align-items:center;">
+                <button type="button" id="vc-record-btn" class="secondary" style="min-width:120px;">Start recording</button>
+                <span id="vc-record-timer" class="help" style="font-family:'JetBrains Mono',monospace;"></span>
+                <div id="vc-level-bar" style="flex:1;height:8px;border-radius:4px;background:var(--surface-hover);overflow:hidden;display:none;">
+                  <div id="vc-level-fill" style="height:100%;width:0%;background:var(--success);border-radius:4px;transition:width 0.1s;"></div>
+                </div>
+              </div>
+            </div>
+            <div style="margin-bottom:16px;">
+              <label>Or upload an audio file</label>
+              <div id="vc-drop-zone" style="border:2px dashed var(--border);border-radius:12px;padding:20px;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;">
+                <input type="file" id="vc-file-input" accept=".wav,.mp3,.ogg,.webm" style="display:none;" />
+                <p class="help" style="margin:0;">Drag & drop a .wav or .mp3 here, or <span style="color:var(--accent);text-decoration:underline;">click to browse</span></p>
+                <p class="help" style="margin:4px 0 0;font-size:12px;">Max 10 MB</p>
+              </div>
+            </div>
+            <div id="vc-preview-section" style="display:none;margin-bottom:16px;padding:14px;border-radius:12px;background:var(--surface-hover);border:1px solid var(--border);">
+              <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+                <button type="button" id="vc-play-btn" class="secondary" style="padding:8px 14px;">Play</button>
+                <span id="vc-preview-info" class="help"></span>
+                <button type="button" id="vc-discard-btn" class="secondary" style="padding:6px 10px;font-size:12px;margin-left:auto;">Discard</button>
+              </div>
+              <audio id="vc-audio-player" style="display:none;"></audio>
+              <label for="vc-label-input">Voice name</label>
+              <input type="text" id="vc-label-input" placeholder="e.g. Nick's voice" style="margin-bottom:10px;" />
+              <button type="button" id="vc-save-btn">Save as cloned voice</button>
+              <div id="vc-save-status" class="help" style="margin-top:6px;min-height:18px;"></div>
+            </div>
+            <div id="cloned-voices-section">
+              <label style="margin-top:8px;">Your saved voices</label>
+              <ul id="cloned-voices-list" class="owner-list"></ul>
+            </div>
+          </div>
         </section>
 
         <!-- Pricing -->
@@ -433,24 +625,8 @@
           </div>
         </section>
 
-        <!-- Leads -->
-        <section class="owner-panel" id="leads-section">
-          <h2>Leads</h2>
-          <p class="help">Contacts and leads automatically captured from calls.</p>
-          <div id="portal-leads-empty" class="help" style="margin:12px 0;">No leads captured yet.</div>
-          <table id="portal-leads-table" style="display:none; width:100%; border-collapse:collapse; margin-top:12px;">
-            <thead>
-              <tr style="text-align:left; border-bottom:1px solid var(--border);">
-                <th class="help" style="padding:6px 8px;">Name</th>
-                <th class="help" style="padding:6px 8px;">Phone</th>
-                <th class="help" style="padding:6px 8px;">Issue</th>
-                <th class="help" style="padding:6px 8px;">Priority</th>
-                <th class="help" style="padding:6px 8px;">Date</th>
-              </tr>
-            </thead>
-            <tbody id="portal-leads-body"></tbody>
-          </table>
-        </section>
+        <!-- Workflow Data Panels (dynamic per-workflow) -->
+        <div id="workflow-data-panels"></div>
 
         <!-- Workflows (visible when admin enables owner editing) -->
         <section class="owner-panel" id="workflows-section" style="display:none;">
@@ -489,6 +665,19 @@
         const d = document.createElement("div");
         d.textContent = s;
         return d.innerHTML;
+      }
+
+      /** Format a phone number as (XXX) XXX-XXXX when possible */
+      function fmtPhone(raw) {
+        if (!raw) return "—";
+        const digits = String(raw).replace(/\D/g, "");
+        if (digits.length === 11 && digits[0] === "1") {
+          return `(${digits.slice(1,4)}) ${digits.slice(4,7)}-${digits.slice(7)}`;
+        }
+        if (digits.length === 10) {
+          return `(${digits.slice(0,3)}) ${digits.slice(3,6)}-${digits.slice(6)}`;
+        }
+        return String(raw);
       }
 
       async function apiFetch(url, opts = {}) {
@@ -597,8 +786,9 @@
           loadPricing(),
           loadAnalytics(),
           loadBilling(),
-          loadPortalLeads(),
+          loadWorkflowDataPanels(),
           loadPortalWorkflows(),
+          loadVoiceConfig(),
         ]);
       }
 
@@ -725,25 +915,28 @@
       function renderForwarding() {
         const ul = $("fp-list");
         if (!forwardingProfiles.length) { ul.innerHTML = "<li style='color:var(--muted)'>No team members yet</li>"; return; }
-        ul.innerHTML = forwardingProfiles.map((p, i) =>
-          `<li>
-            <span><strong>${escapeHtml(p.name)}</strong> — ${escapeHtml(p.number)} <span style="color:var(--muted)">(${escapeHtml(p.role || "—")})</span></span>
+        ul.innerHTML = forwardingProfiles.map((p, i) => {
+          const descHtml = p.description ? ` &mdash; <span style="color:var(--muted)">${escapeHtml(p.description)}</span>` : "";
+          return `<li>
+            <span><strong>${escapeHtml(p.name)}</strong> — ${escapeHtml(p.number)} <span style="color:var(--accent)">(${escapeHtml(p.role || "—")})</span>${descHtml}</span>
             <button class="secondary remove" onclick="removeForwarding(${i})">Remove</button>
-          </li>`
-        ).join("");
+          </li>`;
+        }).join("");
       }
 
       async function addForwarding() {
         const name = $("fp-name").value.trim();
         const number = $("fp-number").value.trim();
         const role = $("fp-role").value.trim();
+        const description = $("fp-desc").value.trim();
         if (!name || !number) return;
 
-        forwardingProfiles.push({ id: crypto.randomUUID(), name, number, role });
+        forwardingProfiles.push({ id: crypto.randomUUID(), name, number, role, description });
         await saveForwarding();
         $("fp-name").value = "";
         $("fp-number").value = "";
         $("fp-role").value = "";
+        $("fp-desc").value = "";
       }
 
       async function removeForwarding(idx) {
@@ -857,14 +1050,14 @@
       async function loadAnalytics() {
         try {
           const data = await apiFetch("/api/admin/analytics");
-          $("stat-calls").textContent = data.callCount ?? "—";
-          $("stat-messages").textContent = data.callerMessageCount ?? "—";
+          $("stat-calls").textContent = data.totalCalls ?? data.callCount ?? "—";
+          $("stat-messages").textContent = data.totalCallerMessages ?? data.callerMessageCount ?? "—";
         } catch (err) {
           console.error("loadAnalytics:", err);
         }
       }
 
-      // ── Leads ──
+      // ── Workflow Data Panels ──
       const TRIGGER_LABELS = {
         call_ended: "Call ended",
         after_hours_call: "After hours",
@@ -873,36 +1066,202 @@
         scheduled: "Scheduled",
       };
 
-      async function loadPortalLeads() {
+      let _wfPanelData = {};
+      const SENTIMENT_COLORS = { positive: "#4CAF50", neutral: "#C9A04E", frustrated: "#e07070", confused: "#e0a040" };
+      const PRIORITY_COLORS = { urgent: "#e07070", high: "#C9A04E", normal: "var(--muted)", low: "#666" };
+
+      function renderTags(arr) {
+        if (!arr || !arr.length) return '<span class="help">—</span>';
+        return arr.map(t => `<span style="display:inline-block;padding:2px 8px;margin:1px 3px;border-radius:8px;background:rgba(201,160,78,0.12);color:#C9A04E;font-size:11px;font-weight:500;">${escapeHtml(String(t))}</span>`).join("");
+      }
+      function renderBadge(text, color) {
+        if (!text) return '<span class="help">—</span>';
+        return `<span style="display:inline-block;padding:2px 10px;border-radius:8px;background:${color || "rgba(255,255,255,0.08)"};color:#fff;font-size:11px;font-weight:600;">${escapeHtml(String(text))}</span>`;
+      }
+      function renderBulletList(arr) {
+        if (!arr || !arr.length) return '<span class="help" style="font-style:italic;">None</span>';
+        return '<ul style="margin:4px 0 4px 16px;padding:0;list-style:disc;">' +
+          arr.map(q => `<li style="margin:3px 0;font-size:13px;color:var(--text);">${escapeHtml(String(q))}</li>`).join("") + '</ul>';
+      }
+      function isInsightsWorkflow(wf) {
+        return (wf.steps || []).some(s => s.action === "ai_extract" && s.config && s.config.fields &&
+          (s.config.fields.includes("questions") || s.config.fields.includes("topics") || s.config.fields.includes("sentiment")));
+      }
+
+      function renderLeadCapturePanel(wf, leads) {
+        const id = wf.id.replace(/[^a-zA-Z0-9_-]/g, "");
+        let rows = leads.map(lead => {
+          const date = lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : "—";
+          const pColor = PRIORITY_COLORS[lead.priority] || "var(--muted)";
+          const rx = lead.rawExtract || {};
+          return `
+            <tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'table-row':'none'">
+              <td style="padding:8px;" class="help">${escapeHtml(date)}</td>
+              <td style="padding:8px;" class="help">${escapeHtml(lead.name || "—")}</td>
+              <td style="padding:8px;" class="help">${escapeHtml(fmtPhone(lead.phone))}</td>
+              <td style="padding:8px;" class="help">${escapeHtml(lead.email || "—")}</td>
+              <td style="padding:8px;" class="help">${escapeHtml(lead.issue || rx.issue || "—")}</td>
+              <td style="padding:8px;" class="help">${escapeHtml(lead.category || rx.category || "—")}</td>
+              <td style="padding:8px;"><span style="color:${pColor};" class="help">${escapeHtml(lead.priority || "normal")}</span></td>
+            </tr>
+            <tr style="display:none;">
+              <td colspan="7" style="padding:12px 16px;background:rgba(255,255,255,0.02);border-bottom:1px solid var(--border);">
+                <div style="font-size:12px;color:var(--text-soft);">
+                  ${rx.notes ? `<p><strong>Notes:</strong> ${escapeHtml(String(rx.notes))}</p>` : ""}
+                  ${lead.callId ? `<p><strong>Call ID:</strong> ${escapeHtml(lead.callId)}</p>` : ""}
+                  <p style="color:var(--muted);font-size:11px;margin-top:4px;">Click row to collapse</p>
+                </div>
+              </td>
+            </tr>`;
+        }).join("");
+        return `
+          <section class="owner-panel" id="wf-panel-${id}" style="overflow:hidden;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <div><h2 style="margin:0;">${escapeHtml(wf.name)}</h2><p class="help" style="margin:4px 0 0;">${leads.length} record${leads.length !== 1 ? "s" : ""} captured</p></div>
+              <button type="button" class="secondary" style="padding:8px 16px;font-size:13px;" onclick="exportWorkflowPDF('${escapeHtml(wf.id)}')">Export PDF</button>
+            </div>
+            <div style="overflow-x:auto;margin-top:16px;">
+            <table style="width:100%;border-collapse:collapse;table-layout:auto;">
+              <thead><tr style="text-align:left;border-bottom:1px solid var(--border);">
+                <th class="help" style="padding:6px 8px;">Date</th><th class="help" style="padding:6px 8px;">Name</th><th class="help" style="padding:6px 8px;">Phone</th>
+                <th class="help" style="padding:6px 8px;">Email</th><th class="help" style="padding:6px 8px;">Issue</th><th class="help" style="padding:6px 8px;">Category</th><th class="help" style="padding:6px 8px;">Priority</th>
+              </tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+            </div>
+          </section>`;
+      }
+
+      function renderInsightsPanel(wf, leads) {
+        const id = wf.id.replace(/[^a-zA-Z0-9_-]/g, "");
+        let rows = leads.map(lead => {
+          const date = lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : "—";
+          const rx = lead.rawExtract || {};
+          const topics = rx.topics || [];
+          const questions = rx.questions || [];
+          const unanswered = rx.unanswered || [];
+          const intent = rx.intent || lead.issue || "—";
+          const sentiment = rx.sentiment || "—";
+          const sColor = SENTIMENT_COLORS[sentiment] || "rgba(255,255,255,0.15)";
+          const product = rx.product_or_service_interest || "—";
+          return `
+            <tr style="border-bottom:1px solid var(--border);cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'table-row':'none'">
+              <td style="padding:8px;" class="help">${escapeHtml(date)}</td>
+              <td style="padding:8px;" class="help">${escapeHtml(lead.name || lead.phone || "Unknown")}</td>
+              <td style="padding:8px;">${renderTags(topics)}</td>
+              <td style="padding:8px;">${renderBadge(intent, "rgba(201,160,78,0.25)")}</td>
+              <td style="padding:8px;">${renderBadge(sentiment, sColor)}</td>
+            </tr>
+            <tr style="display:none;">
+              <td colspan="5" style="padding:16px;background:rgba(255,255,255,0.02);border-bottom:1px solid var(--border);">
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:13px;">
+                  <div><strong style="color:var(--text);font-size:12px;">Questions Asked</strong>${renderBulletList(questions)}</div>
+                  <div><strong style="color:#e07070;font-size:12px;">Unanswered / Unsure</strong>${renderBulletList(unanswered)}</div>
+                </div>
+                ${product && product !== "—" ? `<div style="margin-top:10px;font-size:12px;"><strong style="color:var(--text);">Product/Service Interest:</strong> <span class="help">${escapeHtml(String(product))}</span></div>` : ""}
+                ${lead.phone ? `<div style="margin-top:4px;font-size:12px;"><strong style="color:var(--text);">Caller:</strong> <span class="help">${escapeHtml(fmtPhone(lead.phone))}</span></div>` : ""}
+                <p style="color:var(--muted);font-size:11px;margin-top:8px;">Click row to collapse</p>
+              </td>
+            </tr>`;
+        }).join("");
+        return `
+          <section class="owner-panel" id="wf-panel-${id}" style="overflow:hidden;">
+            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+              <div><h2 style="margin:0;">${escapeHtml(wf.name)}</h2><p class="help" style="margin:4px 0 0;">${leads.length} record${leads.length !== 1 ? "s" : ""} captured</p></div>
+              <button type="button" class="secondary" style="padding:8px 16px;font-size:13px;" onclick="exportWorkflowPDF('${escapeHtml(wf.id)}')">Export PDF</button>
+            </div>
+            <div style="overflow-x:auto;margin-top:16px;">
+            <table style="width:100%;border-collapse:collapse;table-layout:auto;">
+              <thead><tr style="text-align:left;border-bottom:1px solid var(--border);">
+                <th class="help" style="padding:6px 8px;">Date</th><th class="help" style="padding:6px 8px;">Caller</th>
+                <th class="help" style="padding:6px 8px;">Topics</th><th class="help" style="padding:6px 8px;">Intent</th><th class="help" style="padding:6px 8px;">Sentiment</th>
+              </tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+            </div>
+          </section>`;
+      }
+
+      async function loadWorkflowDataPanels() {
+        const container = $("workflow-data-panels");
         try {
-          const data = await apiFetch("/api/admin/leads?limit=100");
-          const leads = data.leads || [];
-          const empty = $("portal-leads-empty");
-          const table = $("portal-leads-table");
-          const body = $("portal-leads-body");
-          if (!leads.length) {
-            empty.style.display = "";
-            table.style.display = "none";
+          const [wfData, leadsData] = await Promise.all([
+            apiFetch("/api/admin/workflows"),
+            apiFetch("/api/admin/leads?limit=200"),
+          ]);
+          const workflows = (wfData.workflows || []).filter(w => w.enabled);
+          const leads = leadsData.leads || [];
+          const dataWorkflows = workflows.filter(wf => (wf.steps || []).some(s => s.action === "store_lead"));
+
+          if (!dataWorkflows.length) {
+            container.innerHTML = `<section class="owner-panel"><h2>Leads</h2><p class="help">Contacts and leads automatically captured from calls.</p><div class="help" style="margin:12px 0;">No leads captured yet.</div></section>`;
             return;
           }
-          empty.style.display = "none";
-          table.style.display = "";
-          body.innerHTML = leads.map(lead => {
-            const priorityColors = { urgent: "#e07070", high: "#C9A04E", normal: "var(--muted)", low: "#666" };
-            const pColor = priorityColors[lead.priority] || "var(--muted)";
-            const date = lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : "—";
-            return `
-              <tr style="border-bottom:1px solid var(--border);">
-                <td style="padding:8px;" class="help">${escapeHtml(lead.name || "—")}</td>
-                <td style="padding:8px;" class="help">${escapeHtml(lead.phone || "—")}</td>
-                <td style="padding:8px;" class="help">${escapeHtml(lead.issue || "—")}</td>
-                <td style="padding:8px;"><span style="color:${pColor};" class="help">${escapeHtml(lead.priority || "normal")}</span></td>
-                <td style="padding:8px;" class="help">${escapeHtml(date)}</td>
-              </tr>`;
-          }).join("");
+
+          const grouped = {};
+          for (const wf of dataWorkflows) grouped[wf.id] = [];
+          const ungrouped = [];
+          for (const lead of leads) {
+            if (lead.sourceWorkflowId && grouped[lead.sourceWorkflowId]) grouped[lead.sourceWorkflowId].push(lead);
+            else ungrouped.push(lead);
+          }
+          _wfPanelData = { workflows: dataWorkflows, grouped, ungrouped };
+
+          let html = "";
+          for (const wf of dataWorkflows) {
+            const wfLeads = grouped[wf.id] || [];
+            if (!wfLeads.length) {
+              const id = wf.id.replace(/[^a-zA-Z0-9_-]/g, "");
+              html += `<section class="owner-panel" id="wf-panel-${id}"><h2>${escapeHtml(wf.name)}</h2><p class="help" style="margin:8px 0;">No data captured yet. Records will appear here after calls.</p></section>`;
+              continue;
+            }
+            if (isInsightsWorkflow(wf)) html += renderInsightsPanel(wf, wfLeads);
+            else if (wf.name.toLowerCase().includes("lead")) html += renderLeadCapturePanel(wf, wfLeads);
+            else html += renderLeadCapturePanel(wf, wfLeads);
+          }
+
+          if (ungrouped.length) {
+            html += `<section class="owner-panel" style="overflow:hidden;"><div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;"><div><h2 style="margin:0;">Other Leads</h2><p class="help" style="margin:4px 0 0;">${ungrouped.length} record${ungrouped.length !== 1 ? "s" : ""}</p></div></div>
+              <div style="overflow-x:auto;margin-top:16px;"><table style="width:100%;border-collapse:collapse;table-layout:auto;"><thead><tr style="text-align:left;border-bottom:1px solid var(--border);"><th class="help" style="padding:6px 8px;">Date</th><th class="help" style="padding:6px 8px;">Name</th><th class="help" style="padding:6px 8px;">Phone</th><th class="help" style="padding:6px 8px;">Issue</th><th class="help" style="padding:6px 8px;">Priority</th></tr></thead><tbody>
+              ${ungrouped.map(lead => { const date = lead.createdAt ? new Date(lead.createdAt).toLocaleDateString() : "—"; const pColor = PRIORITY_COLORS[lead.priority] || "var(--muted)"; return `<tr style="border-bottom:1px solid var(--border);"><td style="padding:8px;" class="help">${escapeHtml(date)}</td><td style="padding:8px;" class="help">${escapeHtml(lead.name || "—")}</td><td style="padding:8px;" class="help">${escapeHtml(fmtPhone(lead.phone))}</td><td style="padding:8px;" class="help">${escapeHtml(lead.issue || "—")}</td><td style="padding:8px;"><span style="color:${pColor};" class="help">${escapeHtml(lead.priority || "normal")}</span></td></tr>`; }).join("")}
+              </tbody></table></div></section>`;
+          }
+          container.innerHTML = html;
         } catch (err) {
-          console.error("loadPortalLeads:", err);
+          console.error("loadWorkflowDataPanels:", err);
+          container.innerHTML = `<section class="owner-panel"><h2>Leads</h2><p class="help" style="color:#e07070;">Failed to load workflow data. Please try refreshing.</p></section>`;
         }
+      }
+
+      // ── PDF Export ──
+      function exportWorkflowPDF(workflowId) {
+        if (typeof window.jspdf === "undefined") { alert("PDF library is still loading. Please try again in a moment."); return; }
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+        const wf = (_wfPanelData.workflows || []).find(w => w.id === workflowId);
+        const leads = (_wfPanelData.grouped || {})[workflowId] || [];
+        if (!wf) { alert("Workflow not found."); return; }
+        if (!leads.length) { alert("No data to export."); return; }
+        const today = new Date().toLocaleDateString();
+        const fileName = (wf.name || "workflow").replace(/[^a-zA-Z0-9 _-]/g, "").replace(/\s+/g, "-").toLowerCase();
+
+        doc.setFontSize(18); doc.setTextColor(201, 160, 78); doc.text("VeraLux AI", 14, 16);
+        doc.setFontSize(14); doc.setTextColor(60, 60, 60); doc.text(wf.name, 14, 24);
+        doc.setFontSize(10); doc.setTextColor(120, 120, 120); doc.text(`${leads.length} record${leads.length !== 1 ? "s" : ""} | Exported ${today}`, 14, 30);
+
+        const isInsights = isInsightsWorkflow(wf);
+        let head, body;
+        if (isInsights) {
+          head = [["Date", "Caller", "Topics", "Intent", "Sentiment", "Questions", "Unanswered", "Product Interest"]];
+          body = leads.map(l => { const rx = l.rawExtract || {}; return [l.createdAt ? new Date(l.createdAt).toLocaleDateString() : "—", l.name || l.phone || "Unknown", (rx.topics || []).join(", ") || "—", rx.intent || "—", rx.sentiment || "—", (rx.questions || []).join("; ") || "—", (rx.unanswered || []).join("; ") || "None", rx.product_or_service_interest || "—"]; });
+        } else {
+          head = [["Date", "Name", "Phone", "Email", "Issue", "Category", "Priority"]];
+          body = leads.map(l => { const rx = l.rawExtract || {}; return [l.createdAt ? new Date(l.createdAt).toLocaleDateString() : "—", l.name || "—", l.phone || "—", l.email || "—", l.issue || rx.issue || "—", l.category || rx.category || "—", l.priority || "normal"]; });
+        }
+        doc.autoTable({ startY: 36, head, body, styles: { fontSize: 8, cellPadding: 3, overflow: "linebreak" }, headStyles: { fillColor: [201, 160, 78], textColor: [255, 255, 255], fontStyle: "bold" }, alternateRowStyles: { fillColor: [245, 245, 245] }, columnStyles: isInsights ? { 5: { cellWidth: 50 }, 6: { cellWidth: 35 } } : {}, margin: { left: 14, right: 14 } });
+        const pageCount = doc.internal.getNumberOfPages();
+        for (let i = 1; i <= pageCount; i++) { doc.setPage(i); doc.setFontSize(8); doc.setTextColor(160, 160, 160); doc.text(`Page ${i} of ${pageCount} | VeraLux AI Receptionist`, 14, doc.internal.pageSize.height - 8); }
+        doc.save(`${fileName}-${today.replace(/\//g, "-")}.pdf`);
       }
 
       // ── Workflows (read-only for owners unless admin enables editing) ──
@@ -945,6 +1304,230 @@
         }
       }
 
+      /* ── Voice Settings ─────────────────────────── */
+      let voiceConfig = { ttsMode:"coqui_xtts", defaultVoiceMode:"preset", presetVoice:"default", clonedVoices:[], activeVoiceId:"preset:default", kokoroVoice:"af_bella", kokoroSpeed:1.3 };
+
+      /* ── TTS Engine panel switching ── */
+      function showTtsPanel(mode) {
+        const xtts = $("tts-xtts-panel"), kokoro = $("tts-kokoro-panel"), cloning = $("tts-xtts-cloning-panel");
+        if (mode === "kokoro_http") {
+          if (xtts) xtts.style.display = "none";
+          if (cloning) cloning.style.display = "none";
+          if (kokoro) kokoro.style.display = "";
+        } else {
+          if (xtts) xtts.style.display = "";
+          if (cloning) cloning.style.display = "";
+          if (kokoro) kokoro.style.display = "none";
+        }
+      }
+      async function switchTtsEngine(newMode) {
+        const s = $("tts-engine-status");
+        try {
+          s.textContent = "Switching…"; s.style.color = "var(--muted)";
+          await apiFetch("/api/tts/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ttsMode: newMode }) });
+          voiceConfig.ttsMode = newMode; showTtsPanel(newMode);
+          s.textContent = "Switched to " + (newMode === "kokoro_http" ? "Kokoro" : "XTTS") + ".";
+          s.style.color = "var(--success)";
+          setTimeout(() => { if (s.textContent.startsWith("Switched")) s.textContent = ""; }, 3000);
+        } catch (err) {
+          s.textContent = "Failed: " + err.message; s.style.color = "var(--danger)";
+          $("tts-engine-selector").value = voiceConfig.ttsMode;
+        }
+      }
+
+      async function loadVoiceConfig() {
+        try {
+          const cfg = await apiFetch("/api/tts/config");
+          voiceConfig.ttsMode = cfg.ttsMode || cfg.mode || "coqui_xtts";
+          voiceConfig.presetVoice = cfg.voiceId || cfg.voice || "default";
+          voiceConfig.defaultVoiceMode = cfg.defaultVoiceMode || "preset";
+          voiceConfig.kokoroVoice = cfg.kokoroVoice || cfg.voice || "af_bella";
+          voiceConfig.kokoroSpeed = typeof cfg.kokoroSpeed === "number" ? cfg.kokoroSpeed : 1.3;
+          if (cfg.clonedVoice && cfg.clonedVoice.speakerWavUrl) {
+            const exists = voiceConfig.clonedVoices.find(v => v.speakerWavUrl === cfg.clonedVoice.speakerWavUrl);
+            if (!exists) voiceConfig.clonedVoices.push({ id:"cloned_"+Date.now(), label:cfg.clonedVoice.label||"Custom Voice", speakerWavUrl:cfg.clonedVoice.speakerWavUrl });
+          }
+          if (voiceConfig.defaultVoiceMode==="cloned" && voiceConfig.clonedVoices.length>0) {
+            const ac = voiceConfig.clonedVoices.find(v => cfg.clonedVoice && v.speakerWavUrl===cfg.clonedVoice.speakerWavUrl);
+            voiceConfig.activeVoiceId = ac ? `cloned:${ac.id}` : "preset:default";
+          } else { voiceConfig.activeVoiceId = `preset:${voiceConfig.presetVoice}`; }
+          // Set engine selector and panels
+          const engineSel = $("tts-engine-selector");
+          if (engineSel) engineSel.value = voiceConfig.ttsMode;
+          showTtsPanel(voiceConfig.ttsMode);
+          loadKokoroSettings(cfg);
+          renderVoiceSelector();
+          renderClonedVoicesList();
+          loadTuningSliders(cfg);
+        } catch(e) { console.error("loadVoiceConfig:",e); }
+      }
+
+      function renderVoiceSelector() {
+        const sel = $("voice-selector"); if(!sel) return;
+        sel.innerHTML="";
+        const po = document.createElement("option"); po.value=`preset:${voiceConfig.presetVoice}`; po.textContent="Default Voice (Preset)"; sel.appendChild(po);
+        voiceConfig.clonedVoices.forEach(v => { const o=document.createElement("option"); o.value=`cloned:${v.id}`; o.textContent=`${v.label} (Custom)`; sel.appendChild(o); });
+        sel.value = voiceConfig.activeVoiceId;
+      }
+
+      function renderClonedVoicesList() {
+        const list=$("cloned-voices-list"); if(!list) return; list.innerHTML="";
+        if (!voiceConfig.clonedVoices.length) { list.innerHTML='<li class="help">No custom voices yet. Record or upload a sample above.</li>'; return; }
+        voiceConfig.clonedVoices.forEach(voice => {
+          const li=document.createElement("li"); const isActive=voiceConfig.activeVoiceId===`cloned:${voice.id}`;
+          li.innerHTML=`<span><strong>${escapeHtml(voice.label)}</strong>${isActive?'<span style="color:var(--success);margin-left:8px;">● Active</span>':''}</span><div style="display:flex;gap:6px;"><button type="button" class="secondary" style="font-size:11px;padding:4px 10px;" data-action="activate">Use</button><button type="button" class="secondary" style="font-size:11px;padding:4px 10px;color:var(--danger);" data-action="remove">Remove</button></div>`;
+          li.querySelector('[data-action="activate"]').onclick=()=>{ voiceConfig.activeVoiceId=`cloned:${voice.id}`; $("voice-selector").value=`cloned:${voice.id}`; renderClonedVoicesList(); };
+          li.querySelector('[data-action="remove"]').onclick=()=>{ voiceConfig.clonedVoices=voiceConfig.clonedVoices.filter(v=>v.id!==voice.id); if(voiceConfig.activeVoiceId===`cloned:${voice.id}`){voiceConfig.activeVoiceId=`preset:${voiceConfig.presetVoice}`;$("voice-selector").value=voiceConfig.activeVoiceId;} renderVoiceSelector(); renderClonedVoicesList(); };
+          list.appendChild(li);
+        });
+      }
+
+      async function saveVoiceSettings() {
+        const sts=$("voice-settings-status"); const sel=$("voice-selector");
+        try {
+          const sv=sel?.value||"preset:default"; voiceConfig.activeVoiceId=sv;
+          const [t,id]=sv.split(":"); const isC=t==="cloned";
+          const p={ttsMode:"coqui_xtts",defaultVoiceMode:isC?"cloned":"preset",voiceId:voiceConfig.presetVoice};
+          if(isC){const v=voiceConfig.clonedVoices.find(x=>x.id===id);if(v)p.clonedVoice={speakerWavUrl:v.speakerWavUrl,label:v.label};else p.defaultVoiceMode="preset";}
+          else if(voiceConfig.clonedVoices.length>0){p.clonedVoice={speakerWavUrl:voiceConfig.clonedVoices[0].speakerWavUrl,label:voiceConfig.clonedVoices[0].label};}
+          await apiFetch("/api/tts/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)});
+          sts.textContent="Saved!"; sts.style.color="var(--success)"; setTimeout(()=>{if(sts.textContent==="Saved!")sts.textContent="";},3000);
+        } catch(e){sts.textContent="Failed: "+e.message;sts.style.color="var(--danger)";}
+      }
+
+      /* ── Voice Tuning ─────────────────────────── */
+      const TUNING_DEFAULTS={coquiSpeed:1.18,coquiTemperature:0.80,coquiTopP:0.92,coquiTopK:50,coquiRepetitionPenalty:2.0,coquiLengthPenalty:1.0};
+      const TUNING_MAP=[
+        {slider:"tuning-speed",label:"tuning-speed-val",key:"coquiSpeed",fmt:v=>parseFloat(v).toFixed(2)},
+        {slider:"tuning-temp",label:"tuning-temp-val",key:"coquiTemperature",fmt:v=>parseFloat(v).toFixed(2)},
+        {slider:"tuning-topp",label:"tuning-topp-val",key:"coquiTopP",fmt:v=>parseFloat(v).toFixed(2)},
+        {slider:"tuning-topk",label:"tuning-topk-val",key:"coquiTopK",fmt:v=>Math.round(v).toString()},
+        {slider:"tuning-rep",label:"tuning-rep-val",key:"coquiRepetitionPenalty",fmt:v=>parseFloat(v).toFixed(1)},
+        {slider:"tuning-len",label:"tuning-len-val",key:"coquiLengthPenalty",fmt:v=>parseFloat(v).toFixed(1)},
+      ];
+      function loadTuningSliders(cfg){TUNING_MAP.forEach(({slider,label,key,fmt})=>{const el=$(slider);if(!el)return;const v=cfg[key]!==undefined?cfg[key]:TUNING_DEFAULTS[key];el.value=v;const l=$(label);if(l)l.textContent=fmt(v);});}
+      function bindTuningSliders(){TUNING_MAP.forEach(({slider,label,fmt})=>{const el=$(slider);if(!el)return;el.addEventListener("input",()=>{const l=$(label);if(l)l.textContent=fmt(el.value);});});}
+      async function saveTuning(){const s=$("tuning-status");try{const p={};TUNING_MAP.forEach(({slider,key})=>{const el=$(slider);if(el)p[key]=parseFloat(el.value);});await apiFetch("/api/tts/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(p)});s.textContent="Saved!";s.style.color="var(--success)";setTimeout(()=>{if(s.textContent==="Saved!")s.textContent="";},3000);}catch(e){s.textContent="Failed: "+e.message;s.style.color="var(--danger)";}}
+      function resetTuning(){TUNING_MAP.forEach(({slider,label,key,fmt})=>{const el=$(slider);if(el)el.value=TUNING_DEFAULTS[key];const l=$(label);if(l)l.textContent=fmt(TUNING_DEFAULTS[key]);});$("tuning-status").textContent="Reset. Click Save to apply.";$("tuning-status").style.color="var(--muted)";}
+
+      async function previewTuning() {
+        const btn = $("tuning-preview-btn");
+        const statusEl = $("tuning-preview-status");
+        const audioEl = $("tuning-preview-audio");
+        const textInput = $("tuning-preview-text");
+        const text = textInput.value.trim() || textInput.placeholder;
+        const payload = { text };
+        TUNING_MAP.forEach(({ slider, key }) => { const el = $(slider); if (el) payload[key] = parseFloat(el.value); });
+        btn.disabled = true; btn.textContent = "Generating\u2026"; statusEl.textContent = "";
+        audioEl.style.display = "none";
+        if (audioEl.src) { URL.revokeObjectURL(audioEl.src); audioEl.src = ""; }
+        try {
+          const headers = { "Content-Type": "application/json" };
+          if (authToken) headers["X-Admin-Key"] = authToken;
+          if (tenantId) headers["X-Tenant-ID"] = tenantId;
+          const resp = await fetch("/api/tts/preview", { method: "POST", headers, body: JSON.stringify(payload) });
+          if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.message || "Server returned " + resp.status); }
+          const blob = await resp.blob();
+          audioEl.src = URL.createObjectURL(blob);
+          audioEl.style.display = ""; audioEl.play().catch(() => {});
+        } catch (err) {
+          statusEl.textContent = "Preview failed: " + err.message; statusEl.style.color = "var(--danger)";
+        } finally { btn.disabled = false; btn.textContent = "\u25B6 Preview"; }
+      }
+
+      /* ── Kokoro Settings ────────────────────────── */
+      const KOKORO_DEFAULTS = { kokoroVoice: "af_bella", kokoroSpeed: 1.3 };
+      function loadKokoroSettings(cfg) {
+        const vs = $("kokoro-voice-selector"), ss = $("kokoro-speed"), sl = $("kokoro-speed-val");
+        const voice = cfg.kokoroVoice || KOKORO_DEFAULTS.kokoroVoice;
+        const speed = typeof cfg.kokoroSpeed === "number" ? cfg.kokoroSpeed : KOKORO_DEFAULTS.kokoroSpeed;
+        if (vs) vs.value = voice; if (ss) ss.value = speed; if (sl) sl.textContent = speed.toFixed(2);
+        voiceConfig.kokoroVoice = voice; voiceConfig.kokoroSpeed = speed;
+      }
+      function bindKokoroControls() {
+        const ss = $("kokoro-speed");
+        if (ss) ss.addEventListener("input", () => { const l = $("kokoro-speed-val"); if (l) l.textContent = parseFloat(ss.value).toFixed(2); });
+      }
+      async function saveKokoroSettings() {
+        const s = $("kokoro-status");
+        try {
+          const vs = $("kokoro-voice-selector"), ss = $("kokoro-speed");
+          const p = { ttsMode: "kokoro_http", kokoroVoice: vs ? vs.value : KOKORO_DEFAULTS.kokoroVoice, kokoroSpeed: ss ? parseFloat(ss.value) : KOKORO_DEFAULTS.kokoroSpeed };
+          await apiFetch("/api/tts/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) });
+          voiceConfig.kokoroVoice = p.kokoroVoice; voiceConfig.kokoroSpeed = p.kokoroSpeed;
+          s.textContent = "Kokoro settings saved!"; s.style.color = "var(--success)";
+          setTimeout(() => { if (s.textContent === "Kokoro settings saved!") s.textContent = ""; }, 3000);
+        } catch (e) { s.textContent = "Failed: " + e.message; s.style.color = "var(--danger)"; }
+      }
+      function resetKokoroSettings() {
+        const vs = $("kokoro-voice-selector"), ss = $("kokoro-speed"), sl = $("kokoro-speed-val");
+        if (vs) vs.value = KOKORO_DEFAULTS.kokoroVoice; if (ss) ss.value = KOKORO_DEFAULTS.kokoroSpeed; if (sl) sl.textContent = KOKORO_DEFAULTS.kokoroSpeed.toFixed(2);
+        $("kokoro-status").textContent = "Reset. Click Save to apply."; $("kokoro-status").style.color = "var(--muted)";
+      }
+      async function previewKokoro() {
+        const btn = $("kokoro-preview-btn"), statusEl = $("kokoro-preview-status"), audioEl = $("kokoro-preview-audio"), textInput = $("kokoro-preview-text");
+        const text = textInput.value.trim() || textInput.placeholder;
+        const vs = $("kokoro-voice-selector"), ss = $("kokoro-speed");
+        const payload = { text, engine: "kokoro", kokoroVoice: vs ? vs.value : "af_bella", kokoroSpeed: ss ? parseFloat(ss.value) : 1.3 };
+        btn.disabled = true; btn.textContent = "Generating\u2026"; statusEl.textContent = "";
+        audioEl.style.display = "none"; if (audioEl.src) { URL.revokeObjectURL(audioEl.src); audioEl.src = ""; }
+        try {
+          const headers = { "Content-Type": "application/json" };
+          if (authToken) headers["X-Admin-Key"] = authToken;
+          if (tenantId) headers["X-Tenant-ID"] = tenantId;
+          const resp = await fetch("/api/tts/preview", { method: "POST", headers, body: JSON.stringify(payload) });
+          if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.message || "Server returned " + resp.status); }
+          const blob = await resp.blob();
+          audioEl.src = URL.createObjectURL(blob); audioEl.style.display = ""; audioEl.play().catch(() => {});
+        } catch (err) { statusEl.textContent = "Preview failed: " + err.message; statusEl.style.color = "var(--danger)"; }
+        finally { btn.disabled = false; btn.textContent = "\u25B6 Preview"; }
+      }
+
+      /* ── Voice Cloning ─────────────────────────── */
+      let vcMediaRecorder=null,vcRecordedChunks=[],vcRecordingBlob=null,vcRecordingStartTime=null,vcTimerInterval=null,vcAudioContext=null,vcAnalyser=null,vcLevelRafId=null;
+
+      function vcStartRecording(){
+        const btn=$("vc-record-btn");
+        navigator.mediaDevices.getUserMedia({audio:{sampleRate:24000,channelCount:1,echoCancellation:true,noiseSuppression:true}}).then(stream=>{
+          vcRecordedChunks=[];
+          vcMediaRecorder=new MediaRecorder(stream,{mimeType:MediaRecorder.isTypeSupported("audio/webm")?"audio/webm":"audio/ogg"});
+          vcMediaRecorder.ondataavailable=e=>{if(e.data.size>0)vcRecordedChunks.push(e.data);};
+          vcMediaRecorder.onstop=()=>{stream.getTracks().forEach(t=>t.stop());if(vcLevelRafId){cancelAnimationFrame(vcLevelRafId);vcLevelRafId=null;}$("vc-level-bar").style.display="none";clearInterval(vcTimerInterval);vcRecordingBlob=new Blob(vcRecordedChunks,{type:vcMediaRecorder.mimeType});vcShowPreview(vcRecordingBlob);btn.textContent="Start recording";btn.style.borderColor="";};
+          vcMediaRecorder.start(250); vcRecordingStartTime=Date.now(); btn.textContent="Stop recording"; btn.style.borderColor="var(--danger)";
+          $("vc-level-bar").style.display=""; vcAudioContext=new(window.AudioContext||window.webkitAudioContext)();
+          const src=vcAudioContext.createMediaStreamSource(stream); vcAnalyser=vcAudioContext.createAnalyser(); vcAnalyser.fftSize=256; src.connect(vcAnalyser);
+          const d=new Uint8Array(vcAnalyser.frequencyBinCount); function upd(){vcAnalyser.getByteFrequencyData(d);$("vc-level-fill").style.width=Math.min(100,d.reduce((a,b)=>a+b,0)/d.length/128*100)+"%";vcLevelRafId=requestAnimationFrame(upd);} upd();
+          vcTimerInterval=setInterval(()=>{const s=Math.floor((Date.now()-vcRecordingStartTime)/1000);$("vc-record-timer").textContent=`${Math.floor(s/60)}:${(s%60).toString().padStart(2,"0")}`;},500);
+        }).catch(e=>{$("vc-save-status").textContent="Mic denied: "+e.message;$("vc-save-status").style.color="var(--danger)";});
+      }
+      function vcStopRecording(){if(vcMediaRecorder&&vcMediaRecorder.state==="recording")vcMediaRecorder.stop();}
+      function vcToggleRecording(){if(vcMediaRecorder&&vcMediaRecorder.state==="recording")vcStopRecording();else vcStartRecording();}
+      function vcShowPreview(blob){const p=$("vc-audio-player");if(p.src)URL.revokeObjectURL(p.src);p.src=URL.createObjectURL(blob);$("vc-preview-info").textContent=`${(blob.size/1024/1024).toFixed(2)} MB`;$("vc-preview-section").style.display="";$("vc-save-status").textContent="";}
+      function vcPlayPreview(){const p=$("vc-audio-player");if(p.paused){p.play();$("vc-play-btn").textContent="Pause";}else{p.pause();$("vc-play-btn").textContent="Play";}}
+      function vcDiscardPreview(){const p=$("vc-audio-player");p.pause();if(p.src)URL.revokeObjectURL(p.src);p.src="";vcRecordingBlob=null;$("vc-preview-section").style.display="none";$("vc-play-btn").textContent="Play";$("vc-record-timer").textContent="";}
+
+      async function vcSaveClonedVoice(){
+        const sts=$("vc-save-status"), label=($("vc-label-input").value||"").trim();
+        if(!label){sts.textContent="Please enter a voice name.";sts.style.color="var(--danger)";return;}
+        if(!vcRecordingBlob){sts.textContent="No audio. Record or upload first.";sts.style.color="var(--danger)";return;}
+        sts.textContent="Uploading…";sts.style.color="var(--muted)";
+        try{
+          const fd=new FormData(); const ext=vcRecordingBlob.type.includes("wav")?".wav":".webm";
+          fd.append("audio",vcRecordingBlob,`voice-clone-${Date.now()}${ext}`);
+          const hdr=new Headers(); if(authToken)hdr.set("X-Admin-Key",authToken);
+          const ur=await fetch("/api/admin/voice-recordings",{method:"POST",headers:hdr,body:fd});
+          if(!ur.ok)throw new Error(await ur.text()); const ud=await ur.json();
+          sts.textContent="Saving…";
+          await apiFetch("/api/tts/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({ttsMode:"coqui_xtts",defaultVoiceMode:"cloned",clonedVoice:{speakerWavUrl:ud.url,label}})});
+          const nv={id:"cloned_"+Date.now(),label,speakerWavUrl:ud.url}; voiceConfig.clonedVoices.push(nv); voiceConfig.activeVoiceId=`cloned:${nv.id}`;
+          renderVoiceSelector(); renderClonedVoicesList(); vcDiscardPreview();
+          sts.textContent="Voice saved!"; sts.style.color="var(--success)"; setTimeout(()=>{if(sts.textContent==="Voice saved!")sts.textContent="";},4000);
+        }catch(e){sts.textContent="Failed: "+e.message;sts.style.color="var(--danger)";}
+      }
+
+      function vcHandleFileDrop(e){e.preventDefault();e.stopPropagation();$("vc-drop-zone").style.borderColor="var(--border)";$("vc-drop-zone").style.background="";const f=e.dataTransfer?.files||e.target?.files;if(!f||!f.length)return;const file=f[0];if(file.size>10*1024*1024){$("vc-save-status").textContent="File too large (max 10 MB).";$("vc-save-status").style.color="var(--danger)";return;}vcRecordingBlob=file;vcShowPreview(file);}
+      function vcSetupDropZone(){const z=$("vc-drop-zone"),fi=$("vc-file-input");z.addEventListener("click",()=>fi.click());fi.addEventListener("change",vcHandleFileDrop);z.addEventListener("dragover",e=>{e.preventDefault();z.style.borderColor="var(--accent)";z.style.background="rgba(201,160,78,0.05)";});z.addEventListener("dragleave",()=>{z.style.borderColor="var(--border)";z.style.background="";});z.addEventListener("drop",vcHandleFileDrop);}
+
       // ── Init ──
       document.addEventListener("DOMContentLoaded", () => {
         $("login-btn").addEventListener("click", doLogin);
@@ -960,6 +1543,30 @@
         $("bill-manage-billing").addEventListener("click", openBillingPortal);
         $("bill-pay-now").addEventListener("click", payNow);
 
+        // TTS Engine selector
+        $("tts-engine-selector").addEventListener("change", (e) => switchTtsEngine(e.target.value));
+
+        // Voice settings (XTTS)
+        $("save-voice-settings").addEventListener("click", saveVoiceSettings);
+        bindTuningSliders();
+        $("save-tuning").addEventListener("click", saveTuning);
+        $("reset-tuning").addEventListener("click", resetTuning);
+        $("tuning-preview-btn").addEventListener("click", previewTuning);
+        $("tuning-preview-text").addEventListener("keydown", (e) => { if (e.key === "Enter") previewTuning(); });
+
+        // Kokoro listeners
+        bindKokoroControls();
+        $("save-kokoro-settings").addEventListener("click", saveKokoroSettings);
+        $("reset-kokoro-settings").addEventListener("click", resetKokoroSettings);
+        $("kokoro-preview-btn").addEventListener("click", previewKokoro);
+        $("kokoro-preview-text").addEventListener("keydown", (e) => { if (e.key === "Enter") previewKokoro(); });
+        $("vc-record-btn").addEventListener("click", vcToggleRecording);
+        $("vc-play-btn").addEventListener("click", vcPlayPreview);
+        $("vc-discard-btn").addEventListener("click", vcDiscardPreview);
+        $("vc-save-btn").addEventListener("click", vcSaveClonedVoice);
+        $("vc-audio-player").addEventListener("ended", () => { $("vc-play-btn").textContent = "Play"; });
+        vcSetupDropZone();
+
         // Auto-refresh
         setInterval(loadAnalytics, 30000);
 
@@ -967,5 +1574,8 @@
         tryRestoreSession();
       });
     </script>
+    <script src="jspdf.umd.min.js"></script>
+    <script src="jspdf.plugin.autotable.min.js"></script>
+    <script src="vl-select.js"></script>
   </body>
 </html>

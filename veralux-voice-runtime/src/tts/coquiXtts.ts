@@ -1,5 +1,6 @@
 import { env } from '../env';
 import { log } from '../log';
+import { withRetry } from '../retry';
 import { TTSRequest, TTSResult } from './types';
 
 /**
@@ -46,23 +47,31 @@ export async function synthesizeSpeechCoquiXtts(request: TTSRequest): Promise<TT
     'coqui xtts request',
   );
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
+  const { contentType, raw } = await withRetry(
+    async () => {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(10_000),
+      });
+
+      const ct = res.headers.get('content-type') ?? '';
+      const ab = await res.arrayBuffer();
+      const rawBuf = Buffer.from(ab);
+
+      if (!res.ok) {
+        const bodyText = rawBuf.toString('utf8');
+        log.error({ status: res.status, body: bodyText }, 'coqui xtts error');
+        throw new Error(`coqui xtts error ${res.status}`);
+      }
+
+      return { contentType: ct, raw: rawBuf };
     },
-    body: JSON.stringify(body),
-  });
-
-  const contentType = response.headers.get('content-type') ?? '';
-  const arrayBuffer = await response.arrayBuffer();
-  const raw = Buffer.from(arrayBuffer);
-
-  if (!response.ok) {
-    const bodyText = raw.toString('utf8');
-    log.error({ status: response.status, body: bodyText }, 'coqui xtts error');
-    throw new Error(`coqui xtts error ${response.status}`);
-  }
+    { label: 'coqui_xtts', retries: 1 },
+  );
 
   if (contentType.includes('application/json')) {
     let errMsg: string;

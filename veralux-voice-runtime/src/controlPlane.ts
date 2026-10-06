@@ -1,7 +1,7 @@
 /**
  * Control Plane integration for the voice runtime.
- * Reports call events (start, end with transcript) to the control plane
- * so the workflow automation engine can trigger on call events.
+ * Reports call events (start, end with transcript) and analytics
+ * to the control plane so dashboards and workflow automation stay current.
  */
 
 import { env } from './env';
@@ -29,6 +29,114 @@ function isConfigured(): boolean {
   return !!(env.CONTROL_PLANE_URL && env.CONTROL_PLANE_API_KEY);
 }
 
+/** Common headers for control-plane requests */
+function cpHeaders(): Record<string, string> {
+  return {
+    'Content-Type': 'application/json',
+    'X-Admin-Key': env.CONTROL_PLANE_API_KEY!,
+  };
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Analytics helpers — fire-and-forget, never throw
+   ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Report a new call to the analytics counter and call registry.
+ * Should be called when a session is first created / answered.
+ */
+export async function reportCallStart(tenantId: string, callId: string, callerId?: string): Promise<void> {
+  if (!isConfigured()) return;
+  const base = env.CONTROL_PLANE_URL!;
+  try {
+    // 1. Increment the analytics call counter
+    const analyticsResp = await fetch(`${base}/api/runtime/analytics`, {
+      method: 'POST',
+      headers: cpHeaders(),
+      body: JSON.stringify({ tenantId, event: 'call_started' }),
+    });
+    if (!analyticsResp.ok) {
+      const body = await analyticsResp.text().catch(() => '');
+      log.warn({ event: 'cp_analytics_call_start_failed', status: analyticsResp.status, body: body.slice(0, 200) }, 'analytics call_started failed');
+    }
+
+    // 2. Create the call record in the calls registry
+    const callsResp = await fetch(`${base}/api/runtime/calls`, {
+      method: 'POST',
+      headers: cpHeaders(),
+      body: JSON.stringify({
+        tenantId,
+        callId,
+        action: 'start',
+        callState: { callerId, stage: 'start' },
+      }),
+    });
+    if (!callsResp.ok) {
+      const body = await callsResp.text().catch(() => '');
+      log.warn({ event: 'cp_calls_start_failed', status: callsResp.status, body: body.slice(0, 200) }, 'calls start failed');
+    } else {
+      log.info({ event: 'control_plane_call_started', call_id: callId, tenant_id: tenantId }, 'call start reported to control plane');
+    }
+  } catch (err) {
+    log.warn({ err, event: 'cp_call_start_error', call_id: callId }, 'control plane call start error');
+  }
+}
+
+/**
+ * Report a caller (user) message to the analytics counter.
+ * Should be called each time the STT produces a final user transcript.
+ */
+export async function reportCallerMessage(tenantId: string, text: string): Promise<void> {
+  if (!isConfigured()) return;
+  const base = env.CONTROL_PLANE_URL!;
+  try {
+    const resp = await fetch(`${base}/api/runtime/analytics`, {
+      method: 'POST',
+      headers: cpHeaders(),
+      body: JSON.stringify({ tenantId, event: 'caller_message', text }),
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => '');
+      log.warn({ event: 'cp_analytics_message_failed', status: resp.status, body: body.slice(0, 200) }, 'analytics caller_message failed');
+    }
+  } catch (err) {
+    log.warn({ err, event: 'cp_caller_message_error' }, 'control plane caller_message error');
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Billing / subscription check — called before accepting a call
+   ────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Check with the control plane whether a tenant's subscription allows
+ * accepting a new call. Fails open (returns allowed=true) on errors
+ * so billing issues don't block all calls.
+ */
+export async function checkBillingAllowed(tenantId: string): Promise<{ allowed: boolean; reason?: string }> {
+  if (!isConfigured()) return { allowed: true };
+  const base = env.CONTROL_PLANE_URL!;
+  try {
+    const resp = await fetch(`${base}/api/runtime/billing/check?tenantId=${encodeURIComponent(tenantId)}`, {
+      method: 'GET',
+      headers: cpHeaders(),
+      signal: AbortSignal.timeout(3000), // 3s timeout — don't hold up call setup
+    });
+    if (!resp.ok) {
+      log.warn({ event: 'billing_check_failed', status: resp.status, tenantId }, 'billing check failed, allowing call');
+      return { allowed: true };
+    }
+    return (await resp.json()) as { allowed: boolean; reason?: string };
+  } catch (err) {
+    log.warn({ err, event: 'billing_check_error', tenantId }, 'billing check error, allowing call');
+    return { allowed: true }; // fail-open
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Call end (with transcript) — existing
+   ────────────────────────────────────────────────────────────────────────── */
+
 /**
  * Report a call end event (with full transcript) to the control plane.
  * This fires asynchronously and never throws — errors are logged only.
@@ -37,15 +145,11 @@ export async function reportCallEnd(params: ReportCallEndParams): Promise<void> 
   if (!isConfigured()) return;
 
   const url = `${env.CONTROL_PLANE_URL}/api/runtime/calls`;
-  const apiKey = env.CONTROL_PLANE_API_KEY!;
 
   try {
     const resp = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
+      headers: cpHeaders(),
       body: JSON.stringify({
         tenantId: params.tenantId,
         callId: params.callId,

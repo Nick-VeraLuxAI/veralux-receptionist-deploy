@@ -195,6 +195,7 @@ const runtimeTenantConfigBaseSchema = z
       whisperUrl: z.string().min(1).optional(),
       chunkMs: z.number().int().positive(),
       language: z.string().min(1).optional(),
+      prompt: z.string().optional(),
       config: z
         .object({
           url: z.string().min(1).optional(),

@@ -1,0 +1,81 @@
+groups:
+  - name: veralux_stability
+    rules:
+      # Control plane down for more than 2 minutes
+      - alert: ControlPlaneDown
+        expr: up{job="control-plane"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Control plane is unreachable"
+          description: "The control plane has been down for more than 2 minutes."
+
+      # Voice runtime down for more than 2 minutes
+      - alert: VoiceRuntimeDown
+        expr: up{job="voice-runtime"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Voice runtime is unreachable"
+          description: "The voice runtime has been down for more than 2 minutes."
+
+      # High memory usage (control plane > 512MB RSS)
+      - alert: ControlPlaneHighMemory
+        expr: veralux_process_rss_bytes > 536870912
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Control plane memory usage is high"
+          description: "Control plane RSS memory is above 512MB for 5 minutes (current: {{ $value | humanize1024 }}B)."
+
+      # High memory usage (runtime > 512MB RSS)
+      - alert: VoiceRuntimeHighMemory
+        expr: veralux_voice_runtime_process_resident_memory_bytes > 536870912
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Voice runtime memory usage is high"
+          description: "Voice runtime RSS memory is above 512MB for 5 minutes."
+
+      # Control plane restarted (uptime dropped)
+      - alert: ControlPlaneRestarted
+        expr: changes(veralux_process_uptime_seconds[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Control plane has restarted"
+          description: "The control plane uptime counter reset in the last 15 minutes, indicating a restart."
+
+      # Voice runtime restarted
+      - alert: VoiceRuntimeRestarted
+        expr: changes(veralux_voice_runtime_process_start_time_seconds[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Voice runtime has restarted"
+          description: "The voice runtime process start time changed in the last 15 minutes."
+
+      # High workflow failure rate (>50% failures in last hour)
+      - alert: HighWorkflowFailureRate
+        expr: |
+          veralux_workflow_runs{status="failed"} /
+          (veralux_workflow_runs{status="completed"} + veralux_workflow_runs{status="failed"}) > 0.5
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High workflow failure rate"
+          description: "More than 50% of workflow runs are failing."
+
+      # No calls processed in 24 hours (during business hours, could indicate outage)
+      - alert: NoCallsIn24Hours
+        expr: veralux_process_uptime_seconds > 86400 and increase(veralux_leads_total[24h]) == 0
+        labels:
+          severity: info
+        annotations:
+          summary: "No new leads in 24 hours"
+          description: "The system has been running for over 24 hours with no new leads, which may indicate an issue."

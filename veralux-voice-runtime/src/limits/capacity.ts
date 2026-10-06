@@ -8,9 +8,10 @@ local tenantKey = KEYS[2]
 local rpmKey = KEYS[3]
 local tenantConcurrencyKey = KEYS[4]
 local tenantRpmKey = KEYS[5]
+local globalCapOverrideKey = KEYS[6]
 
 local callControlId = ARGV[1]
-local globalCap = tonumber(ARGV[2])
+local globalCapDefault = tonumber(ARGV[2])
 local tenantCapDefault = tonumber(ARGV[3])
 local tenantRpmDefault = tonumber(ARGV[4])
 local ttlSeconds = tonumber(ARGV[5])
@@ -26,6 +27,7 @@ local function readCap(key, fallback)
   return fallback
 end
 
+local globalCap = readCap(globalCapOverrideKey, globalCapDefault)
 local tenantCap = readCap(tenantConcurrencyKey, tenantCapDefault)
 local tenantRpmCap = readCap(tenantRpmKey, tenantRpmDefault)
 
@@ -107,6 +109,7 @@ export function buildCapacityKeys(tenantId: string, epochMs: number): {
   tenantRpmKey: string;
   tenantConcurrencyCapKey: string;
   tenantRpmCapKey: string;
+  globalCapOverrideKey: string;
 } {
   return {
     globalActiveKey: `${env.CAP_PREFIX}:global:active`,
@@ -114,6 +117,7 @@ export function buildCapacityKeys(tenantId: string, epochMs: number): {
     tenantRpmKey: `${env.CAP_PREFIX}:tenant:${tenantId}:rpm:${formatMinuteKey(epochMs)}`,
     tenantConcurrencyCapKey: `${env.TENANTMAP_PREFIX}:tenant:${tenantId}:cap:concurrency`,
     tenantRpmCapKey: `${env.TENANTMAP_PREFIX}:tenant:${tenantId}:cap:rpm`,
+    globalCapOverrideKey: `${env.CAP_PREFIX}:global:concurrency_cap`,
   };
 }
 
@@ -170,6 +174,7 @@ export async function tryAcquire(
       keys.tenantRpmKey,
       keys.tenantConcurrencyCapKey,
       keys.tenantRpmCapKey,
+      keys.globalCapOverrideKey,
     ], args);
   } catch (error) {
     log.error(

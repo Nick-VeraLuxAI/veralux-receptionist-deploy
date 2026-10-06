@@ -151,6 +151,21 @@
         color: var(--text);
         font-family: inherit;
       }
+      select option {
+        background: var(--bg, #070708);
+        color: var(--text);
+      }
+      select option:checked {
+        background: var(--primary, #C9A04E);
+        color: #fff;
+      }
+      select optgroup {
+        background: rgba(201, 160, 78, 0.08);
+        color: var(--primary, #C9A04E);
+        font-style: normal;
+        font-weight: 600;
+        padding: 6px 0;
+      }
       input:focus,
       select:focus,
       textarea:focus {
@@ -479,7 +494,7 @@
 
             <div id="openai-fields">
               <label for="openaiModel">Model</label>
-              <input id="openaiModel" name="openaiModel" type="text" placeholder="gpt-4o-mini" />
+              <input id="openaiModel" name="openaiModel" type="text" placeholder="qwen2.5:7b" />
 
               <label for="openaiApiKey">API key (kept server-side, never shown)</label>
               <input id="openaiApiKey" name="openaiApiKey" type="password" autocomplete="off" placeholder="sk-..." />
@@ -672,12 +687,13 @@
 
       <div class="tab-content" data-tab="forwarding">
         <section class="panel">
-          <h2>Call forwarding profiles</h2>
-          <p class="small muted">Who to transfer callers to (number, name, role). The receptionist uses this to offer the right contact.</p>
+          <h2>Call Forwarding</h2>
+          <p class="small muted">Add the people the receptionist can forward calls to. Include a role and brief description so the AI knows when to route each call.</p>
           <div class="row" style="gap: 8px; flex-wrap: wrap; margin: 10px 0">
-            <input id="fp-name" type="text" placeholder="Name (e.g. Sales)" style="min-width: 120px" />
+            <input id="fp-name" type="text" placeholder="Name" style="min-width: 120px" />
             <input id="fp-number" type="text" placeholder="Number (e.g. +15551234567)" style="min-width: 140px" />
-            <input id="fp-role" type="text" placeholder="Role / what they do" style="min-width: 160px" />
+            <input id="fp-role" type="text" placeholder="Role (e.g. Owner)" style="min-width: 120px" />
+            <input id="fp-desc" type="text" placeholder="Brief description (e.g. Handles pricing &amp; estimates)" style="min-width: 200px" />
             <button type="button" id="fp-add">Add profile</button>
           </div>
           <ul id="forwarding-profiles-list" style="list-style: none; padding: 0; margin: 8px 0"></ul>
@@ -720,11 +736,25 @@
       <div class="tab-content" data-tab="calls">
         <section class="panel">
           <div class="flex-between">
-            <h2>Chat History</h2>
+            <h2>Active Calls</h2>
             <button type="button" class="secondary" id="refresh-calls">Refresh</button>
           </div>
           <div id="calls" class="call-grid" style="margin-top: 10px"></div>
         </section>
+        <section class="panel">
+          <div class="flex-between">
+            <h2>Call History</h2>
+            <button type="button" class="secondary" id="refresh-call-history">Refresh</button>
+          </div>
+          <div id="call-history" style="margin-top: 10px"></div>
+          <div id="call-history-pagination" class="row" style="gap: 8px; margin-top: 8px; justify-content: center"></div>
+        </section>
+        <div id="call-detail-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:999; align-items:center; justify-content:center;">
+          <div style="background:#1a1a2e; border-radius:12px; max-width:700px; width:90%; max-height:80vh; overflow-y:auto; padding:24px; position:relative;">
+            <button type="button" id="close-call-detail" style="position:absolute; top:12px; right:12px; background:none; border:none; color:#fff; font-size:20px; cursor:pointer;">&times;</button>
+            <div id="call-detail-content"></div>
+          </div>
+        </div>
       </div>
 
       <div class="tab-content" data-tab="audit">
@@ -751,6 +781,26 @@
           <div id="admin-key-token" class="small" style="color: #C9A04E; min-height: 16px"></div>
           <div class="list-title" style="margin-top: 6px">Existing keys</div>
           <div id="admin-keys" class="debug-block" style="max-height: 260px; overflow: auto"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Owner Passcode</h2>
+          <p class="small" style="margin: 0 0 12px;">Set or reset the passcode that business owners use to log in to the Owner Panel and Portal. This is separate from the admin API key.</p>
+          <div class="row" style="gap: 8px; flex-wrap: wrap; margin-bottom: 8px; align-items: flex-end;">
+            <div style="flex: 1; min-width: 160px;">
+              <label for="passcode-tenant">Tenant</label>
+              <input id="passcode-tenant" type="text" placeholder="e.g. King-Sod" style="margin-bottom: 0;" />
+            </div>
+            <div style="flex: 1; min-width: 160px;">
+              <label for="passcode-value">New passcode</label>
+              <input id="passcode-value" type="text" placeholder="Min 4 characters" style="margin-bottom: 0;" />
+            </div>
+            <button type="button" id="passcode-save">Set passcode</button>
+          </div>
+          <div id="passcode-status" class="small" style="min-height: 16px;"></div>
+          <div class="small" style="margin-top: 8px; color: rgba(255,255,255,0.5);">
+            Owners sign in at <code>/owner.html</code> or <code>/portal.html</code> using their phone number + this passcode.
+          </div>
         </section>
       </div>
 
@@ -936,16 +986,110 @@
       <div class="tab-content" data-tab="settings">
         <section class="panel">
           <h2>Cloudflare Tunnel</h2>
-          <p class="small" style="margin: 0 0 12px">Configure a Cloudflare Tunnel token to expose this instance to the internet securely.</p>
-          <div class="row" style="gap: 8px; align-items: flex-end">
-            <div style="flex: 1">
-              <label for="cf-tunnel-token">Tunnel Token</label>
-              <input id="cf-tunnel-token" type="password" placeholder="Paste your Cloudflare Tunnel token" style="margin-bottom: 0" />
+          <p class="small" style="margin: 0 0 12px">Expose this instance to the internet securely via Cloudflare Tunnel.</p>
+
+          <!-- Live status -->
+          <div id="cf-status-card" style="padding:12px 16px;border-radius:12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);margin-bottom:16px;">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;">
+              <div id="cf-status-dot" style="width:12px;height:12px;border-radius:50%;background:#666;flex-shrink:0;"></div>
+              <div>
+                <div id="cf-status-text" style="font-weight:600;">Checking…</div>
+                <div id="cf-status-detail" class="small" style="margin-top:2px;"></div>
+              </div>
             </div>
-            <button type="button" id="cf-toggle-visibility" class="secondary" style="min-width: 70px">Show</button>
-            <button type="button" id="cf-save-token">Save</button>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button type="button" id="cf-start-btn" class="secondary" style="padding:6px 14px;font-size:12px;">Start</button>
+              <button type="button" id="cf-stop-btn" class="secondary" style="padding:6px 14px;font-size:12px;">Stop</button>
+              <button type="button" id="cf-restart-btn" class="secondary" style="padding:6px 14px;font-size:12px;">Restart</button>
+              <button type="button" id="cf-refresh-status" class="secondary" style="padding:6px 14px;font-size:12px;">Refresh</button>
+            </div>
+          </div>
+          <div id="cf-action-status" class="small" style="margin-bottom:12px;min-height:16px;"></div>
+
+          <!-- Token config -->
+          <div style="margin-bottom:4px;">
+            <label for="cf-tunnel-token">Tunnel Token</label>
+            <input id="cf-tunnel-token" type="password" placeholder="Paste your Cloudflare Tunnel token" style="width:100%;margin-bottom:8px;" />
+            <div style="display:flex;gap:8px;">
+              <button type="button" id="cf-toggle-visibility" class="secondary" style="min-width:70px;">Show</button>
+              <button type="button" id="cf-save-token">Save</button>
+            </div>
           </div>
           <div id="cf-token-status" class="small" style="margin-top: 8px; min-height: 16px"></div>
+        </section>
+
+        <!-- Capacity & Concurrency -->
+        <section class="panel">
+          <h2>Capacity &amp; Concurrency</h2>
+          <p class="small" style="margin: 0 0 16px;">Control how many calls the system can handle simultaneously. Changes take effect immediately — no restart required.</p>
+
+          <!-- Live status -->
+          <div id="cap-live-status" style="display:flex;gap:16px;margin-bottom:20px;flex-wrap:wrap;">
+            <div style="flex:1;min-width:140px;padding:12px 16px;border-radius:12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);">
+              <div class="small" style="margin-bottom:4px;">Global active calls</div>
+              <div id="cap-global-active" style="font-size:24px;font-weight:700;color:var(--primary);">—</div>
+            </div>
+            <div style="flex:1;min-width:140px;padding:12px 16px;border-radius:12px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);">
+              <div class="small" style="margin-bottom:4px;">Tenant active calls</div>
+              <div id="cap-tenant-active" style="font-size:24px;font-weight:700;color:var(--accent);">—</div>
+            </div>
+          </div>
+
+          <!-- Global limits -->
+          <h3 style="margin:0 0 10px;font-size:14px;color:var(--primary);">Global Limits</h3>
+          <div style="margin-bottom:16px;">
+            <label style="display:flex;justify-content:space-between;"><span>Max concurrent calls (system-wide)</span><span id="cap-global-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">100</span></label>
+            <input type="range" id="cap-global-concurrency" min="1" max="500" step="1" value="100" style="width:100%;accent-color:var(--primary);" />
+            <div class="small" style="margin-top:2px;">Hard ceiling across all tenants. Set based on server resources.</div>
+          </div>
+
+          <!-- Per-tenant limits -->
+          <h3 style="margin:0 0 10px;font-size:14px;color:var(--primary);">Per-Tenant Limits <span class="small" style="font-weight:400;">(for selected tenant)</span></h3>
+          <div style="margin-bottom:14px;">
+            <label style="display:flex;justify-content:space-between;"><span>Max concurrent calls</span><span id="cap-tenant-concurrency-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">10</span></label>
+            <input type="range" id="cap-tenant-concurrency" min="1" max="200" step="1" value="10" style="width:100%;accent-color:var(--primary);" />
+          </div>
+          <div style="margin-bottom:16px;">
+            <label style="display:flex;justify-content:space-between;"><span>Max calls per minute</span><span id="cap-tenant-rpm-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">60</span></label>
+            <input type="range" id="cap-tenant-rpm" min="1" max="300" step="1" value="60" style="width:100%;accent-color:var(--primary);" />
+          </div>
+
+          <!-- Service concurrency -->
+          <h3 style="margin:0 0 10px;font-size:14px;color:var(--primary);">Audio Service Concurrency</h3>
+          <p class="small" style="margin:0 0 12px;">How many requests each service can process in parallel. Higher values need more GPU/CPU.</p>
+          <div style="margin-bottom:14px;">
+            <label style="display:flex;justify-content:space-between;"><span>Whisper (STT) concurrent requests</span><span id="cap-whisper-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">2</span></label>
+            <input type="range" id="cap-whisper" min="1" max="20" step="1" value="2" style="width:100%;accent-color:var(--primary);" />
+          </div>
+          <div style="margin-bottom:14px;">
+            <label style="display:flex;justify-content:space-between;"><span>Kokoro (TTS) concurrent requests</span><span id="cap-kokoro-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">2</span></label>
+            <input type="range" id="cap-kokoro" min="1" max="20" step="1" value="2" style="width:100%;accent-color:var(--primary);" />
+          </div>
+          <div style="margin-bottom:16px;">
+            <label style="display:flex;justify-content:space-between;"><span>XTTS (TTS) concurrent requests</span><span id="cap-xtts-val" style="font-family:'JetBrains Mono',monospace;color:var(--accent);">0</span></label>
+            <input type="range" id="cap-xtts" min="0" max="20" step="1" value="0" style="width:100%;accent-color:var(--primary);" />
+            <div class="small" style="margin-top:2px;">0 = unlimited (no semaphore). Set a value to prevent GPU overload.</div>
+          </div>
+
+          <div class="row" style="gap:8px;">
+            <button type="button" id="cap-save">Save capacity settings</button>
+            <button type="button" class="secondary" id="cap-refresh">Refresh</button>
+          </div>
+          <div id="cap-status" class="small" style="margin-top:8px;min-height:16px;"></div>
+        </section>
+
+        <!-- Owner Features -->
+        <section class="panel">
+          <h2>Owner Features</h2>
+          <p class="small" style="margin: 0 0 14px">Control which features are available to business owners in their portal.</p>
+
+          <div style="display:flex; align-items:center; gap:10px; padding:12px; border-radius:10px; background:rgba(201,160,78,0.08); border:1px solid rgba(201,160,78,0.2);">
+            <label for="wf-custom-branding" style="margin:0; cursor:pointer; display:flex; align-items:center; gap:8px;">
+              <input type="checkbox" id="wf-custom-branding" style="width:18px;height:18px;accent-color:#C9A04E;cursor:pointer;" />
+              <span>Allow business owners to customize branding</span>
+            </label>
+          </div>
+          <p class="small muted" style="margin:6px 0 0 30px;">When enabled, the owner can upload a logo, set brand colors, and change the company name shown on PDFs, emails, and exported documents.</p>
         </section>
       </div>
 
@@ -1362,7 +1506,7 @@
         const providerLabel = cfg.provider === "openai" ? "OpenAI (ChatGPT)" : "Local LLM";
         $("summary-provider").textContent = providerLabel;
         $("summary-model").textContent = cfg.provider === "openai"
-          ? `Model: ${cfg.openaiModel || "gpt-4o-mini"}`
+          ? `Model: ${cfg.openaiModel || "qwen2.5:7b"}`
           : cfg.localUrl ? `URL: ${cfg.localUrl}` : "";
         $("api-key-status").textContent = cfg.hasOpenAIApiKey
           ? "API key is configured"
@@ -1556,7 +1700,7 @@
 
         const llmProvider = data.llm.provider === "openai" ? "OpenAI (ChatGPT)" : "Local LLM";
         const llmDetails = data.llm.provider === "openai"
-          ? [`Provider: ${llmProvider}`, `Model: ${data.llm.model || "gpt-4o-mini"}`, `API Key: ${data.llm.hasOpenAIApiKey ? "Configured" : "Missing"}`]
+          ? [`Provider: ${llmProvider}`, `Model: ${data.llm.model || "qwen2.5:7b"}`, `API Key: ${data.llm.hasOpenAIApiKey ? "Configured" : "Missing"}`]
           : [`Provider: ${llmProvider}`, `URL: ${data.llm.localUrl || "-"}`];
         container.appendChild(
           healthCard("LLM", data.llm.status, llmDetails)
@@ -1665,6 +1809,166 @@
         } catch (err) {
           $("calls").textContent = "Failed to load calls: " + err.message;
           setStatus("Calls load failed", "err");
+        }
+      }
+
+      // ───────────────────────────────────────────────
+      // CALL HISTORY
+      // ───────────────────────────────────────────────
+
+      let callHistoryPage = 0;
+      const CALL_HISTORY_PAGE_SIZE = 15;
+
+      function formatDuration(ms) {
+        if (!ms || ms <= 0) return "0s";
+        const sec = Math.floor(ms / 1000);
+        if (sec < 60) return sec + "s";
+        const min = Math.floor(sec / 60);
+        const rem = sec % 60;
+        return min + "m " + rem + "s";
+      }
+
+      function renderCallHistory(data) {
+        const container = $("call-history");
+        const pagination = $("call-history-pagination");
+        container.innerHTML = "";
+        pagination.innerHTML = "";
+
+        const rows = data.rows || [];
+        const total = data.total || 0;
+
+        if (rows.length === 0) {
+          container.textContent = "No completed calls yet.";
+          return;
+        }
+
+        const table = document.createElement("table");
+        table.style.cssText = "width:100%; border-collapse:collapse; font-size:13px;";
+        table.innerHTML = `
+          <thead>
+            <tr style="text-align:left; border-bottom:1px solid #333;">
+              <th style="padding:6px 8px;">Time</th>
+              <th style="padding:6px 8px;">Caller</th>
+              <th style="padding:6px 8px;">Duration</th>
+              <th style="padding:6px 8px;">Stage</th>
+              <th style="padding:6px 8px;">Summary</th>
+              <th style="padding:6px 8px;"></th>
+            </tr>
+          </thead>
+        `;
+        const tbody = document.createElement("tbody");
+        rows.forEach(r => {
+          const tr = document.createElement("tr");
+          tr.style.cssText = "border-bottom:1px solid #222; cursor:pointer;";
+          tr.onmouseover = () => tr.style.background = "#222";
+          tr.onmouseout = () => tr.style.background = "";
+          const endedAt = r.ended_at ? new Date(r.ended_at).toLocaleString() : "";
+          const summary = r.summary ? r.summary.slice(0, 80) + (r.summary.length > 80 ? "..." : "") : "—";
+          const stageColor = r.stage === "closed" ? "#4ade80" : r.stage === "handoff" ? "#C9A04E" : "#60a5fa";
+          tr.innerHTML = `
+            <td style="padding:6px 8px;">${escapeHtml(endedAt)}</td>
+            <td style="padding:6px 8px;">${escapeHtml(r.caller_id || "unknown")}</td>
+            <td style="padding:6px 8px;">${formatDuration(r.duration_ms)}</td>
+            <td style="padding:6px 8px;"><span style="color:${stageColor}">${escapeHtml(r.stage || "unknown")}</span></td>
+            <td style="padding:6px 8px;" class="small">${escapeHtml(summary)}</td>
+            <td style="padding:6px 8px;"><button class="secondary" style="font-size:11px; padding:2px 8px;" data-call-id="${escapeHtml(r.id)}">View</button></td>
+          `;
+          tr.querySelector("button").addEventListener("click", (e) => {
+            e.stopPropagation();
+            showCallDetail(r);
+          });
+          tr.addEventListener("click", () => showCallDetail(r));
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        container.appendChild(table);
+
+        // Pagination
+        const totalPages = Math.ceil(total / CALL_HISTORY_PAGE_SIZE);
+        if (totalPages > 1) {
+          if (callHistoryPage > 0) {
+            const prevBtn = document.createElement("button");
+            prevBtn.className = "secondary";
+            prevBtn.textContent = "Previous";
+            prevBtn.onclick = () => { callHistoryPage--; loadCallHistory(); };
+            pagination.appendChild(prevBtn);
+          }
+          const info = document.createElement("span");
+          info.className = "small";
+          info.textContent = `Page ${callHistoryPage + 1} of ${totalPages} (${total} total)`;
+          pagination.appendChild(info);
+          if (callHistoryPage < totalPages - 1) {
+            const nextBtn = document.createElement("button");
+            nextBtn.className = "secondary";
+            nextBtn.textContent = "Next";
+            nextBtn.onclick = () => { callHistoryPage++; loadCallHistory(); };
+            pagination.appendChild(nextBtn);
+          }
+        }
+      }
+
+      function showCallDetail(callRow) {
+        const modal = $("call-detail-modal");
+        const content = $("call-detail-content");
+        modal.style.display = "flex";
+
+        const endedAt = callRow.ended_at ? new Date(callRow.ended_at).toLocaleString() : "N/A";
+        const startedAt = callRow.started_at ? new Date(callRow.started_at).toLocaleString() : "N/A";
+        const history = Array.isArray(callRow.history) ? callRow.history : [];
+        const lead = callRow.lead && typeof callRow.lead === "object" ? callRow.lead : {};
+        const leadKeys = Object.keys(lead).filter(k => lead[k]);
+
+        let html = `<h2 style="margin-top:0;">Call Detail</h2>`;
+        html += `<div class="row" style="gap:16px; flex-wrap:wrap; margin-bottom:12px;">`;
+        html += `<div class="small"><strong>Caller:</strong> ${escapeHtml(callRow.caller_id || "unknown")}</div>`;
+        html += `<div class="small"><strong>Duration:</strong> ${formatDuration(callRow.duration_ms)}</div>`;
+        html += `<div class="small"><strong>Stage:</strong> ${escapeHtml(callRow.stage || "")}</div>`;
+        html += `<div class="small"><strong>Started:</strong> ${escapeHtml(startedAt)}</div>`;
+        html += `<div class="small"><strong>Ended:</strong> ${escapeHtml(endedAt)}</div>`;
+        html += `</div>`;
+
+        if (callRow.summary) {
+          html += `<div class="card" style="background:#162236; margin-bottom:12px;">`;
+          html += `<div class="small" style="color:#C9A04E; margin-bottom:4px;">AI Summary</div>`;
+          html += `<div>${escapeHtml(callRow.summary)}</div>`;
+          html += `</div>`;
+        }
+
+        if (leadKeys.length > 0) {
+          html += `<div class="card" style="background:#1e1e2e; margin-bottom:12px;">`;
+          html += `<div class="small" style="color:#4ade80; margin-bottom:4px;">Lead Data</div>`;
+          leadKeys.forEach(k => {
+            html += `<div class="small"><strong>${escapeHtml(k)}:</strong> ${escapeHtml(String(lead[k]))}</div>`;
+          });
+          html += `</div>`;
+        }
+
+        if (history.length > 0) {
+          html += `<div style="margin-top:8px;"><div class="small" style="color:#60a5fa; margin-bottom:4px;">Conversation (${history.length} turns)</div>`;
+          history.forEach(turn => {
+            const role = turn.role || turn.from || "unknown";
+            const msg = turn.content || turn.message || "";
+            const isAssistant = role === "assistant";
+            html += `<div style="margin-bottom:4px; padding:4px 8px; border-left:2px solid ${isAssistant ? "#C9A04E" : "#60a5fa"};">`;
+            html += `<span class="small" style="color:${isAssistant ? "#C9A04E" : "#60a5fa"};">${escapeHtml(role)}</span>: ${escapeHtml(msg)}`;
+            html += `</div>`;
+          });
+          html += `</div>`;
+        } else if (callRow.transcript) {
+          html += `<div style="margin-top:8px;"><div class="small" style="color:#60a5fa; margin-bottom:4px;">Transcript</div>`;
+          html += `<pre class="debug-block" style="white-space:pre-wrap; max-height:300px;">${escapeHtml(callRow.transcript)}</pre>`;
+          html += `</div>`;
+        }
+
+        content.innerHTML = html;
+      }
+
+      async function loadCallHistory() {
+        try {
+          const data = await fetchJSON(`/api/admin/call-history?limit=${CALL_HISTORY_PAGE_SIZE}&offset=${callHistoryPage * CALL_HISTORY_PAGE_SIZE}`);
+          renderCallHistory(data);
+        } catch (err) {
+          $("call-history").textContent = "Failed to load history: " + err.message;
         }
       }
 
@@ -2607,7 +2911,8 @@
               <td style="padding:8px;" class="small">${run.stepsCompleted}/${run.stepsTotal}</td>
               <td style="padding:8px;" class="small">${escapeHtml(started)}</td>
               <td style="padding:8px;">
-                <button type="button" onclick='showRunDetails(${JSON.stringify(run).replace(/'/g, "\\'")})'
+                <button type="button" data-run="${escapeHtml(JSON.stringify(run))}"
+                  onclick="showRunDetails(JSON.parse(this.dataset.run))"
                   style="font-size:11px; padding:2px 8px; border-radius:4px; cursor:pointer;">Details</button>
               </td>
             </tr>`;
@@ -2681,6 +2986,7 @@
         try {
           const settings = await fetchJSON("/api/admin/workflows/settings");
           $("wf-owner-edit").checked = settings.ownerCanEdit === true;
+          $("wf-custom-branding").checked = settings.customBrandingEnabled === true;
         } catch (err) {
           console.error("loadWorkflowSettings:", err);
         }
@@ -2695,6 +3001,7 @@
         loadHealth();
         loadAnalytics();
         loadCalls();
+        loadCallHistory();
         loadAudit();
         loadAdminKeys();
         loadCloudflareStatus();
@@ -2703,6 +3010,7 @@
         loadWorkflowRuns();
         loadLeads();
         loadWorkflowSettings();
+        loadCapacity();
       }
 
       // ── Subscription / Billing ──
@@ -2850,7 +3158,7 @@
         list.innerHTML = stripePlansCache.map(p => {
           const intv = intervalLabels[p.billing_interval] || p.billing_interval;
           return `<li style="margin:4px 0; padding:8px 10px; border-radius:8px; background:rgba(246,243,236,0.04); border:1px solid rgba(246,243,236,0.08); display:flex; justify-content:space-between; align-items:center; gap:8px;">
-            <span style="flex:1;"><strong>${escapeHtml(p.name)}</strong> — $${(p.price_cents / 100).toFixed(2)} ${p.currency.toUpperCase()} / ${intv}</span>
+            <span style="flex:1;"><strong>${escapeHtml(p.name)}</strong> — $${(p.price_cents / 100).toFixed(2)} ${escapeHtml(p.currency.toUpperCase())} / ${escapeHtml(intv)}</span>
             <code class="small" style="flex-shrink:0;">${escapeHtml(p.stripe_price_id || "—")}</code>
             <button type="button" onclick="deleteStripePlanUI('${escapeHtml(p.id)}')" style="background:rgba(196,80,80,0.15); color:#e07070; border:1px solid rgba(196,80,80,0.3); padding:3px 10px; border-radius:6px; font-size:12px; cursor:pointer; flex-shrink:0;">Delete</button>
           </li>`;
@@ -2970,7 +3278,8 @@
           const urlEl = $("stripe-checkout-url");
           if (urlEl && data.url) {
             urlEl.style.display = "";
-            urlEl.innerHTML = `Checkout link: <a href="${escapeHtml(data.url)}" target="_blank" style="color:var(--primary); word-break:break-all;">${escapeHtml(data.url)}</a>`;
+            const safeUrl = /^https?:\/\//i.test(data.url) ? data.url : "#";
+            urlEl.innerHTML = `Checkout link: <a href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener" style="color:var(--primary); word-break:break-all;">${escapeHtml(data.url)}</a>`;
           }
           if (statusEl) statusEl.textContent = "Checkout session created. Send the link to the owner.";
           setStatus("Stripe checkout created", "ok");
@@ -3042,7 +3351,7 @@
           li.innerHTML = `
             <div class="flex-between">
               <div>
-                <strong>${escapeHtml(p.name)}</strong> ${escapeHtml(p.number)} <span class="small">${escapeHtml(p.role)}</span>
+                <strong>${escapeHtml(p.name)}</strong> ${escapeHtml(p.number)} <span class="small" style="color:var(--accent,#C9A04E)">${escapeHtml(p.role)}</span>${p.description ? ` &mdash; <span class="small">${escapeHtml(p.description)}</span>` : ""}
               </div>
               <button type="button" class="secondary" data-fp-index="${i}">Remove</button>
             </div>
@@ -3122,16 +3431,64 @@
 
       /* ── Cloudflare Tunnel ─────────────────────── */
       async function loadCloudflareStatus() {
+        // Load token status
         try {
-          const data = await fetchJSON("/api/admin/cloudflare/token");
-          const status = $("cf-token-status");
-          if (data.hasToken) {
-            status.innerHTML = '<span style="color: var(--primary);">&#10003; Tunnel token is configured.</span>';
+          const tokenData = await fetchJSON("/api/admin/cloudflare/token");
+          const tokenStatus = $("cf-token-status");
+          if (tokenData.hasToken) {
+            tokenStatus.innerHTML = '<span style="color: var(--primary);">&#10003; Tunnel token is configured.</span>';
           } else {
-            status.textContent = "No tunnel token set.";
+            tokenStatus.textContent = "No tunnel token set.";
           }
         } catch {
-          $("cf-token-status").textContent = "Could not load Cloudflare status.";
+          $("cf-token-status").textContent = "Could not load token status.";
+        }
+
+        // Load container status
+        try {
+          const data = await fetchJSON("/api/admin/cloudflare/status");
+          const dot = $("cf-status-dot");
+          const text = $("cf-status-text");
+          const detail = $("cf-status-detail");
+          if (!data.exists) {
+            dot.style.background = "#666";
+            text.textContent = "Not found";
+            detail.textContent = data.message || "Container does not exist.";
+          } else if (data.running) {
+            dot.style.background = "#4ade80";
+            text.textContent = "Running";
+            const upSince = data.startedAt ? new Date(data.startedAt).toLocaleString() : "";
+            detail.textContent = upSince ? "Up since " + upSince : "Container is running.";
+          } else {
+            dot.style.background = "#f87171";
+            text.textContent = "Stopped";
+            detail.textContent = "Status: " + (data.status || "exited");
+          }
+        } catch {
+          const dot = $("cf-status-dot");
+          const text = $("cf-status-text");
+          const detail = $("cf-status-detail");
+          if (dot) dot.style.background = "#f59e0b";
+          if (text) text.textContent = "Unknown";
+          if (detail) detail.textContent = "Could not query Docker. Socket may not be mounted.";
+        }
+      }
+
+      async function cfAction(action) {
+        const sts = $("cf-action-status");
+        sts.textContent = action.charAt(0).toUpperCase() + action.slice(1) + "ing…";
+        sts.style.color = "#C9A04E";
+        try {
+          const data = await fetchJSON("/api/admin/cloudflare/" + action, { method: "POST" });
+          sts.textContent = data.message || "Done.";
+          sts.style.color = "#4ade80";
+          // Refresh status after a short delay to let Docker settle
+          setTimeout(loadCloudflareStatus, 2000);
+          setTimeout(() => { if (sts.style.color === "rgb(74, 222, 128)") sts.textContent = ""; }, 5000);
+        } catch (err) {
+          sts.textContent = "Failed: " + err.message;
+          sts.style.color = "#f87171";
+          loadCloudflareStatus();
         }
       }
 
@@ -3153,6 +3510,105 @@
         } catch (err) {
           $("cf-token-status").textContent = "Save failed: " + err.message;
           setStatus("Cloudflare token save failed", "err");
+        }
+      }
+
+      /* ── Owner Passcode ─────────────────── */
+      async function saveOwnerPasscode() {
+        const sts = $("passcode-status");
+        const tenantId = ($("passcode-tenant").value || "").trim();
+        const passcode = ($("passcode-value").value || "").trim();
+        if (!tenantId) { sts.textContent = "Tenant ID is required."; sts.style.color = "#f87171"; return; }
+        if (!passcode || passcode.length < 4) { sts.textContent = "Passcode must be at least 4 characters."; sts.style.color = "#f87171"; return; }
+        try {
+          await fetchJSON("/api/owner/set-passcode", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tenantId, passcode }),
+          });
+          sts.textContent = "Passcode set for " + escapeHtml(tenantId) + "!";
+          sts.style.color = "#4ade80";
+          $("passcode-value").value = "";
+          setTimeout(() => { if (sts.textContent.includes("set for")) sts.textContent = ""; }, 5000);
+        } catch (e) {
+          sts.textContent = "Failed: " + e.message;
+          sts.style.color = "#f87171";
+        }
+      }
+
+      /* ── Capacity & Concurrency ─────────────────── */
+      const CAP_SLIDERS = [
+        { id: "cap-global-concurrency", valId: "cap-global-val", path: "global.concurrencyCap", fmt: v => Math.round(v).toString() },
+        { id: "cap-tenant-concurrency", valId: "cap-tenant-concurrency-val", path: "tenant.concurrencyCap", fmt: v => Math.round(v).toString() },
+        { id: "cap-tenant-rpm", valId: "cap-tenant-rpm-val", path: "tenant.rpmCap", fmt: v => Math.round(v).toString() },
+        { id: "cap-whisper", valId: "cap-whisper-val", path: "services.whisperMaxConcurrent", fmt: v => Math.round(v).toString() },
+        { id: "cap-kokoro", valId: "cap-kokoro-val", path: "services.kokoroMaxConcurrent", fmt: v => Math.round(v).toString() },
+        { id: "cap-xtts", valId: "cap-xtts-val", path: "services.xttsMaxConcurrent", fmt: v => Math.round(v).toString() },
+      ];
+
+      function getNestedValue(obj, path) {
+        return path.split(".").reduce((o, k) => o?.[k], obj);
+      }
+
+      function bindCapSliders() {
+        CAP_SLIDERS.forEach(({ id, valId, fmt }) => {
+          const el = $(id);
+          if (!el) return;
+          el.addEventListener("input", () => {
+            const v = $(valId);
+            if (v) v.textContent = fmt(el.value);
+          });
+        });
+      }
+
+      async function loadCapacity() {
+        try {
+          const data = await fetchJSON("/api/admin/capacity");
+          CAP_SLIDERS.forEach(({ id, valId, path, fmt }) => {
+            const el = $(id);
+            const v = $(valId);
+            const val = getNestedValue(data, path);
+            if (el && val !== undefined) { el.value = val; }
+            if (v && val !== undefined) { v.textContent = fmt(val); }
+          });
+          const ga = $("cap-global-active");
+          const ta = $("cap-tenant-active");
+          if (ga) ga.textContent = data.global?.activeCalls ?? "—";
+          if (ta) ta.textContent = data.tenant?.activeCalls ?? "—";
+        } catch (e) {
+          console.error("loadCapacity:", e);
+        }
+      }
+
+      async function saveCapacity() {
+        const sts = $("cap-status");
+        try {
+          const body = {
+            global: {
+              concurrencyCap: parseInt($("cap-global-concurrency")?.value || "100"),
+            },
+            tenant: {
+              concurrencyCap: parseInt($("cap-tenant-concurrency")?.value || "10"),
+              rpmCap: parseInt($("cap-tenant-rpm")?.value || "60"),
+            },
+            services: {
+              whisperMaxConcurrent: parseInt($("cap-whisper")?.value || "2"),
+              kokoroMaxConcurrent: parseInt($("cap-kokoro")?.value || "2"),
+              xttsMaxConcurrent: parseInt($("cap-xtts")?.value || "0"),
+            },
+          };
+          const result = await fetchJSON("/api/admin/capacity", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
+          sts.textContent = "Saved! " + (result.changes || []).join(", ");
+          sts.style.color = "#4ade80";
+          setTimeout(() => { if (sts.textContent.startsWith("Saved")) sts.textContent = ""; }, 4000);
+          loadCapacity(); // refresh live counts
+        } catch (e) {
+          sts.textContent = "Failed: " + e.message;
+          sts.style.color = "#f87171";
         }
       }
 
@@ -3178,6 +3634,8 @@
             currentTenantId = tenantSelect.value;
             renderTenantMeta();
             refreshAll();
+            const pt = $("passcode-tenant");
+            if (pt) pt.value = currentTenantId;
           });
         }
 
@@ -3217,6 +3675,27 @@
           });
         }
 
+        const refreshCallHistoryBtn = $("refresh-call-history");
+        if (refreshCallHistoryBtn) {
+          refreshCallHistoryBtn.addEventListener("click", () => {
+            setStatus("Refreshing call history…", "ok");
+            loadCallHistory();
+          });
+        }
+
+        const closeCallDetailBtn = $("close-call-detail");
+        if (closeCallDetailBtn) {
+          closeCallDetailBtn.addEventListener("click", () => {
+            $("call-detail-modal").style.display = "none";
+          });
+        }
+        const callDetailModal = $("call-detail-modal");
+        if (callDetailModal) {
+          callDetailModal.addEventListener("click", (e) => {
+            if (e.target === callDetailModal) callDetailModal.style.display = "none";
+          });
+        }
+
         const refreshAuditBtn = $("refresh-audit");
         if (refreshAuditBtn) {
           refreshAuditBtn.addEventListener("click", () => {
@@ -3236,6 +3715,14 @@
         // Cloudflare Tunnel
         const cfSave = $("cf-save-token");
         if (cfSave) cfSave.addEventListener("click", () => requireAuth(saveCloudflareToken));
+        const cfStart = $("cf-start-btn");
+        if (cfStart) cfStart.addEventListener("click", () => cfAction("start"));
+        const cfStop = $("cf-stop-btn");
+        if (cfStop) cfStop.addEventListener("click", () => cfAction("stop"));
+        const cfRestart = $("cf-restart-btn");
+        if (cfRestart) cfRestart.addEventListener("click", () => cfAction("restart"));
+        const cfRefresh = $("cf-refresh-status");
+        if (cfRefresh) cfRefresh.addEventListener("click", loadCloudflareStatus);
 
         const cfToggle = $("cf-toggle-visibility");
         if (cfToggle) {
@@ -3251,17 +3738,33 @@
           });
         }
 
+        // Owner passcode
+        const passcodeSave = $("passcode-save");
+        if (passcodeSave) passcodeSave.addEventListener("click", () => requireAuth(saveOwnerPasscode));
+        // Auto-fill tenant ID from selector
+        const passcTenant = $("passcode-tenant");
+        if (passcTenant && !passcTenant.value && currentTenantId) passcTenant.value = currentTenantId;
+
+        // Capacity controls
+        bindCapSliders();
+        const capSave = $("cap-save");
+        if (capSave) capSave.addEventListener("click", () => saveCapacity());
+        const capRefresh = $("cap-refresh");
+        if (capRefresh) capRefresh.addEventListener("click", () => loadCapacity());
+
         const fpAdd = $("fp-add");
         if (fpAdd) {
           fpAdd.addEventListener("click", () => {
             const name = ($("fp-name")?.value || "").trim();
             const number = ($("fp-number")?.value || "").trim();
             const role = ($("fp-role")?.value || "").trim();
+            const description = ($("fp-desc")?.value || "").trim();
             if (!name) return;
-            forwardingProfilesCache.push({ id: "id_" + Date.now(), name, number, role });
+            forwardingProfilesCache.push({ id: "id_" + Date.now(), name, number, role, description });
             if ($("fp-name")) $("fp-name").value = "";
             if ($("fp-number")) $("fp-number").value = "";
             if ($("fp-role")) $("fp-role").value = "";
+            if ($("fp-desc")) $("fp-desc").value = "";
             renderForwardingProfiles();
           });
         }
@@ -3465,6 +3968,20 @@
           }
         });
 
+        const wfCustomBranding = $("wf-custom-branding");
+        if (wfCustomBranding) wfCustomBranding.addEventListener("change", async () => {
+          try {
+            await fetchJSON("/api/admin/workflows/settings", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ customBrandingEnabled: wfCustomBranding.checked }),
+            });
+            setStatus(wfCustomBranding.checked ? "Custom branding enabled for owner" : "Custom branding disabled for owner", "ok");
+          } catch (err) {
+            setStatus("Failed: " + err.message, "err");
+          }
+        });
+
         const startApp = () => {
           loadTenants().then(() => {
             refreshAll();
@@ -3483,5 +4000,6 @@
         }
       });
     </script>
+    <script src="vl-select.js"></script>
   </body>
 </html>

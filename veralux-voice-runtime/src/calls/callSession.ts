@@ -21,6 +21,8 @@ import type { TTSResult } from '../tts/types';
 import type { RuntimeTenantConfig } from '../tenants/tenantConfig';
 import { getEffectiveSpeakerWavUrl, type VoiceMode } from '../tenants/tenantConfig';
 import { generateAssistantReply, generateAssistantReplyStream, type AssistantReplyResult } from '../ai/brainClient';
+import { getRandomFiller, getFillerAudio, type CachedFiller } from '../audio/thinkingFiller';
+import { reportCallerMessage } from '../controlPlane';
 import {
   CallSessionConfig,
   CallSessionMetrics,
@@ -41,6 +43,74 @@ import {
 import { startStageTimer, incStageError, observeStageDuration, incSttFramesFed } from '../metrics';
 
 const PARTIAL_FAST_PATH_MIN_CHARS = 18;
+
+// ─── Gibberish / Low-Quality Transcript Detection ────────────────────────────
+// Catches common Whisper misheard / hallucinated outputs before they hit the LLM.
+// Returns { gibberish: true, reason } if the transcript should be rejected.
+
+const WHISPER_HALLUCINATIONS = [
+  'thank you for watching',
+  'thanks for watching',
+  'please subscribe',
+  'like and subscribe',
+  'see you next time',
+  'the end',
+  'you',         // Whisper often returns bare "you" for noise
+];
+
+// Short responses that are legitimate in a phone conversation and should
+// never be rejected, even though they are 1-2 words.
+const VALID_SHORT_RESPONSES = new Set([
+  'no', 'yes', 'yeah', 'yep', 'nope', 'nah',
+  'no thanks', 'no thank you', 'yes please',
+  'goodbye', 'bye', 'bye bye', 'good bye',
+  'okay', 'ok', 'sure', 'thanks', 'thank you',
+  'hello', 'hi', 'hey',
+  'help', 'transfer', 'operator', 'agent',
+  'that\'s all', 'thats all', 'that is all', 'all good',
+  'i\'m good', 'im good', 'nothing', 'never mind', 'nevermind',
+  'not right now', 'no i\'m good', 'no im good',
+]);
+
+function detectGibberish(text: string): { gibberish: boolean; reason?: string } {
+  const trimmed = text.trim().toLowerCase().replace(/[^\w\s']/g, '');
+  const words = trimmed.split(/\s+/).filter(w => w.length > 0);
+
+  // 0) Allow known valid short responses — never reject these
+  if (VALID_SHORT_RESPONSES.has(trimmed)) {
+    return { gibberish: false };
+  }
+
+  // 1) Single bare word that isn't in the valid set — likely noise
+  if (words.length === 1) {
+    return { gibberish: true, reason: 'single_word_noise' };
+  }
+
+  // 2) Known Whisper hallucination phrases
+  for (const hallucination of WHISPER_HALLUCINATIONS) {
+    if (trimmed === hallucination || trimmed.startsWith(hallucination + ' ')) {
+      return { gibberish: true, reason: `hallucination:${hallucination}` };
+    }
+  }
+
+  // 3) Excessive repeated words (e.g., "the the the the")
+  const wordCounts = new Map<string, number>();
+  for (const w of words) {
+    wordCounts.set(w, (wordCounts.get(w) || 0) + 1);
+  }
+  const maxRepeat = Math.max(...wordCounts.values());
+  if (words.length >= 4 && maxRepeat / words.length > 0.6) {
+    return { gibberish: true, reason: 'excessive_repetition' };
+  }
+
+  // 4) Very short total characters relative to word count (random syllables)
+  const avgWordLen = trimmed.replace(/\s/g, '').length / words.length;
+  if (words.length >= 3 && avgWordLen < 2) {
+    return { gibberish: true, reason: 'very_short_words' };
+  }
+
+  return { gibberish: false };
+}
 
 function getErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -101,6 +171,7 @@ export class CallSession {
   private readonly ttsConfig?: RuntimeTenantConfig['tts'];
   private readonly transferProfiles?: RuntimeTenantConfig['transferProfiles'];
   private readonly assistantContext?: RuntimeTenantConfig['assistantContext'];
+  private readonly _greetingText?: string;
 
   /**
    * Voice mode for XTTS: 'preset' uses built-in voice_id, 'cloned' uses reference audio.
@@ -137,6 +208,9 @@ export class CallSession {
 
   private isHandlingTranscript = false;
   private hasStarted = false;
+  /** Consecutive gibberish/reprompt count — after N retries we pass through to the brain. */
+  private gibberishRetryCount = 0;
+  private readonly gibberishMaxRetries = 2;
   private turnSequence = 0;
   private deadAirTimer?: NodeJS.Timeout;
   private deadAirEligible = false;
@@ -145,6 +219,10 @@ export class CallSession {
   private readonly logPreviewChars = 160;
   private ttsSegmentChain: Promise<void> = Promise.resolve();
   private ttsSegmentQueueDepth = 0;
+  /** True while a thinking-filler segment is the only thing in the TTS chain. */
+  private fillerPlaying = false;
+  /** Set when a filler finishes and no real segments have arrived — prevents entering LISTENING. */
+  private fillerJustCompleted = false;
   private playbackState: {
     active: boolean;
     interrupted: boolean;
@@ -193,6 +271,9 @@ export class CallSession {
   private pstnPlaybackWatchdogFor?: string;
 
   private readonly pstnPlaybackWatchdogMs = 8000; // tune 6000–12000ms as needed
+
+  // ===== PSTN streaming: resolve when Telnyx playback.ended webhook fires for the current segment =====
+  private pstnSegmentResolve: (() => void) | null = null;
 
 
   private onSttRequestStart(kind: 'partial' | 'final'): void {
@@ -286,6 +367,7 @@ export class CallSession {
     this.ttsConfig = config.tenantConfig?.tts;
     this.transferProfiles = config.tenantConfig?.transferProfiles;
     this.assistantContext = config.tenantConfig?.assistantContext;
+    this._greetingText = (config.tenantConfig as any)?.greetingText;
 
     this.logContext = {
       call_control_id: this.callControlId,
@@ -320,7 +402,7 @@ export class CallSession {
       });
 
     // ✅ Ensure this is ALWAYS a string (tenant override → env fallback)
-    const sttEndpointUrl =
+    let sttEndpointUrl =
       this.sttConfig?.config?.url ??
       this.sttConfig?.whisperUrl ??
       env.WHISPER_URL ??
@@ -328,6 +410,27 @@ export class CallSession {
 
     if (!sttEndpointUrl) {
       log.warn({ event: 'stt_url_missing', ...this.logContext }, 'No STT URL configured');
+    }
+
+    // ✅ Safety: if whisperUrl is a bare origin (no path), append /transcribe
+    if (sttEndpointUrl) {
+      try {
+        const parsed = new URL(sttEndpointUrl);
+        if (!parsed.pathname || parsed.pathname === '/') {
+          sttEndpointUrl = `${sttEndpointUrl.replace(/\/$/, '')}/transcribe`;
+          log.warn(
+            {
+              event: 'stt_url_auto_corrected',
+              original: this.sttConfig?.whisperUrl ?? env.WHISPER_URL,
+              corrected: sttEndpointUrl,
+              ...this.logContext,
+            },
+            'whisperUrl had no path, auto-appended /transcribe',
+          );
+        }
+      } catch {
+        // not a valid URL, leave as-is
+      }
     }
 
 
@@ -376,7 +479,7 @@ export class CallSession {
       provider,
       whisperUrl: sttEndpointUrl,
       language: this.sttConfig?.language ?? env.STT_LANGUAGE,
-      prompt: env.STT_WHISPER_PROMPT,
+      prompt: this.sttConfig?.prompt ?? env.STT_WHISPER_PROMPT,
       frameMs: this.sttConfig?.chunkMs ?? env.STT_CHUNK_MS,
       silenceEndMs: env.STT_SILENCE_MS,
       inputCodec: sttAudioInput.codec,
@@ -673,15 +776,17 @@ export class CallSession {
       return;
     }
     try {
-      this.markEnded('transfer');
+      // Send the transfer command to Telnyx BEFORE marking the call inactive,
+      // otherwise the transport will skip the API call due to inactive state.
       await this.transport.transfer(to, options);
       log.info(
         { event: 'call_transfer_requested', to, ...this.logContext },
         'call transfer requested',
       );
+      // Now mark ended — Telnyx will send call.bridged or call.hangup from here.
+      this.markEnded('transfer');
     } catch (error) {
       log.error({ err: error, to, ...this.logContext }, 'call transfer failed');
-      this.active = true; // revert markEnded so session can continue
       throw error;
     }
   }
@@ -843,6 +948,29 @@ export class CallSession {
   public appendHistory(turn: ConversationTurn): void {
     this.conversationHistory.push(turn);
     this.metrics.turns += 1;
+    this.updateSttPromptWithContext();
+  }
+
+  /**
+   * Build a contextual prompt for Whisper from the base prompt + recent conversation.
+   * Whisper uses the prompt to bias its decoding, so including the last few turns
+   * helps it maintain coherence and avoid hallucinations on compressed audio.
+   */
+  private updateSttPromptWithContext(): void {
+    const basePrompt = this.sttConfig?.prompt ?? env.STT_WHISPER_PROMPT ?? '';
+    // Take the last 3 turns (keeps prompt short to avoid Whisper's 224-token limit)
+    const recentTurns = this.conversationHistory.slice(-3);
+    if (recentTurns.length === 0) return;
+
+    const contextLines = recentTurns.map((t) => {
+      const role = t.role === 'user' ? 'Caller' : 'Receptionist';
+      // Truncate long replies to keep the prompt compact
+      const content = t.content.length > 80 ? t.content.slice(0, 80) + '...' : t.content;
+      return `${role}: ${content}`;
+    });
+
+    const contextPrompt = `${basePrompt} Recent conversation: ${contextLines.join(' ')}`;
+    this.stt.updatePrompt(contextPrompt);
   }
 
   /** Full call transcript (caller + assistant text only, no audio). Use at teardown for summarizer / logs. */
@@ -981,10 +1109,21 @@ export class CallSession {
         state: this.state,
         playback_active: this.playbackState.active,
         tts_queue_depth: this.ttsSegmentQueueDepth,
+        pstn_segment_streaming: !!this.pstnSegmentResolve,
         ...this.logContext,
       },
       'telnyx playback ended (webhook)',
     );
+
+    // If a streaming segment is waiting for this webhook, resolve it so the next
+    // segment in the chain can start. Don't trigger full playback-end transition yet —
+    // that happens when the segment queue drains to 0.
+    if (this.pstnSegmentResolve) {
+      const resolve = this.pstnSegmentResolve;
+      this.pstnSegmentResolve = null;
+      resolve();
+      return;
+    }
 
     this.endPlaybackAuthoritatively('webhook');
 
@@ -1071,6 +1210,10 @@ export class CallSession {
         'playback ended after barge-in',
       );
 
+      // Clear filler flags on barge-in; caller speech takes priority.
+      this.fillerPlaying = false;
+      this.fillerJustCompleted = false;
+
       // ✅ CRITICAL FIX: barge-in playback end must re-open the LISTENING gate
       if (this.active && this.state !== 'ENDED') {
         this.enterListeningState(false);
@@ -1089,6 +1232,18 @@ export class CallSession {
       return;
     }
 
+    // Thinking-filler just finished but real LLM response hasn't arrived yet.
+    // Stay quiet — do NOT enter LISTENING. The real response will start a new
+    // playback cycle when its first TTS segment is ready.
+    if (this.fillerJustCompleted) {
+      this.fillerJustCompleted = false;
+      log.info(
+        { event: 'filler_playback_ended', state: this.state, ...this.logContext },
+        'thinking filler ended, waiting for real response',
+      );
+      this.audioCoordinator.onPlaybackEnded(now);
+      return;
+    }
 
     // ✅ normal playback end: enter LISTENING (but don't arm dead-air immediately)
     if (this.active && this.state !== 'ENDED') {
@@ -1156,6 +1311,14 @@ export class CallSession {
         'forcing playback end (telnyx playback.ended webhook missing/delayed)',
       );
 
+      // If a streaming segment is waiting for the webhook, unblock it
+      if (this.pstnSegmentResolve) {
+        const resolve = this.pstnSegmentResolve;
+        this.pstnSegmentResolve = null;
+        resolve();
+        return; // let the segment queue drain handle final cleanup
+      }
+
       this.endPlaybackAuthoritatively('watchdog');
     }, this.pstnPlaybackWatchdogMs);
 
@@ -1192,11 +1355,20 @@ export class CallSession {
   private clearTtsQueue(): void {
     this.ttsSegmentChain = Promise.resolve();
     this.ttsSegmentQueueDepth = 0;
+
+    // Unblock any PSTN segment waiting for a playback.ended webhook
+    if (this.pstnSegmentResolve) {
+      const resolve = this.pstnSegmentResolve;
+      this.pstnSegmentResolve = null;
+      resolve();
+    }
   }
 
   private invalidateTranscriptHandling(): void {
     this.transcriptHandlingToken += 1;
     this.isHandlingTranscript = false;
+    this.fillerPlaying = false;
+    this.fillerJustCompleted = false;
   }
 
   private flushDeferredTranscript(): void {
@@ -1755,6 +1927,47 @@ export class CallSession {
       'turn trigger',
     );
 
+    // ─── Gibberish guard: reject low-quality / hallucinated STT output ───
+    const gibberishCheck = detectGibberish(trimmed);
+    if (gibberishCheck.gibberish && this.gibberishRetryCount < this.gibberishMaxRetries) {
+      this.gibberishRetryCount += 1;
+      log.warn(
+        {
+          event: 'transcript_rejected_gibberish',
+          reason: gibberishCheck.reason,
+          retry: this.gibberishRetryCount,
+          max_retries: this.gibberishMaxRetries,
+          transcript_preview: trimmed.slice(0, 80),
+          ...this.logContext,
+        },
+        'transcript rejected as gibberish — prompting caller to repeat',
+      );
+
+      // Play a reprompt and return to listening
+      const turnId = `clarify-${this.nextTurnId()}`;
+      this.isHandlingTranscript = true;
+      try {
+        await this.playText(
+          "Sorry, I didn't quite catch that. Could you please say that again?",
+          turnId,
+        );
+      } finally {
+        this.isHandlingTranscript = false;
+        this.resetTranscriptTracking();
+        if (this.active && this.state !== ('ENDED' as CallSessionState)) {
+          if (!this.isPlaybackActive() && this.state !== 'LISTENING') {
+            this.enterListeningState(true);
+          }
+        }
+      }
+      return;
+    }
+
+    // Reset gibberish counter on a good transcript
+    if (!gibberishCheck.gibberish) {
+      this.gibberishRetryCount = 0;
+    }
+
     // Accept this FINAL as the utterance we will respond to.
     this.transcriptAcceptedForUtterance = true;
     this.isHandlingTranscript = true;
@@ -1787,6 +2000,16 @@ export class CallSession {
       this.state = 'THINKING';
       this.appendTranscriptSegment(trimmed);
       this.appendHistory({ role: 'user', content: trimmed, timestamp: new Date() });
+
+      // Report caller message to control plane analytics (fire-and-forget)
+      void reportCallerMessage(this.tenantId ?? 'unknown', trimmed);
+
+      // Queue a thinking filler to mask processing latency (streaming path only).
+      // The filler plays immediately from pre-cached audio; real LLM response
+      // segments chain after it in the TTS segment queue.
+      if (env.BRAIN_STREAMING_ENABLED) {
+        this.queueThinkingFiller(handlingToken);
+      }
 
       let response = '';
       let replySource = 'unknown';
@@ -1917,6 +2140,27 @@ export class CallSession {
         return;
       }
 
+      // AI requested hangup: play goodbye then end the call.
+      if (replyResult?.hangup) {
+        this.appendHistory({ role: 'assistant', content: response, timestamp: new Date() });
+        if (env.BRAIN_STREAMING_ENABLED && playbackDone) {
+          await playbackDone;
+        } else {
+          await this.playAssistantTurn(response);
+        }
+        log.info(
+          { event: 'ai_hangup_requested', ...this.logContext },
+          'AI requested call hangup after goodbye',
+        );
+        this.markEnded('ai_goodbye');
+        try {
+          await this.transport.stop?.('ai_goodbye');
+        } catch (error) {
+          log.error({ err: error, ...this.logContext }, 'AI hangup failed');
+        }
+        return;
+      }
+
       this.appendHistory({ role: 'assistant', content: response, timestamp: new Date() });
 
       if (env.BRAIN_STREAMING_ENABLED) {
@@ -1962,13 +2206,15 @@ export class CallSession {
     let segmentIndex = 0;
     let queuedSegments = 0;
     let baseTurnId: string | undefined;
-    const firstSegmentMin = env.BRAIN_STREAM_SEGMENT_MIN_CHARS;
-    const nextSegmentMin = env.BRAIN_STREAM_SEGMENT_NEXT_CHARS;
     const firstAudioMaxMs = env.BRAIN_STREAM_FIRST_AUDIO_MAX_MS;
+    const longSentenceFallback = env.BRAIN_STREAM_SEGMENT_MIN_CHARS;
 
-    // === PSTN SAFETY: disable TTS streaming segments on PSTN ===
-    // Telnyx "play" does NOT mean "playback finished" — segments will overlap/queue incorrectly.
-    if (this.transport.mode === 'pstn') {
+    // === PSTN streaming ===
+    // Previously disabled for llama3.2:3b (unreliable streaming). Re-enabled for qwen2.5:7b.
+    // Now re-enabled for qwen2.5:7b which streams reliably.
+    // Set BRAIN_PSTN_NO_STREAM=true to force non-streaming on PSTN if needed.
+    const forcePstnNoStream = process.env.BRAIN_PSTN_NO_STREAM === 'true';
+    if (this.transport.mode === 'pstn' && forcePstnNoStream) {
       const tenantLabel = this.tenantId ?? 'unknown';
       const endLlm = startStageTimer('llm', tenantLabel);
 
@@ -1989,7 +2235,6 @@ export class CallSession {
         throw error;
       }
 
-      // Play as a single turn (no segmentation) on PSTN
       return { reply, playbackDone: this.playAssistantTurn(reply.text) };
     }
 
@@ -2022,50 +2267,39 @@ export class CallSession {
           return;
         }
 
-        if (!firstSegmentQueued) {
-          const boundary = this.findSentenceBoundary(pending);
-          if (boundary !== null) {
-            queueSegment(pending.slice(0, boundary));
-            speakCursor += boundary;
-            firstSegmentQueued = true;
-            continue;
-          }
-
-          if (pending.length >= firstSegmentMin) {
-            const end = this.selectSegmentEnd(pending, firstSegmentMin);
-            queueSegment(pending.slice(0, end));
-            speakCursor += end;
-            firstSegmentQueued = true;
-            continue;
-          }
-
-          if (
-            force ||
-            (firstTokenAt && Date.now() - firstTokenAt >= firstAudioMaxMs)
-          ) {
-            queueSegment(pending);
-            speakCursor += pending.length;
-            firstSegmentQueued = true;
-            continue;
-          }
-
-          return;
-        }
-
+        // 1) Always prefer splitting at a sentence boundary (.?!)
         const boundary = this.findSentenceBoundary(pending);
         if (boundary !== null) {
           queueSegment(pending.slice(0, boundary));
           speakCursor += boundary;
+          firstSegmentQueued = true;
           continue;
         }
 
-        if (pending.length >= nextSegmentMin) {
-          const end = this.selectSegmentEnd(pending, nextSegmentMin);
+        // 2) Safety valve for abnormally long single sentences (>longSentenceFallback chars):
+        //    fall back to space-based splitting so we don't buffer forever.
+        if (pending.length >= longSentenceFallback) {
+          const end = this.selectSegmentEnd(pending, longSentenceFallback);
           queueSegment(pending.slice(0, end));
           speakCursor += end;
+          firstSegmentQueued = true;
           continue;
         }
 
+        // 3) First-byte timeout: if the LLM is slow (>firstAudioMaxMs) and we
+        //    haven't sent anything yet, send what we have so the caller isn't
+        //    waiting in silence.
+        if (
+          !firstSegmentQueued &&
+          (force || (firstTokenAt && Date.now() - firstTokenAt >= firstAudioMaxMs))
+        ) {
+          queueSegment(pending);
+          speakCursor += pending.length;
+          firstSegmentQueued = true;
+          continue;
+        }
+
+        // 4) Stream ended (force=true) — flush any remaining text.
         if (force) {
           queueSegment(pending);
           speakCursor += pending.length;
@@ -2117,6 +2351,26 @@ export class CallSession {
     if (reply.text.length > bufferedText.length) {
       bufferedText = reply.text;
     }
+
+    // Single-segment shortcut: if no segments were queued during streaming and the
+    // full reply is short enough, play it as one unbroken audio file (zero gaps).
+    const singleSegmentMax = env.BRAIN_STREAM_SINGLE_SEGMENT_MAX;
+    if (queuedSegments === 0 && bufferedText.length <= singleSegmentMax) {
+      log.info(
+        {
+          event: 'tts_single_segment_shortcut',
+          reply_len: bufferedText.length,
+          threshold: singleSegmentMax,
+          ...this.logContext,
+        },
+        'reply fits single segment — skipping segmentation',
+      );
+      if (handlingToken !== this.transcriptHandlingToken) {
+        return { reply };
+      }
+      return { reply, playbackDone: this.playAssistantTurn(reply.text) };
+    }
+
     maybeQueueSegments(true);
 
     if (queuedSegments === 0) {
@@ -2148,8 +2402,11 @@ export class CallSession {
 
       this.onAnswered();
 
+      // Resolve greeting: tenant config > env > default
+      const _resolvedGreeting = this._greetingText || env.GREETING_TEXT || 'Hi! Thanks for calling. How can I help you today?';
+
       if (this.transport.mode === 'webrtc_hd') {
-        await this.playText(env.GREETING_TEXT ?? 'Hi! Thanks for calling. How can I help you today?', 'greeting');
+        await this.playText(_resolvedGreeting, 'greeting');
         return;
       }
 
@@ -2176,7 +2433,7 @@ export class CallSession {
         }
         // Fallback: greeting.wav may be missing (XTTS down at startup). Use live TTS.
         log.warn({ err: error, ...this.logContext }, 'greeting URL playback failed, using live TTS');
-        await this.playText(env.GREETING_TEXT ?? 'Hi! Thanks for calling. How can I help you today?', 'greeting');
+        await this.playText(_resolvedGreeting, 'greeting');
         return;
       }
 
@@ -2411,6 +2668,106 @@ export class CallSession {
   }
 
 
+  /**
+   * Queue a pre-cached thinking filler into the TTS segment chain.
+   * The filler plays while STT/LLM/TTS processes the real response;
+   * real response segments chain after it seamlessly.
+   */
+  private queueThinkingFiller(handlingToken: number): void {
+    if (!env.THINKING_FILLER_ENABLED) return;
+    if (!this.active || this.state === 'ENDED') return;
+
+    const filler = getRandomFiller();
+    if (!filler) return;
+
+    this.fillerPlaying = true;
+    this.fillerJustCompleted = false;
+
+    const segmentId = `filler-${this.nextTurnId()}`;
+
+    if (!this.playbackState.active) {
+      this.beginPlayback(segmentId);
+    }
+    this.ttsSegmentQueueDepth += 1;
+
+    log.info(
+      {
+        event: 'thinking_filler_queued',
+        text: filler.text,
+        segment_id: segmentId,
+        queue_depth: this.ttsSegmentQueueDepth,
+        ...this.logContext,
+      },
+      'thinking filler queued',
+    );
+
+    // Prepare delivery payload from the pre-cached audio (no TTS synthesis needed).
+    const deliveryPromise = this.prepareFillerDelivery(filler, segmentId);
+
+    this.ttsSegmentChain = this.ttsSegmentChain
+      .then(async () => {
+        if (!this.active || this.state === 'ENDED' || this.playbackState.interrupted) return;
+        if (handlingToken !== this.transcriptHandlingToken) return;
+
+        const prepared = await deliveryPromise;
+        if (prepared) {
+          await this.deliverTtsSegment(prepared, `[filler: ${filler.text}]`, segmentId);
+        }
+      })
+      .catch((error) => {
+        log.error({ err: error, ...this.logContext }, 'thinking filler playback failed');
+      })
+      .finally(() => {
+        this.ttsSegmentQueueDepth = Math.max(0, this.ttsSegmentQueueDepth - 1);
+
+        if (this.ttsSegmentQueueDepth === 0) {
+          if (this.fillerPlaying) {
+            // Filler finished but no real segments have arrived yet.
+            // Signal onPlaybackEnded to NOT enter LISTENING.
+            this.fillerPlaying = false;
+            this.fillerJustCompleted = true;
+          }
+
+          if (this.transport.mode === 'pstn') {
+            this.endPlaybackAuthoritatively('webhook');
+          } else {
+            this.onPlaybackEnded();
+          }
+        }
+      });
+  }
+
+  /**
+   * Build a delivery payload from pre-cached filler audio. Mirrors
+   * prepareTtsSegment but skips TTS synthesis (audio already exists).
+   */
+  private async prepareFillerDelivery(
+    filler: CachedFiller,
+    segmentId: string,
+  ): Promise<{
+    playbackAudio: Buffer;
+    playbackInput: { kind: 'url'; url: string } | { kind: 'buffer'; audio: Buffer; contentType?: string };
+    spanMeta: { callId: string; tenantId: string | undefined; logContext: Record<string, unknown>; kind: string };
+  } | null> {
+    if (!this.active || this.state === 'ENDED') return null;
+
+    const playbackAudio = getFillerAudio(filler, this.transport.mode);
+
+    const spanMeta = {
+      callId: this.callControlId,
+      tenantId: this.tenantId,
+      logContext: { ...this.logContext, tts_id: segmentId },
+      kind: segmentId,
+    };
+
+    const playbackInput =
+      this.transport.mode === 'pstn'
+        ? { kind: 'url' as const, url: await storeWav(this.callControlId, segmentId, playbackAudio) }
+        : { kind: 'buffer' as const, audio: playbackAudio, contentType: filler.contentType };
+
+    return { playbackAudio, playbackInput, spanMeta };
+  }
+
   private queueTtsSegment(segmentText: string, segmentId: string, handlingToken?: number): void {
     if (!segmentText.trim()) {
       return;
@@ -2420,6 +2777,11 @@ export class CallSession {
     }
     if (handlingToken !== undefined && handlingToken !== this.transcriptHandlingToken) {
       return;
+    }
+
+    // Real content arriving — filler is no longer the only thing in the queue.
+    if (this.fillerPlaying) {
+      this.fillerPlaying = false;
     }
 
     if (!this.playbackState.active) {
@@ -2439,9 +2801,16 @@ export class CallSession {
       'tts segment queued',
     );
 
+    // Pre-synthesize immediately (don't wait for previous segment to finish playing).
+    // This eliminates the ~1s dead-air gap between sentences caused by sequential synthesis.
+    const preparedPromise = this.prepareTtsSegment(segmentText, segmentId);
+
     this.ttsSegmentChain = this.ttsSegmentChain
       .then(async () => {
-        await this.playTtsSegment(segmentText, segmentId);
+        const prepared = await preparedPromise;
+        if (prepared) {
+          await this.deliverTtsSegment(prepared, segmentText, segmentId);
+        }
       })
       .catch((error) => {
         log.error({ err: error, ...this.logContext }, 'tts segment playback failed');
@@ -2450,16 +2819,32 @@ export class CallSession {
         this.ttsSegmentQueueDepth = Math.max(0, this.ttsSegmentQueueDepth - 1);
 
         // ✅ Playback ends ONCE when all queued segments are done
-        if (this.ttsSegmentQueueDepth === 0 && this.transport.mode !== 'pstn') {
-          this.onPlaybackEnded();
+        if (this.ttsSegmentQueueDepth === 0) {
+          if (this.transport.mode === 'pstn') {
+            // PSTN: use authoritative path so playback state is properly cleared
+            this.endPlaybackAuthoritatively('webhook');
+          } else {
+            this.onPlaybackEnded();
+          }
         }
       });
   }
 
-  private async playTtsSegment(segmentText: string, segmentId: string): Promise<void> {
-    const shouldAbort = !this.active || this.state === 'ENDED' || this.playbackState.interrupted;
-    if (shouldAbort) {
-      return;
+  /**
+   * Phase 1: Synthesize TTS audio, run the telephony pipeline, and store the WAV.
+   * This runs immediately when the segment is queued (in parallel with the
+   * previous segment's playback) so audio is ready the instant it's needed.
+   */
+  private async prepareTtsSegment(
+    segmentText: string,
+    segmentId: string,
+  ): Promise<{
+    playbackAudio: Buffer;
+    playbackInput: { kind: 'url'; url: string } | { kind: 'buffer'; audio: Buffer; contentType?: string };
+    spanMeta: { callId: string; tenantId: string | undefined; logContext: Record<string, unknown>; kind: string };
+  } | null> {
+    if (!this.active || this.state === 'ENDED' || this.playbackState.interrupted) {
+      return null;
     }
 
     const tenantLabel = this.tenantId ?? 'unknown';
@@ -2506,7 +2891,6 @@ export class CallSession {
     const ttsDuration = Date.now() - ttsStart;
     markAudioSpan('tts_ready', spanMeta);
 
-
     log.info(
       {
         event: 'tts_synthesized',
@@ -2517,8 +2901,8 @@ export class CallSession {
       'tts synthesized',
     );
 
-    if (!this.active || this.state === 'ENDED' || this.playbackState.interrupted) {
-      return;
+    if (!this.active || (this.state as string) === 'ENDED' || this.playbackState.interrupted) {
+      return null;
     }
 
     this.logTtsBytesReady(segmentId, result.audio, result.contentType);
@@ -2550,9 +2934,29 @@ export class CallSession {
         ? { kind: 'url' as const, url: await storeWav(this.callControlId, segmentId, result.audio) }
         : { kind: 'buffer' as const, audio: result.audio, contentType: result.contentType };
 
-    if (this.playbackState.interrupted) {
+    return { playbackAudio, playbackInput, spanMeta };
+  }
+
+  /**
+   * Phase 2: Deliver pre-synthesized audio to the caller.
+   * This runs sequentially in the segment chain (after the previous segment
+   * finishes playing) so audio segments don't overlap.
+   */
+  private async deliverTtsSegment(
+    prepared: {
+      playbackAudio: Buffer;
+      playbackInput: { kind: 'url'; url: string } | { kind: 'buffer'; audio: Buffer; contentType?: string };
+      spanMeta: { callId: string; tenantId: string | undefined; logContext: Record<string, unknown>; kind: string };
+    },
+    segmentText: string,
+    segmentId: string,
+  ): Promise<void> {
+    if (!this.active || this.state === 'ENDED' || this.playbackState.interrupted) {
       return;
     }
+
+    const { playbackAudio, playbackInput, spanMeta } = prepared;
+    const tenantLabel = this.tenantId ?? 'unknown';
 
     if (this.transport.mode === 'pstn') {
       log.info(
@@ -2598,21 +3002,34 @@ export class CallSession {
       markAudioSpan('tx_sent', spanMeta);
       await this.transport.playback.play(playbackInput);
 
+      // For PSTN: wait for Telnyx playback.ended webhook before letting the next
+      // segment in the chain start. This prevents audio overlap.
+      if (this.transport.mode === 'pstn') {
+        this.playbackState.segmentId = segmentId; // track for watchdog
+        this.armPstnPlaybackWatchdog();
+        await new Promise<void>((resolve) => {
+          this.pstnSegmentResolve = resolve;
+        });
+      }
+
       // ✅ IMPORTANT: do NOT call onPlaybackEnded() here.
       // Streaming playback ends when the segment queue drains.
     } catch (error) {
       incStageError(playbackStage, tenantLabel);
 
-      // ✅ IMPORTANT: do NOT call onPlaybackEnded() here either.
+      // If PSTN segment was awaiting webhook, clear it so the chain can proceed
+      if (this.pstnSegmentResolve) {
+        const resolve = this.pstnSegmentResolve;
+        this.pstnSegmentResolve = null;
+        resolve();
+      }
+
       throw error;
     } finally {
       endPlayback();
     }
 
-
     const playbackDuration = Date.now() - playbackStart;
-
-
 
     if (this.transport.mode === 'pstn') {
       log.info(

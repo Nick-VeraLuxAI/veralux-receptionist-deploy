@@ -5,7 +5,7 @@
     "shared",
     "control-plane",
     "veralux-voice-runtime",
-    "veralux-voice-runtime/brain-gpt4o"
+    "veralux-voice-runtime/brain-llm"
   ],
   "scripts": {
     "build:shared": "npm run build -w @veralux/shared",
@@ -14,5 +14,8 @@
     "build": "npm run build:shared && npm run build -w control-plane && npm run build -w veralux-voice-runtime",
     "dev:control": "npm run build:shared && npm run dev:server -w control-plane",
     "dev:runtime": "npm run build:shared && npm run dev -w veralux-voice-runtime"
+  },
+  "devDependencies": {
+    "puppeteer": "^24.37.2"
   }
 }

@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { getRedisClient } from '../redis/client';
 import { env } from '../env';
 import { log } from '../log';
+import { getTtsLruCacheStats } from '../tts/ttsLruCache';
 
 export const healthRouter = Router();
 
@@ -43,7 +44,10 @@ async function checkUrl(url: string, timeout = 5000): Promise<{ ok: boolean; lat
 
 // Basic liveness probe (always returns 200 if process is running)
 healthRouter.get('/live', (_req, res) => {
-  res.status(200).json({ status: 'ok' });
+  res.status(200).json({
+    status: 'ok',
+    tts_cache: getTtsLruCacheStats(),
+  });
 });
 
 // Readiness probe (checks dependencies)
@@ -61,7 +65,11 @@ healthRouter.get('/', async (_req, res) => {
   const [redis, whisper, tts] = await Promise.all([
     checkRedis(),
     env.WHISPER_URL ? checkUrl(env.WHISPER_URL.replace('/transcribe', '/health').replace('/v1/audio/transcriptions', '/health')) : Promise.resolve(undefined),
-    env.KOKORO_URL ? checkUrl(env.KOKORO_URL.replace('/v1/kokoro', '/health')) : Promise.resolve(undefined),
+    env.TTS_MODE === 'coqui_xtts' && env.COQUI_XTTS_URL
+      ? checkUrl(env.COQUI_XTTS_URL.replace('/tts', '/health'))
+      : env.KOKORO_URL
+        ? checkUrl(env.KOKORO_URL.replace('/v1/kokoro', '/health'))
+        : Promise.resolve(undefined),
   ]);
 
   const checks: HealthStatus['checks'] = { redis };

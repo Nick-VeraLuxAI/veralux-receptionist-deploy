@@ -113,6 +113,14 @@ function parseIntEnv(name: string, fallback: number): number {
   return parsed;
 }
 
+function parseFloatEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseFloat(raw);
+  if (!Number.isFinite(parsed)) return fallback;
+  return parsed;
+}
+
 function sha1Hex(buf: Buffer): string {
   return crypto.createHash('sha1').update(buf).digest('hex');
 }
@@ -285,6 +293,41 @@ export async function preWhisperGate(input: {
     }
   }
 
+  // -------------------- RMS LOUDNESS NORMALIZATION --------------------
+  // AMR-WB decoded audio is typically very quiet (RMS ~0.017-0.036).
+  // Whisper expects audio closer to RMS ~0.10-0.20 for optimal accuracy.
+  // Normalize to a target RMS while preventing clipping.
+  const TARGET_RMS = parseFloatEnv('STT_PREWHISPER_TARGET_RMS', 0.12);
+  const MAX_GAIN_DB = parseFloatEnv('STT_PREWHISPER_MAX_GAIN_DB', 20);
+
+  const preNormStats = analyzePcm16(mono);
+  let normGainApplied = 1.0;
+
+  if (TARGET_RMS > 0 && preNormStats.rms > 0.001) {
+    // Calculate desired gain
+    let gain = TARGET_RMS / preNormStats.rms;
+
+    // Cap gain to prevent amplifying noise on very quiet (near-silent) frames
+    const maxGainLinear = Math.pow(10, MAX_GAIN_DB / 20);
+    if (gain > maxGainLinear) gain = maxGainLinear;
+
+    // Prevent clipping: ensure peak * gain < 0.95
+    const peakAfterGain = preNormStats.peak * gain;
+    if (peakAfterGain > 0.95) {
+      gain = 0.95 / preNormStats.peak;
+    }
+
+    // Only apply if gain > 1 (never reduce volume)
+    if (gain > 1.0) {
+      const normalized = new Int16Array(mono.length);
+      for (let i = 0; i < mono.length; i += 1) {
+        normalized[i] = clampInt16(Math.round((mono[i] ?? 0) * gain));
+      }
+      mono = normalized;
+      normGainApplied = gain;
+    }
+  }
+
   const wav16kMono = encodePcm16ToWav(mono, OUTPUT_SAMPLE_RATE_HZ);
   const stats = analyzePcm16(mono);
 
@@ -310,6 +353,12 @@ export async function preWhisperGate(input: {
           before_path: beforePath,
           after_path: afterPath,
 
+          // normalization debug
+          prewhisper_pre_norm_rms: Number(preNormStats.rms.toFixed(6)),
+          prewhisper_post_norm_rms: Number(stats.rms.toFixed(6)),
+          prewhisper_norm_gain: Number(normGainApplied.toFixed(3)),
+          prewhisper_target_rms: TARGET_RMS,
+
           // dedupe debug
           prewhisper_dedupe_window: dedupeWindow,
           prewhisper_dedupe_in_rate_hz: inRateForDedupe,
@@ -332,6 +381,10 @@ export async function preWhisperGate(input: {
       input_channels: inputChannels ?? null,
       output_sample_rate_hz: OUTPUT_SAMPLE_RATE_HZ,
       output_channels: OUTPUT_CHANNELS,
+
+      prewhisper_pre_norm_rms: Number(preNormStats.rms.toFixed(6)),
+      prewhisper_post_norm_rms: Number(stats.rms.toFixed(6)),
+      prewhisper_norm_gain: Number(normGainApplied.toFixed(3)),
 
       prewhisper_dedupe_window: dedupeWindow,
       prewhisper_dedupe_in_rate_hz: inRateForDedupe,

@@ -3,6 +3,21 @@ import { tryAcquireLimit, getRemainingLimit } from "./redis";
 
 const RATE_LIMIT_KEY_PREFIX = "ratelimit:admin:";
 
+/** IPs that are considered local / loopback — exempt from rate limiting */
+const LOOPBACK_PATTERNS = [
+  "127.0.0.1",
+  "::1",
+  "::ffff:127.0.0.1",
+];
+
+function isLoopback(req: Request): boolean {
+  const ip = req.ip || req.socket?.remoteAddress || "";
+  if (LOOPBACK_PATTERNS.includes(ip)) return true;
+  // Docker bridge IPs — requests from the host machine via Docker port mapping
+  if (ip.startsWith("::ffff:172.") || ip.startsWith("172.")) return true;
+  return false;
+}
+
 interface Bucket {
   tokens: number;
   last: number;
@@ -41,6 +56,8 @@ function inMemoryRateLimit(
   keyFn: (req: Request) => string
 ) {
   return (req: Request, res: Response, next: NextFunction) => {
+    // Local/internal requests bypass rate limiting
+    if (isLoopback(req)) return next();
     const key = keyFn(req) || req.ip || "anonymous";
     const now = Date.now();
     let bucket = buckets.get(key);
@@ -82,6 +99,8 @@ function redisRateLimit(
   keyFn: (req: Request) => string
 ) {
   return async (req: Request, res: Response, next: NextFunction) => {
+    // Local/internal requests bypass rate limiting
+    if (isLoopback(req)) return next();
     const identity = keyFn(req) || req.ip || "anonymous";
     const key = `${RATE_LIMIT_KEY_PREFIX}${identity}`;
     const ttlSeconds = Math.ceil(windowMs / 1000);
