@@ -93,6 +93,7 @@ import {
   updateWorkflowSettings,
   type CallEndedEvent,
 } from "./automations";
+import { applyLearningSuggestion, runSelfLearning } from "./selfLearning";
 
 dotenv.config();
 
@@ -2681,6 +2682,54 @@ app.get("/api/admin/call-history/:id", adminGuard("admin"), async (req, res) => 
   } catch (err) {
     console.error("[call-history] get error:", err);
     res.status(500).json({ error: "internal_error" });
+  }
+});
+
+/* ────────────────────────────────────────────────
+   Admin – Self-learning (prompt adaptation)
+   ──────────────────────────────────────────────── */
+
+app.post("/api/admin/self-learning/run", adminGuard("admin"), async (req, res) => {
+  const tenant = getTenantForAdmin(req as AuthedRequest, res);
+  if (!tenant) return;
+
+  const limitRaw = Number((req.body as { limit?: unknown })?.limit);
+  const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.floor(limitRaw), 10), 100) : 40;
+  const autoApply = (req.body as { autoApply?: unknown })?.autoApply !== false;
+
+  try {
+    const history = await listCallHistory(tenant.id, limit, 0);
+    const currentPrompts = tenant.config.getPrompts();
+
+    const suggestion = await runSelfLearning({
+      tenantId: tenant.id,
+      prompts: currentPrompts,
+      callHistoryRows: history.rows,
+      analytics: tenant.analytics.snapshot(20),
+    });
+
+    const promptUpdates = applyLearningSuggestion(currentPrompts, suggestion);
+    const canApply = Object.keys(promptUpdates).length > 0;
+
+    let applied = false;
+    if (autoApply && canApply) {
+      tenant.config.setPrompts(promptUpdates);
+      tenants.persistConfig(tenant.id);
+      await syncLLMContextToRuntime(tenant);
+      applied = true;
+    }
+
+    res.json({
+      suggestion,
+      applied,
+      autoApply,
+      canApply,
+      analyzedCalls: history.rows.length,
+      updates: promptUpdates,
+    });
+  } catch (err) {
+    console.error("[self-learning] run failed:", err);
+    res.status(500).json({ error: "self_learning_failed" });
   }
 });
 
